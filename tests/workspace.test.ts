@@ -75,9 +75,19 @@ test("resumes the existing baseline and rejects a root mismatch", () => {
     workspace,
   );
 
+  const reopened = startWorkspace({
+    sessionId: "session-2",
+    processCwd: testRoot,
+    configuredRoot: "project",
+    baseline: { source: "git", gitHead: "must-not-replace" },
+    capturedAt: 999,
+    existingSnapshot: workspace,
+  });
+  assert.strictEqual(reopened, workspace);
+
   assert.throws(
     () => resumeWorkspace({ snapshot: workspace, sessionId: "session-2", processCwd: testRoot, configuredRoot: "other" }),
-    WorkspaceIdentityError,
+    (error) => error instanceof WorkspaceIdentityError && error.code === "ROOT_MISMATCH",
   );
 });
 
@@ -88,4 +98,10 @@ test("keeps configured roots below the process working directory", () => {
       WorkspaceIdentityError,
     );
   }
+});
+
+test("marks an omitted baseline as unknown", () => {
+  const workspace = startWorkspace({ sessionId: "late-session", processCwd: testRoot, configuredRoot: "project" });
+  assert.equal(workspace.baseline.source, "unknown");
+  assert.equal(workspace.baseline.reason, "baseline observation unavailable");
 });
