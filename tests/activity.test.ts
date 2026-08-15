@@ -28,7 +28,7 @@ test("folds repeated evidence, preserves deletion, and derives current artifacts
   ]);
   assert.equal(projection.evidence.length, 2);
   assert.equal(projection.files.get("src/new.ts")?.observations, 2);
-  assert.equal(deriveArtifacts(projection).length, 1);
+  assert.deepEqual(deriveArtifacts(projection), [{ path: "src/new.ts", createdAt: 2 }]);
   const deleted = reduceActivity(identity, [...projection.evidence, { id: "delete-1", identity, path: "src/new.ts", kind: "DELETED", observedAt: 4, source: "git", attribution: "session-observed" }]);
   assert.equal(deleted.files.get("src/new.ts")?.current, "deleted");
   assert.equal(deriveArtifacts(deleted).length, 0);

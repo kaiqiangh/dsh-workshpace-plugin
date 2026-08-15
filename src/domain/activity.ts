@@ -119,7 +119,12 @@ export function reduceActivity(
 export function deriveArtifacts(projection: ActivityProjection): readonly ArtifactProjection[] {
   return [...projection.files.values()]
     .filter((file) => file.createdInSession && file.current === "present" && file.previewable)
-    .map((file) => ({ path: file.path, createdAt: file.firstObservedAt }))
+    .map((file) => ({
+      path: file.path,
+      createdAt: Math.min(...projection.evidence
+        .filter((item) => item.path === file.path && item.kind === "CREATED")
+        .map((item) => item.observedAt)),
+    }))
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
