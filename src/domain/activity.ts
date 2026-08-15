@@ -114,7 +114,8 @@ export function recordActivity(
     current: latest ? (evidence.kind === "DELETED" ? "deleted" : "present") : previous.current,
     lastKind: latest ? evidence.kind : previous.lastKind,
     attribution: latest ? attribution : previous.attribution,
-    createdInSession: (previous?.createdInSession ?? false) || evidence.kind === "CREATED",
+    createdInSession: (previous?.createdInSession ?? false)
+      || (evidence.kind === "CREATED" && evidence.attribution !== "pre-existing" && evidence.attribution !== "unknown"),
     previewable: (previous?.previewable ?? false) || evidence.previewable === true,
   };
   const files = new Map(current.files);
@@ -129,9 +130,19 @@ export function reduceActivity(
   return observations.reduce((current, item) => recordActivity(current, item), initialProjection(identity));
 }
 
+export function resumeActivityProjection(
+  projection: ActivityProjection,
+  identity: WorkspaceIdentity,
+  observations: readonly ActivityObservation[] = [],
+): ActivityProjection {
+  assertIdentity(projection.identity, identity);
+  return observations.reduce((current, item) => recordActivity(current, item), projection);
+}
+
 export function deriveArtifacts(projection: ActivityProjection): readonly ArtifactProjection[] {
   return [...projection.files.values()]
-    .filter((file) => file.createdInSession && file.current === "present" && file.previewable)
+    .filter((file) => file.createdInSession && file.current === "present" && file.previewable
+      && (file.attribution === "agent-evidenced" || file.attribution === "session-observed"))
     .map((file) => ({
       path: file.path,
       createdAt: Math.min(...projection.evidence
@@ -154,7 +165,7 @@ export function deriveWorkspaceChanges(
   if (baseline.rootId !== identity.rootId || baseline.sessionId !== identity.sessionId) {
     throw new ActivityProjectionError("Baseline identity does not match");
   }
-  const baselinePaths = new Set(baseline.gitStatus?.map((item) => String(item.path)) ?? []);
+  const baselinePaths = new Set(baseline.gitStatus?.map((item) => normalizeWorkspacePath(item.path)) ?? []);
   return current.map((item) => {
     const path = normalizeWorkspacePath(item.path);
     return {
@@ -191,7 +202,7 @@ export function markWorkingSetResolution(
     ...state,
     entries: state.entries.map((entry) => ({
       ...entry,
-      unresolved: projection.files.get(entry.path)?.current === "deleted" || renamed.has(entry.path),
+      unresolved: entry.unresolved || projection.files.get(entry.path)?.current === "deleted" || renamed.has(entry.path),
     })),
   };
 }

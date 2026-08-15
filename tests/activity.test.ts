@@ -10,6 +10,7 @@ import {
   markWorkingSetResolution,
   pinWorkingSet,
   reduceActivity,
+  resumeActivityProjection,
   unpinWorkingSet,
 } from "../src/domain/activity.ts";
 import { startWorkspace } from "../src/domain/workspace.ts";
@@ -59,6 +60,8 @@ test("working set is ordered, duplicate-free, identity-scoped, and unresolved un
   const projection = reduceActivity(identity, [{ id: "delete-a", identity, path: "a.ts", kind: "DELETED", observedAt: 1, source: "filesystem", attribution: "unknown" }]);
   state = markWorkingSetResolution(state, projection);
   assert.equal(state.entries[0]?.unresolved, true);
+  state = markWorkingSetResolution(state, reduceActivity(identity, [{ id: "recreate-a", identity, path: "a.ts", kind: "CREATED", observedAt: 2, source: "live-tool", attribution: "agent-evidenced" }]));
+  assert.equal(state.entries[0]?.unresolved, true);
   state = unpinWorkingSet(state, "a.ts");
   state = pinWorkingSet(state, "renamed-old.ts");
   const changes = deriveWorkspaceChanges(identity, baseline, [{ path: "renamed-new.ts", previousPath: "renamed-old.ts", status: "R  renamed-new.ts" }]);
@@ -66,4 +69,31 @@ test("working set is ordered, duplicate-free, identity-scoped, and unresolved un
   assert.equal(state.entries[1]?.unresolved, true);
   assert.deepEqual(clearWorkingSet(state).entries, []);
   assert.throws(() => markWorkingSetResolution(state, { ...projection, identity: { ...identity, sessionId: "other" } }), ActivityProjectionError);
+});
+
+test("resumes projections without merging another Workspace identity", () => {
+  const projection = reduceActivity(identity, [{
+    id: "resume-read", identity, path: "resume.ts", kind: "READ", observedAt: 1,
+    source: "durable-tool", attribution: "agent-evidenced",
+  }]);
+  const resumed = resumeActivityProjection(projection, identity, [{
+    id: "resume-write", identity, path: "resume.ts", kind: "MODIFIED", observedAt: 2,
+    source: "live-tool", attribution: "agent-evidenced",
+  }]);
+  assert.equal(resumed.evidence.length, 2);
+  assert.equal(resumed.files.get("resume.ts")?.lastKind, "MODIFIED");
+  assert.throws(() => resumeActivityProjection(projection, { ...identity, sessionId: "other" }), ActivityProjectionError);
+  assert.throws(() => resumeActivityProjection(projection, identity, [{
+    id: "other-root", identity: { ...identity, rootId: "other-root" }, path: "unsafe-merge.ts", kind: "READ", observedAt: 3,
+    source: "durable-tool", attribution: "unknown",
+  }]), ActivityProjectionError);
+});
+
+test("does not derive pre-existing or uncertain creations as current Artifacts", () => {
+  const projection = reduceActivity(identity, [
+    { id: "baseline-untracked", identity, path: "old-report.csv", kind: "CREATED", observedAt: 1, source: "git", attribution: "pre-existing", previewable: true },
+    { id: "uncertain-report", identity, path: "unknown-report.csv", kind: "CREATED", observedAt: 2, source: "filesystem", attribution: "unknown", previewable: true },
+    { id: "session-report", identity, path: "session-report.csv", kind: "CREATED", observedAt: 3, source: "git", attribution: "session-observed", previewable: true },
+  ]);
+  assert.deepEqual(deriveArtifacts(projection), [{ path: "session-report.csv", createdAt: 3 }]);
 });
