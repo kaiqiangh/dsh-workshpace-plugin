@@ -1,5 +1,4 @@
-import { normalizeWorkspacePath, type WorkspacePath } from "../domain/workspace.ts";
-import type { PreviewDescriptor } from "../domain/preview.ts";
+import { normalizeWorkspacePath, type WorkspacePath } from "../domain/path.ts";
 import {
   createDrawerState,
   reduceDrawer,
@@ -19,6 +18,13 @@ export interface WorkspaceChatData {
   readonly changes: number;
   readonly artifacts: number;
   readonly workspaceName: string;
+}
+
+export interface WorkspacePreviewDescriptor {
+  readonly type: string;
+  readonly path?: WorkspacePath;
+  readonly message?: string;
+  readonly [key: string]: unknown;
 }
 
 export interface WorkspaceSummaryEventData {
@@ -139,7 +145,7 @@ export interface WorkspaceWorkingSet {
 export interface WorkspaceHostClient {
   readonly listDirectory: (path: WorkspacePath) => Promise<readonly WorkspaceDirectoryEntry[]>;
   readonly stat: (path: WorkspacePath) => Promise<WorkspaceFileStat>;
-  readonly preview: (path: WorkspacePath) => Promise<PreviewDescriptor>;
+  readonly preview: (path: WorkspacePath) => Promise<WorkspacePreviewDescriptor>;
   readonly readResource: (resourceId: string) => Promise<Uint8Array>;
   readonly gitStatus: () => Promise<readonly WorkspaceChange[]>;
   readonly diff: (path?: WorkspacePath) => Promise<string>;
@@ -183,7 +189,7 @@ export interface WorkspaceDrawerController {
 export interface WorkspaceDrawerDispatchResult {
   readonly state: DrawerState;
   readonly effect?: DrawerEffect;
-  readonly data?: PreviewDescriptor | string;
+  readonly data?: WorkspacePreviewDescriptor | string;
   readonly error?: WorkspaceWebError;
 }
 
@@ -324,8 +330,9 @@ export function createWorkspaceDrawerController(
         try {
           const data = await client.preview(target.path);
           if (data.type === "error") {
-            state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message: data.message } }).state;
-            return { state, data, error: { code: "LOCAL_OPERATION_FAILED", operation: "preview", message: data.message } };
+            const message = data.message ?? "Preview is unavailable";
+            state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message } }).state;
+            return { state, data, error: { code: "LOCAL_OPERATION_FAILED", operation: "preview", message } };
           }
           return { ...reduced, state, data };
         } catch {

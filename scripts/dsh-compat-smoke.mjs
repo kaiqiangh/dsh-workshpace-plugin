@@ -69,6 +69,11 @@ async function installProfile(root) {
 async function createFixture(root) {
   const protocolRoot = join(root, 'packages/protocol')
   const pluginRoot = join(root, 'packages/plugin')
+  await mkdir(join(pluginRoot, 'src/web'), { recursive: true })
+  await mkdir(join(pluginRoot, 'src/domain'), { recursive: true })
+  await cp(join(process.cwd(), 'src/web/workspace-conversation.ts'), join(pluginRoot, 'src/web/workspace-conversation.ts'))
+  await cp(join(process.cwd(), 'src/web/workspace-drawer.ts'), join(pluginRoot, 'src/web/workspace-drawer.ts'))
+  await cp(join(process.cwd(), 'src/domain/path.ts'), join(pluginRoot, 'src/domain/path.ts'))
   await cp(
     join(root, 'node_modules/@deepseek-ai/dsh-typert-protocol/lib'),
     join(protocolRoot, 'lib'),
@@ -182,10 +187,11 @@ export type { AgentId } from './types.ts'
 `)
   await writeText(join(pluginRoot, 'src/client.ts'), `
 import { Service, type Context } from '@deepseek-ai/cordis'
+import { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceConversationDefinition as workspaceContributionDefinition, workspaceConversationView as workspaceContributionView } from './web/workspace-conversation.ts'
 
 export const workspaceClient = { ready: true }
 
-export const workspaceConversationDefinition = {
+export const fixtureConversationDefinition = {
   kind: 'workspace-summary', target: 'chat',
   match: (event: any) => event.type === 'workspace/summary' ? { id: String(event.data.id), role: 'start' } : null,
   start: (_context: any, match: any) => ({ summary: match.event.data.summary }),
@@ -193,7 +199,7 @@ export const workspaceConversationDefinition = {
   buildViewNode: (context: any) => ({ key: context.key, kind: context.kind, id: context.id, target: 'chat', data: context.state }),
 }
 
-export const workspaceConversationView = {
+export const fixtureConversationView = {
   target: 'chat',
   create() {
     let snapshot: any = { order: [], nodes: new Map() }
@@ -218,8 +224,8 @@ declare module '@deepseek-ai/cordis' {
 }
 
 type ConversationContributionContext = Context & {
-  conversationEvents?: { register(definition: typeof workspaceConversationDefinition): () => void }
-  conversationViews?: { register(definition: typeof workspaceConversationView): () => void }
+  conversationEvents?: { register(definition: typeof fixtureConversationDefinition): () => void }
+  conversationViews?: { register(definition: typeof fixtureConversationView): () => void }
 }
 
 export function apply(ctx: ConversationContributionContext): void {
@@ -228,11 +234,13 @@ export function apply(ctx: ConversationContributionContext): void {
   const events = ctx.conversationEvents
   const views = ctx.conversationViews
   ctx.effect(() => {
-    const disposeEvent = events.register(workspaceConversationDefinition)
-    const disposeView = views.register(workspaceConversationView)
+    const disposeEvent = events.register(fixtureConversationDefinition)
+    const disposeView = views.register(fixtureConversationView)
     return () => { disposeView(); disposeEvent() }
   }, 'workspace conversation contribution')
 }
+
+export { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceContributionDefinition as workspaceConversationDefinition, workspaceContributionView as workspaceConversationView }
 `)
   await writeText(join(root, 'tsdown.host.config.mjs'), `
 import { defineConfig } from 'tsdown'
@@ -432,7 +440,9 @@ async function conversationSmoke(root, client, ctx) {
   assert.deepEqual([...first.nodes.keys()], [...replayed.nodes.keys()])
   assert.deepEqual([...first.nodes.values()].map(node => node.data), [...replayed.nodes.values()].map(node => node.data))
 
-  const workspace = await import(pathToFileURL(join(process.cwd(), 'src/web/workspace-conversation.ts')).href)
+  const workspace = client
+  assert.equal(typeof workspace.applyWorkspaceConversationContribution, 'function', 'packed Client must export the Workspace Web contribution')
+  assert.equal(typeof workspace.createWorkspaceDrawerController, 'function', 'packed Client must export typed Workspace operations')
   const workspaceDefinitions = []
   const workspaceViews = []
   const workspaceSlots = []

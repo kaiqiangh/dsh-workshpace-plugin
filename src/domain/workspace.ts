@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { normalizeWorkspacePath, WorkspacePathError, type WorkspacePath } from "./path.ts";
 
-export type WorkspacePath = string & { readonly __workspacePath: unique symbol };
+export type { WorkspacePath } from "./path.ts";
+export { normalizeWorkspacePath, WorkspacePathError } from "./path.ts";
 
 export interface WorkspaceIdentity {
   readonly sessionId: string;
@@ -33,13 +35,6 @@ export interface WorkspaceSnapshot {
   readonly baseline: SessionBaseline;
 }
 
-export class WorkspacePathError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WorkspacePathError";
-  }
-}
-
 export type WorkspaceIdentityErrorCode =
   | "INVALID_SESSION"
   | "INVALID_ROOT"
@@ -56,24 +51,6 @@ export class WorkspaceIdentityError extends Error {
     this.name = "WorkspaceIdentityError";
     this.code = code;
   }
-}
-
-export function normalizeWorkspacePath(input: string): WorkspacePath {
-  if (typeof input !== "string" || input.includes("\0")) {
-    throw new WorkspacePathError("Workspace Path must be a valid string");
-  }
-
-  const logicalPath = input.replaceAll("\\", "/");
-  if (logicalPath.startsWith("/") || /^[A-Za-z]:/.test(logicalPath)) {
-    throw new WorkspacePathError("Workspace Path must be relative");
-  }
-
-  const segments = logicalPath.split("/");
-  if (segments.some((segment) => segment === "..")) {
-    throw new WorkspacePathError("Workspace Path cannot traverse its root");
-  }
-
-  return segments.filter((segment) => segment && segment !== ".").join("/") as WorkspacePath;
 }
 
 export function resolveWorkspaceRoot(processCwd: string, configuredRoot = "."): string {

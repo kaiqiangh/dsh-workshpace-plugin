@@ -1,5 +1,8 @@
-import { normalizeWorkspacePath, type WorkspacePath } from "../domain/workspace.ts";
-import type { LocalMetricRecorder } from "../domain/metrics.ts";
+import { normalizeWorkspacePath, type WorkspacePath } from "../domain/path.ts";
+
+export interface DrawerMetricRecorder {
+  readonly record: (name: string) => void;
+}
 
 export type WorkspaceTab = "Files" | "Session" | "Changes";
 export type PanelStatus = "idle" | "loading" | "ready" | "empty" | "unsupported" | "error";
@@ -129,11 +132,11 @@ function assertPanel(panel: PanelState): void {
   }
 }
 
-function recordMetric(metrics: LocalMetricRecorder | undefined, name: string): void {
+function recordMetric(metrics: DrawerMetricRecorder | undefined, name: string): void {
   metrics?.record(name);
 }
 
-export function reduceDrawer(state: DrawerState, action: DrawerAction, metrics?: LocalMetricRecorder): { state: DrawerState; effect?: DrawerEffect } {
+export function reduceDrawer(state: DrawerState, action: DrawerAction, metrics?: DrawerMetricRecorder): { state: DrawerState; effect?: DrawerEffect } {
   if (!action || typeof action !== "object" || typeof action.type !== "string") {
     throw new DrawerStateError("INVALID_ACTION", "Unknown Workspace drawer action");
   }

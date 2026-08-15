@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "node --experimental-strip-types --check src/domain/activity.ts && node --experimental-strip-types --check src/domain/config.ts && node --experimental-strip-types --check src/domain/followup.ts && node --experimental-strip-types --check src/domain/metrics.ts && node --experimental-strip-types --check src/domain/observation.ts && node --experimental-strip-types --check src/domain/preview.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/web/workspace-drawer.ts && node --experimental-strip-types --check src/web/workspace-conversation.ts",
+    "check": "node --experimental-strip-types --check src/domain/activity.ts && node --experimental-strip-types --check src/domain/config.ts && node --experimental-strip-types --check src/domain/followup.ts && node --experimental-strip-types --check src/domain/metrics.ts && node --experimental-strip-types --check src/domain/observation.ts && node --experimental-strip-types --check src/domain/path.ts && node --experimental-strip-types --check src/domain/preview.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/web/workspace-drawer.ts && node --experimental-strip-types --check src/web/workspace-conversation.ts",
     "smoke:compat": "node --experimental-strip-types scripts/dsh-compat-smoke.mjs"
   }
 }
