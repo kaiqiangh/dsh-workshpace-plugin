@@ -56,6 +56,8 @@ test("rejects invalid, over-limit, duplicate, and cross-identity state before Ag
   const resolve = () => { lookups += 1; return undefined; };
   const invalid = { ...workingSet(), entries: [{ path: "../secret", unresolved: false }] } as never;
   await assert.rejects(() => deliverWorkingSet(invalid, identity, resolve), (error) => error instanceof FollowupDeliveryError && error.code === "INVALID_WORKING_SET");
+  const injected = { ...workingSet(), entries: [{ path: "src/line\n-injected", unresolved: false }] } as never;
+  await assert.rejects(() => deliverWorkingSet(injected, identity, resolve), (error) => error instanceof FollowupDeliveryError && error.code === "INVALID_WORKING_SET");
   const duplicate = { ...workingSet(), entries: [{ path: "src/a.ts", unresolved: false }, { path: "src/a.ts", unresolved: false }] };
   await assert.rejects(() => deliverWorkingSet(duplicate, identity, resolve), (error) => error instanceof FollowupDeliveryError && error.code === "INVALID_WORKING_SET");
   await assert.rejects(() => deliverWorkingSet(workingSet(), { ...identity, sessionId: "other" }, resolve), (error) => error instanceof FollowupDeliveryError && error.code === "WORKSPACE_MISMATCH");

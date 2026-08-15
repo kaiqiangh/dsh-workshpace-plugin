@@ -64,6 +64,9 @@ function validateEntry(entry: WorkingSetEntry): WorkspacePath {
   } catch {
     throw new FollowupDeliveryError("INVALID_WORKING_SET", "Working Set path is invalid");
   }
+  if (/[\u0000-\u001f\u007f]/u.test(path)) {
+    throw new FollowupDeliveryError("INVALID_WORKING_SET", "Working Set path contains control characters");
+  }
   if (!path || path !== entry.path) throw new FollowupDeliveryError("INVALID_WORKING_SET", "Working Set paths must be normalized");
   return path;
 }
