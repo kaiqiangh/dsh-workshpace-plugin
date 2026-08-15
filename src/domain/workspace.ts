@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -5,21 +6,26 @@ export type WorkspacePath = string & { readonly __workspacePath: unique symbol }
 
 export interface WorkspaceIdentity {
   readonly sessionId: string;
-  readonly root: string;
+  readonly rootId: string;
 }
 
 export interface BaselineObservation {
   readonly source: "git" | "filesystem" | "unknown";
   readonly gitHead?: string;
-  readonly gitStatus?: readonly string[];
+  readonly gitStatus?: readonly { readonly status: string; readonly path: string }[];
   readonly fingerprint?: string;
   readonly reason?: string;
 }
 
-export interface SessionBaseline extends BaselineObservation {
+export interface SessionBaseline {
   readonly sessionId: string;
-  readonly root: string;
+  readonly rootId: string;
   readonly capturedAt: number;
+  readonly source: BaselineObservation["source"];
+  readonly gitHead?: string;
+  readonly gitStatus?: readonly { readonly status: string; readonly path: WorkspacePath }[];
+  readonly fingerprint?: string;
+  readonly reason?: string;
 }
 
 export interface WorkspaceSnapshot {
@@ -62,7 +68,19 @@ export function normalizeWorkspacePath(input: string): WorkspacePath {
 }
 
 export function resolveWorkspaceRoot(processCwd: string, configuredRoot = "."): string {
-  const candidate = resolve(processCwd, configuredRoot);
+  if (typeof processCwd !== "string" || !processCwd.trim()) {
+    throw new WorkspaceIdentityError("Process working directory is required");
+  }
+  if (typeof configuredRoot !== "string") {
+    throw new WorkspaceIdentityError("Configured Workspace Root must be a string");
+  }
+
+  const logicalRoot = configuredRoot.replaceAll("\\", "/");
+  if (logicalRoot.startsWith("/") || /^[A-Za-z]:/.test(logicalRoot) || logicalRoot.split("/").includes("..")) {
+    throw new WorkspaceIdentityError("Configured Workspace Root must stay below the process working directory");
+  }
+
+  const candidate = resolve(processCwd, logicalRoot || ".");
   try {
     if (!statSync(candidate).isDirectory()) {
       throw new WorkspaceIdentityError("Workspace Root must be a directory");
@@ -70,8 +88,12 @@ export function resolveWorkspaceRoot(processCwd: string, configuredRoot = "."): 
     return realpathSync.native(candidate);
   } catch (error) {
     if (error instanceof WorkspaceIdentityError) throw error;
-    throw new WorkspaceIdentityError(`Workspace Root is unavailable: ${candidate}`);
+    throw new WorkspaceIdentityError("Workspace Root is unavailable");
   }
+}
+
+function rootId(canonicalRoot: string): string {
+  return `root:${createHash("sha256").update(canonicalRoot).digest("hex")}`;
 }
 
 function baselineFor(
@@ -81,11 +103,14 @@ function baselineFor(
 ): SessionBaseline {
   return {
     sessionId: identity.sessionId,
-    root: identity.root,
+    rootId: identity.rootId,
     capturedAt,
     source: observation?.source ?? "unknown",
     gitHead: observation?.gitHead,
-    gitStatus: observation?.gitStatus,
+    gitStatus: observation?.gitStatus?.map((change) => ({
+      status: change.status,
+      path: normalizeWorkspacePath(change.path),
+    })),
     fingerprint: observation?.fingerprint,
     reason: observation?.reason ?? (observation ? undefined : "baseline observation unavailable"),
   };
@@ -98,9 +123,12 @@ export function startWorkspace(args: {
   baseline?: BaselineObservation;
   capturedAt?: number;
 }): WorkspaceLifecycle {
+  if (typeof args.sessionId !== "string" || !args.sessionId.trim()) {
+    throw new WorkspaceIdentityError("Harness Session id is required");
+  }
   const identity = {
     sessionId: args.sessionId,
-    root: resolveWorkspaceRoot(args.processCwd, args.configuredRoot),
+    rootId: rootId(resolveWorkspaceRoot(args.processCwd, args.configuredRoot)),
   };
   return {
     identity,
@@ -118,7 +146,10 @@ export function resumeWorkspace(args: {
   if (args.snapshot.identity.sessionId !== args.sessionId) {
     throw new WorkspaceIdentityError("Workspace Session does not match the snapshot");
   }
-  if (args.snapshot.identity.root !== root) {
+  if (args.snapshot.baseline.sessionId !== args.snapshot.identity.sessionId || args.snapshot.baseline.rootId !== args.snapshot.identity.rootId) {
+    throw new WorkspaceIdentityError("Workspace snapshot baseline does not match its identity");
+  }
+  if (args.snapshot.identity.rootId !== rootId(root)) {
     throw new WorkspaceIdentityError("Workspace Root does not match the snapshot");
   }
   return args.snapshot;

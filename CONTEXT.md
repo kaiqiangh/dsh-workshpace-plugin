@@ -9,7 +9,7 @@ The read-only inspection surface for one Harness Session and one Workspace Root.
 _Avoid_: file explorer, IDE, memory browser
 
 **Workspace Root**:
-The canonical filesystem directory that bounds a Workspace. The configured root is resolved from the Harness process working directory and is never widened by a browser or event path.
+The canonical filesystem directory that bounds a Workspace. The configured root is resolved from the Harness process working directory and is never widened by a browser or event path; client and durable identity use an opaque root identifier rather than the host path.
 _Avoid_: project root, host path
 
 **Workspace Path**:

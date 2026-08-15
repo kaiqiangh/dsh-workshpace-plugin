@@ -1,6 +1,6 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -32,19 +32,20 @@ test("starts a Workspace with a canonical root and one baseline", () => {
     sessionId: "session-1",
     processCwd: testRoot,
     configuredRoot: "project",
-    baseline: { source: "git", gitHead: "abc123", gitStatus: [" M README.md"] },
+    baseline: { source: "git", gitHead: "abc123", gitStatus: [{ status: " M", path: "README.md" }] },
     capturedAt: 100,
   });
 
   assert.equal(workspace.identity.sessionId, "session-1");
-  assert.equal(workspace.identity.root, realpathSync.native(join(testRoot, "project")));
+  assert.match(workspace.identity.rootId, /^root:[0-9a-f]{64}$/);
+  assert.doesNotMatch(workspace.identity.rootId, new RegExp(testRoot));
   assert.deepEqual(workspace.baseline, {
     sessionId: "session-1",
-    root: realpathSync.native(join(testRoot, "project")),
+    rootId: workspace.identity.rootId,
     capturedAt: 100,
     source: "git",
     gitHead: "abc123",
-    gitStatus: [" M README.md"],
+    gitStatus: [{ status: " M", path: "README.md" }],
     fingerprint: undefined,
     reason: undefined,
   });
@@ -73,4 +74,13 @@ test("resumes the existing baseline and rejects a root mismatch", () => {
     () => resumeWorkspace({ snapshot: workspace, sessionId: "session-2", processCwd: testRoot, configuredRoot: "other" }),
     WorkspaceIdentityError,
   );
+});
+
+test("keeps configured roots below the process working directory", () => {
+  for (const configuredRoot of ["/", "../outside", "C:\\outside"]) {
+    assert.throws(
+      () => startWorkspace({ sessionId: "session-3", processCwd: testRoot, configuredRoot }),
+      WorkspaceIdentityError,
+    );
+  }
 });
