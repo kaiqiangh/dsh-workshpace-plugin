@@ -182,7 +182,7 @@ export function resumeWorkspace(args: {
 }): WorkspaceSnapshot {
   const root = resolveWorkspaceRoot(args.processCwd, args.configuredRoot);
   if (args.snapshot.identity.sessionId !== args.sessionId) {
-    throw new WorkspaceIdentityError("SESSION_MISMATCH", "Workspace Session does not match the snapshot");
+    throw new WorkspaceIdentityError("SESSION_MISMATCH", "Harness Session does not match the snapshot");
   }
   if (args.snapshot.baseline.sessionId !== args.snapshot.identity.sessionId || args.snapshot.baseline.rootId !== args.snapshot.identity.rootId) {
     throw new WorkspaceIdentityError("BASELINE_MISMATCH", "Workspace snapshot baseline does not match its identity");
