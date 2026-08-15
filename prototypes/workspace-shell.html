@@ -1,0 +1,122 @@
+<!doctype html>
+<!-- PROTOTYPE — three Workspace shell variants, switch with ?variant=A|B|C. Throw away after the UX decision. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DSH Workspace shell prototype</title>
+    <style>
+      :root { color-scheme: dark; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; --bg: #0b1020; --panel: #131a2d; --panel-2: #1a2440; --line: #2a3757; --muted: #9aa7c2; --text: #edf2ff; --accent: #71a6ff; --good: #73e0a2; --warn: #ffd479; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 70% -10%, #213867, var(--bg) 42%); color: var(--text); }
+      button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+      .app { min-height: 100vh; display: flex; flex-direction: column; }
+      .topbar { display: flex; align-items: center; gap: 16px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: #0e1528cc; backdrop-filter: blur(14px); }
+      .brand { font-weight: 750; letter-spacing: .02em; }
+      .crumb { color: var(--muted); }
+      .summary { margin-left: auto; display: flex; align-items: center; gap: 14px; padding: 9px 12px; border: 1px solid #44649c; border-radius: 12px; background: #162746; }
+      .summary strong { display: block; }
+      .summary small { color: var(--muted); }
+      .primary { background: var(--accent); color: #071126; padding: 8px 12px; border-radius: 8px; font-weight: 750; }
+      .muted { color: var(--muted); }
+      .chip { display: inline-flex; gap: 5px; align-items: center; padding: 3px 7px; border-radius: 999px; background: #253453; color: var(--muted); font-size: 12px; }
+      .chip.good { color: var(--good); }
+      .workspace { flex: 1; min-height: 0; }
+      .tabs { display: flex; gap: 4px; padding: 12px 16px 0; border-bottom: 1px solid var(--line); }
+      .tab { padding: 9px 12px; border-radius: 8px 8px 0 0; color: var(--muted); background: transparent; }
+      .tab.active { color: var(--text); background: var(--panel-2); }
+      .tree, .rail, .activity { color: var(--muted); }
+      .tree button, .rail button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 7px; background: transparent; }
+      .tree button:hover, .rail button:hover, .tree button.selected, .rail button.selected { background: #243352; color: var(--text); }
+      .tree .indent { padding-left: 28px; }
+      .preview { min-width: 0; background: #10182a; }
+      .preview-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+      pre { margin: 0; padding: 18px; overflow: auto; color: #dce6ff; font: 13px/1.65 ui-monospace, SFMono-Regular, monospace; }
+      .code-key { color: #9cc4ff; }
+      .code-string { color: #9ce6bd; }
+      .code-comment { color: #7483a2; }
+      .drawer { width: min(820px, 100%); margin-left: auto; min-height: calc(100vh - 73px); background: var(--panel); box-shadow: -18px 0 50px #05091388; }
+      .drawer-grid { display: grid; grid-template-columns: 250px 1fr; min-height: 560px; }
+      .drawer-side { padding: 14px; border-right: 1px solid var(--line); }
+      .drawer-side h3 { margin: 8px 10px 14px; }
+      .drawer-side .section { margin: 18px 0; }
+      .drawer-side .section-title { padding: 5px 10px; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .12em; }
+      .drawer-main { min-width: 0; }
+      .drawer-main .preview { min-height: 470px; }
+      .canvas { display: grid; grid-template-columns: 228px minmax(220px, 1fr) minmax(360px, 1.35fr); min-height: calc(100vh - 73px); }
+      .canvas-nav { padding: 18px 14px; border-right: 1px solid var(--line); background: #0f1729; }
+      .canvas-nav h2 { margin: 0 8px 20px; }
+      .canvas-nav a { display: block; padding: 11px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; }
+      .canvas-nav a.active { background: #26385f; color: var(--text); }
+      .canvas-files { padding: 20px 14px; border-right: 1px solid var(--line); }
+      .canvas-files h3 { margin: 0 10px 12px; }
+      .canvas-preview { padding: 18px; }
+      .canvas-preview .preview { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .focus { display: grid; grid-template-columns: 76px minmax(260px, .8fr) minmax(380px, 1.4fr); min-height: calc(100vh - 73px); }
+      .focus-rail { padding: 18px 10px; border-right: 1px solid var(--line); background: #0e1627; }
+      .focus-rail button { text-align: center; padding: 13px 5px; margin-bottom: 8px; border-radius: 10px; background: transparent; color: var(--muted); }
+      .focus-rail button.active { background: #2c4777; color: var(--text); }
+      .focus-activity { padding: 24px 20px; border-right: 1px solid var(--line); }
+      .focus-activity h2 { margin-top: 0; }
+      .timeline { margin-top: 24px; display: grid; gap: 14px; }
+      .event { display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: start; }
+      .event time { color: var(--muted); font-size: 12px; }
+      .event b { display: block; }
+      .event small { color: var(--muted); }
+      .focus-preview { padding: 24px 20px; }
+      .working { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 10px 13px; border: 1px solid #4d6fa7; border-radius: 12px; background: #172642ee; box-shadow: 0 12px 34px #02040ccc; }
+      .working span { color: var(--muted); }
+      .switcher { position: fixed; left: 50%; bottom: 15px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid #5f74a1; border-radius: 999px; background: #0c1426f2; box-shadow: 0 10px 30px #02040ccc; }
+      .switcher button { width: 28px; height: 28px; border-radius: 50%; background: #24375d; }
+      .switcher button:hover { background: #41649c; }
+      .switcher strong { min-width: 170px; text-align: center; font-size: 12px; }
+      .note { padding: 24px; color: var(--muted); text-align: center; }
+      @media (max-width: 760px) {
+        .summary .summary-copy { display: none; }
+        .drawer-grid, .canvas, .focus { grid-template-columns: 1fr; }
+        .drawer-side, .canvas-nav, .canvas-files, .focus-rail, .focus-activity { border-right: 0; border-bottom: 1px solid var(--line); }
+        .focus-rail { display: flex; gap: 8px; overflow-x: auto; }
+        .focus-rail button { min-width: 72px; }
+        .working { left: 12px; right: 12px; transform: none; justify-content: center; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="app"></div>
+    <script>
+      const files = [
+        ["▾ src/", "folder"], ["  ▾ auth/", "folder indent"], ["    auth.py", "file indent selected"], ["    token.py", "file indent"],
+        ["▾ tests/", "folder"], ["  test_auth.py", "file indent"], ["▾ output/", "folder"], ["  report.md", "file indent"]
+      ];
+      const code = `<span class="code-comment"># session activity: MODIFIED</span>\n\n<span class="code-key">class</span> Authenticator:\n    <span class="code-key">def</span> verify(self, token):\n        claims = decode(token)\n        <span class="code-key">return</span> claims.user_id\n`;
+      const variantNames = { A: "Conversation drawer", B: "Workspace canvas", C: "Focus rail" };
+      const variant = new URLSearchParams(location.search).get("variant")?.toUpperCase();
+      let current = variantNames[variant] ? variant : "A";
+      const fileTree = () => files.map(([label, klass]) => `<button class="${klass}">${label}</button>`).join("");
+      const preview = () => `<section class="preview"><div class="preview-head"><strong>src/auth/auth.py</strong><span class="chip good">M modified</span></div><pre>${code}</pre></section>`;
+      const tabs = (active = "Files") => `<div class="tabs">${["Files", "Session", "Changes"].map((tab) => `<button class="tab ${tab === active ? "active" : ""}">${tab}</button>`).join("")}</div>`;
+      const workingSet = () => `<div class="working"><strong>Working Set</strong><span>2 files pinned</span><button class="primary">Send to Agent</button></div>`;
+      const header = () => `<header class="topbar"><span class="brand">DeepSeek Harness</span><span class="crumb">/ authentication bug</span><div class="summary"><div class="summary-copy"><strong>Workspace</strong><small>8 session files · 3 changes · 2 artifacts</small></div><button class="primary">Open Workspace</button></div></header>`;
+      const variantA = () => `${header()}<main class="workspace"><div class="drawer"><h2 style="padding: 18px 18px 0; margin: 0">Workspace</h2>${tabs()}<div class="drawer-grid"><aside class="drawer-side"><div class="section"><div class="section-title">Files</div><div class="tree">${fileTree()}</div></div><div class="section"><div class="section-title">Working Set</div><button class="selected">✓ src/auth/auth.py</button><button>✓ tests/test_auth.py</button></div></aside><div class="drawer-main">${preview()}</div></div></div></main>${workingSet()}`;
+      const variantB = () => `${header()}<main class="workspace canvas"><nav class="canvas-nav"><h2>Workspace</h2><a class="active" href="#files">Files <span class="chip">8</span></a><a href="#session">Session <span class="chip">12</span></a><a href="#changes">Changes <span class="chip">3</span></a><div style="margin-top: 40px" class="muted">Current scope</div><p><span class="chip good">2 pinned</span></p></nav><section class="canvas-files"><h3>Repository</h3><div class="tree">${fileTree()}</div></section><section class="canvas-preview">${preview()}<p class="note">Full-height inspection keeps the chat out of the way while the user investigates.</p></section></main>${workingSet()}`;
+      const variantC = () => `${header()}<main class="workspace focus"><nav class="focus-rail"><button class="active">▦<small> Files</small></button><button>◷<small> Session</small></button><button>Δ<small> Changes</small></button><button>⌘<small> Set</small></button></nav><section class="focus-activity"><h2>Session activity</h2><span class="chip good">live</span><div class="timeline"><div class="event"><time>09:48</time><div><b>CREATED</b><small>output/report.md</small></div></div><div class="event"><time>09:46</time><div><b>MODIFIED</b><small>src/auth/auth.py</small></div></div><div class="event"><time>09:42</time><div><b>READ</b><small>src/token.py</small></div></div></div></section><section class="focus-preview">${preview()}<p class="note">Activity is the primary surface; file preview follows the selected event.</p></section></main>${workingSet()}`;
+      const render = () => {
+        const views = { A: variantA, B: variantB, C: variantC };
+        document.querySelector("#app").innerHTML = `${views[current]()}<div class="switcher"><button id="prev" aria-label="Previous variant">←</button><strong>${current} — ${variantNames[current]}</strong><button id="next" aria-label="Next variant">→</button></div>`;
+        document.querySelector("#prev").onclick = () => cycle(-1);
+        document.querySelector("#next").onclick = () => cycle(1);
+      };
+      const cycle = (step) => {
+        current = ["A", "B", "C"][( ["A", "B", "C"].indexOf(current) + step + 3) % 3];
+        history.replaceState({}, "", `?variant=${current}`);
+        render();
+      };
+      document.addEventListener("keydown", (event) => {
+        if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+        if (event.key === "ArrowLeft") cycle(-1);
+        if (event.key === "ArrowRight") cycle(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
