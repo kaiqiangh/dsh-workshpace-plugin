@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createLocalMetrics, LocalMetricError } from "../src/domain/metrics.ts";
+import { startWorkspace } from "../src/domain/workspace.ts";
 
-const identity = { sessionId: "session-1", rootId: "a".repeat(64) } as const;
+const identity = { sessionId: "session-1", rootId: `root:${"a".repeat(64)}` } as const;
 
 test("records only aggregate local Workspace metrics per session", () => {
   const metrics = createLocalMetrics(identity);
@@ -45,7 +46,7 @@ test("rejects invalid or payload-shaped metric input", () => {
 
 test("keeps metrics isolated by Workspace identity", () => {
   const first = createLocalMetrics(identity);
-  const second = createLocalMetrics({ sessionId: "session-1", rootId: "b".repeat(64) });
+  const second = createLocalMetrics({ sessionId: "session-1", rootId: `root:${"b".repeat(64)}` });
   first.record("workspace-opened");
 
   assert.equal(first.snapshot().counts["workspace-opened"], 1);
@@ -55,8 +56,13 @@ test("keeps metrics isolated by Workspace identity", () => {
 test("snapshots only the immutable opaque identity", () => {
   const source = { sessionId: "session-1", rootId: identity.rootId, path: "/private" } as { sessionId: string; rootId: string; path: string };
   const metrics = createLocalMetrics(source);
-  source.rootId = "b".repeat(64);
+  source.rootId = `root:${"b".repeat(64)}`;
 
   assert.deepEqual(metrics.snapshot().identity, identity);
   assert.equal("path" in metrics.snapshot().identity, false);
+});
+
+test("accepts identities produced by the Workspace lifecycle", () => {
+  const workspace = startWorkspace({ sessionId: "session-1", processCwd: process.cwd() });
+  assert.doesNotThrow(() => createLocalMetrics(workspace.identity));
 });

@@ -16,7 +16,7 @@ test("opens the drawer and selects a tab", () => {
 });
 
 test("records drawer interactions through the local metric seam", () => {
-  const metrics = createLocalMetrics({ sessionId: "session-1", rootId: "a".repeat(64) });
+  const metrics = createLocalMetrics({ sessionId: "session-1", rootId: `root:${"a".repeat(64)}` });
   let state = reduceDrawer(createDrawerState(), { type: "open" }, metrics).state;
   state = reduceDrawer(state, { type: "select-file", path: "src/auth.py" }, metrics).state;
   state = reduceDrawer(state, { type: "select-artifact", path: "output/report.md" }, metrics).state;

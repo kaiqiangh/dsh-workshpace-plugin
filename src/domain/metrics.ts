@@ -44,7 +44,7 @@ export function createLocalMetrics(identity: WorkspaceIdentity): LocalMetricReco
   snapshot(): LocalMetricSnapshot;
   reset(): void;
 } {
-  if (!identity || typeof identity !== "object" || !isOpaqueId(identity.sessionId) || !/^[a-f0-9]{64}$/i.test(identity.rootId)) {
+  if (!identity || typeof identity !== "object" || !isOpaqueId(identity.sessionId) || !/^root:[a-f0-9]{64}$/i.test(identity.rootId)) {
     throw new LocalMetricError("A Workspace identity is required");
   }
 
