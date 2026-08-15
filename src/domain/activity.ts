@@ -76,6 +76,15 @@ function assertIdentity(expected: WorkspaceIdentity, actual: WorkspaceIdentity):
   if (!sameIdentity(expected, actual)) throw new ActivityProjectionError("Workspace identity does not match");
 }
 
+function attributionStrength(value: ActivityAttribution): number {
+  return {
+    unknown: 0,
+    "session-observed": 1,
+    "pre-existing": 2,
+    "agent-evidenced": 3,
+  }[value];
+}
+
 function initialProjection(identity: WorkspaceIdentity): ActivityProjection {
   return { identity, evidence: [], files: new Map() };
 }
@@ -94,6 +103,9 @@ export function recordActivity(
   if (current.evidence.some((item) => item.id === evidence.id)) return current;
   const previous = current.files.get(path);
   const latest = previous === undefined || evidence.observedAt >= previous.lastObservedAt;
+  const attribution = previous && attributionStrength(previous.attribution) > attributionStrength(evidence.attribution)
+    ? previous.attribution
+    : evidence.attribution;
   const next: SessionFileProjection = {
     path,
     firstObservedAt: previous ? Math.min(previous.firstObservedAt, evidence.observedAt) : evidence.observedAt,
@@ -101,7 +113,7 @@ export function recordActivity(
     observations: (previous?.observations ?? 0) + 1,
     current: latest ? (evidence.kind === "DELETED" ? "deleted" : "present") : previous.current,
     lastKind: latest ? evidence.kind : previous.lastKind,
-    attribution: latest ? evidence.attribution : previous.attribution,
+    attribution: latest ? attribution : previous.attribution,
     createdInSession: (previous?.createdInSession ?? false) || evidence.kind === "CREATED",
     previewable: (previous?.previewable ?? false) || evidence.previewable === true,
   };
