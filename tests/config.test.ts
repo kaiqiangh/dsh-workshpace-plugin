@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,6 +62,16 @@ test("accepts documented inline YAML collections", () => {
   assert.deepEqual(result.warnings, []);
 });
 
+test("preserves hash characters inside quoted YAML values", () => {
+  const parsed = parseWorkspaceConfigText('root: "dir # name" # comment\n');
+
+  assert.deepEqual(parsed, { root: "dir # name" });
+});
+
+test("rejects excessively nested YAML collections", () => {
+  assert.throws(() => parseWorkspaceConfigText(`files: { exclude: ${"[".repeat(70)}safe${"]".repeat(70)} }`), /nesting is too deep/);
+});
+
 test("warns when config contains unknown fields", () => {
   const result = resolveWorkspaceConfig({ evil: true } as never);
 
@@ -70,11 +80,15 @@ test("warns when config contains unknown fields", () => {
 
 test("discovers bounded config from .dsh/workspace.yaml", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-config-"));
-  await mkdir(join(root, ".dsh"));
-  await writeFile(join(root, ".dsh", "workspace.yaml"), "preview:\n  maxTextBytes: 4194304\n");
+  try {
+    await mkdir(join(root, ".dsh"));
+    await writeFile(join(root, ".dsh", "workspace.yaml"), "preview:\n  maxTextBytes: 4194304\n");
 
-  const result = await readWorkspaceConfigFile(root);
-  assert.deepEqual(result, { preview: { maxTextBytes: 4194304 } });
+    const result = await readWorkspaceConfigFile(root);
+    assert.deepEqual(result, { preview: { maxTextBytes: 4194304 } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("starts the real Workspace lifecycle with resolved config", async () => {
@@ -105,16 +119,21 @@ test("falls back when a configured root is missing", async () => {
 test("falls back when a configured root symlink escapes the process root", async () => {
   const processRoot = await mkdtemp(join(tmpdir(), "dsh-root-"));
   const outsideRoot = await mkdtemp(join(tmpdir(), "dsh-outside-"));
-  await symlink(outsideRoot, join(processRoot, "link"));
+  try {
+    await symlink(outsideRoot, join(processRoot, "link"));
 
-  const result = await startConfiguredWorkspace({
-    sessionId: "session-symlink-root",
-    processCwd: processRoot,
-    fileConfig: { root: "link" },
-  });
+    const result = await startConfiguredWorkspace({
+      sessionId: "session-symlink-root",
+      processCwd: processRoot,
+      fileConfig: { root: "link" },
+    });
 
-  assert.equal(result.config.root, ".");
-  assert.equal(result.warnings.includes("root: defaulted"), true);
+    assert.equal(result.config.root, ".");
+    assert.equal(result.warnings.includes("root: defaulted"), true);
+  } finally {
+    await rm(processRoot, { recursive: true, force: true });
+    await rm(outsideRoot, { recursive: true, force: true });
+  }
 });
 
 test("reports probed optional capabilities without changing the core lifecycle", async () => {
@@ -127,6 +146,18 @@ test("reports probed optional capabilities without changing the core lifecycle",
   });
 
   assert.deepEqual(result.capabilities, { core: "ready", git: "ready", preview: "ready" });
+});
+
+test("reports a disabled Workspace without disabling optional capability reporting", async () => {
+  const result = await startConfiguredWorkspace({
+    sessionId: "session-disabled",
+    processCwd: process.cwd(),
+    fileConfig: { enabled: false },
+    gitAvailable: true,
+    previewAvailable: true,
+  });
+
+  assert.deepEqual(result.capabilities, { core: "unsupported", git: "ready", preview: "ready" });
 });
 
 test("reports optional capability degradation locally", () => {

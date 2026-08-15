@@ -1,9 +1,10 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { open, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { normalizeWorkspacePath, resolveWorkspaceRoot, startWorkspace, WorkspaceIdentityError, type BaselineObservation, type WorkspaceSnapshot } from "./workspace.ts";
 
 const mib = 1024 * 1024;
 const maxConfigBytes = mib;
+const maxConfigDepth = 64;
 const mandatoryExcludes = [".git/**", "node_modules/**", ".venv/**", "dist/**", "build/**", "__pycache__/**", ".cache/**"] as const;
 
 export interface WorkspaceConfig {
@@ -47,7 +48,7 @@ export interface ConfigResolution {
 export type CapabilityStatus = "ready" | "unsupported";
 
 export interface WorkspaceCapabilities {
-  readonly core: "ready";
+  readonly core: CapabilityStatus;
   readonly git: CapabilityStatus;
   readonly preview: CapabilityStatus;
 }
@@ -236,20 +237,21 @@ function flowParts(value: string): string[] {
   return parts.filter(Boolean);
 }
 
-function scalar(value: string): unknown {
+function scalar(value: string, depth = 0): unknown {
+  if (depth > maxConfigDepth) throw new TypeError("Workspace config nesting is too deep");
   const trimmed = value.trim();
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
   if (trimmed === "null") return null;
   if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) return flowParts(trimmed.slice(1, -1)).map((part) => scalar(part));
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) return flowParts(trimmed.slice(1, -1)).map((part) => scalar(part, depth + 1));
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     const object: Record<string, unknown> = {};
     for (const part of flowParts(trimmed.slice(1, -1))) {
       const separator = part.indexOf(":");
       if (separator < 1) throw new TypeError("Workspace config flow mapping is invalid");
       const key = part.slice(0, separator).trim().replace(/^(?:\"|')|(?:\"|')$/g, "");
-      object[key] = scalar(part.slice(separator + 1));
+      object[key] = scalar(part.slice(separator + 1), depth + 1);
     }
     return object;
   }
@@ -257,17 +259,33 @@ function scalar(value: string): unknown {
   return trimmed;
 }
 
+function stripYamlComment(line: string): string {
+  let quote = "";
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote && line[index - 1] !== "\\") quote = "";
+    } else if (character === "\"" || character === "'") {
+      quote = character;
+    } else if (character === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+}
+
 export function parseWorkspaceConfigText(text: string): WorkspaceConfigInput {
   if (typeof text !== "string") throw new TypeError("Workspace config must be text");
   if (Buffer.byteLength(text, "utf8") > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
   const rootValue: Record<string, unknown> = {};
   const stack: Array<{ indent: number; value: Record<string, unknown> | unknown[] }> = [{ indent: -1, value: rootValue }];
-  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+#.*$/, "")).filter((line) => line.trim());
+  const lines = text.split(/\r?\n/).map(stripYamlComment).filter((line) => line.trim());
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     const indent = line.match(/^ */)?.[0].length ?? 0;
     if (/^\s*\t/.test(line)) throw new TypeError("Workspace config cannot use tabs");
     while (stack.at(-1)!.indent >= indent) stack.pop();
+    if (stack.length > maxConfigDepth) throw new TypeError("Workspace config nesting is too deep");
     const parent = stack.at(-1)!.value;
     const body = line.trim();
     if (body.startsWith("- ")) {
@@ -296,13 +314,23 @@ export async function readWorkspaceConfigFile(processCwd: string): Promise<Works
   const configPath = join(processRoot, ".dsh", "workspace.yaml");
   try {
     const info = await stat(configPath);
-    if (!info.isFile() || info.size > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
+    if (!info.isFile()) throw new TypeError("Workspace config is not a file");
     const canonicalConfigPath = await realpath(configPath);
     const relativeConfigPath = relative(processRoot, canonicalConfigPath);
     if (relativeConfigPath === ".." || relativeConfigPath.startsWith(`..${sep}`) || isAbsolute(relativeConfigPath)) {
       throw new TypeError("Workspace config escapes the process root");
     }
-    return parseWorkspaceConfigText(await readFile(canonicalConfigPath, "utf8"));
+    const handle = await open(canonicalConfigPath, "r");
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile() || opened.size > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
+      const buffer = Buffer.alloc(maxConfigBytes + 1);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      if (bytesRead > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
+      return parseWorkspaceConfigText(buffer.subarray(0, bytesRead).toString("utf8"));
+    } finally {
+      await handle.close();
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -350,11 +378,12 @@ export async function startConfiguredWorkspace(args: {
     capabilities: reportWorkspaceCapabilities(
       resolved.config.git.enabled && args.gitAvailable === true,
       args.previewAvailable === true,
+      config.enabled,
     ),
     workspace,
   };
 }
 
-export function reportWorkspaceCapabilities(gitAvailable: boolean, previewAvailable: boolean): WorkspaceCapabilities {
-  return { core: "ready", git: gitAvailable ? "ready" : "unsupported", preview: previewAvailable ? "ready" : "unsupported" };
+export function reportWorkspaceCapabilities(gitAvailable: boolean, previewAvailable: boolean, coreAvailable = true): WorkspaceCapabilities {
+  return { core: coreAvailable ? "ready" : "unsupported", git: gitAvailable ? "ready" : "unsupported", preview: previewAvailable ? "ready" : "unsupported" };
 }
