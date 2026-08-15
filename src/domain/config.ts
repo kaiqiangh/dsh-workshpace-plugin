@@ -259,6 +259,7 @@ function scalar(value: string): unknown {
 
 export function parseWorkspaceConfigText(text: string): WorkspaceConfigInput {
   if (typeof text !== "string") throw new TypeError("Workspace config must be text");
+  if (Buffer.byteLength(text, "utf8") > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
   const rootValue: Record<string, unknown> = {};
   const stack: Array<{ indent: number; value: Record<string, unknown> | unknown[] }> = [{ indent: -1, value: rootValue }];
   const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+#.*$/, "")).filter((line) => line.trim());
