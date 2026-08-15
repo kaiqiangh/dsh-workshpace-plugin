@@ -65,6 +65,7 @@ export class DrawerStateError extends Error {
 }
 
 const tabs: readonly WorkspaceTab[] = ["Files", "Session", "Changes"];
+const panelStatuses: readonly PanelStatus[] = ["idle", "loading", "ready", "empty", "unsupported", "error"];
 const emptyPanels = (): Record<WorkspaceTab, PanelState> => ({
   Files: { status: "idle" },
   Session: { status: "idle" },
@@ -101,6 +102,9 @@ function assertWorkingSet(summary: WorkingSetSummary): void {
 }
 
 function assertPanel(panel: PanelState): void {
+  if (!panelStatuses.includes(panel.status)) {
+    throw new DrawerStateError("INVALID_PANEL", "Unknown Workspace panel status");
+  }
   if (panel.status === "error" && !panel.message?.trim()) {
     throw new DrawerStateError("INVALID_PANEL", "Error panels need a local message");
   }

@@ -26,6 +26,10 @@ test("keeps selections while closing and returns focus to the opener", () => {
   assert.equal(state.selectedPath, "src/auth.py");
   assert.equal(state.selectedActivityId, "activity-1");
   assert.deepEqual(state.preview, { type: "activity", id: "activity-1" });
+
+  const directClose = reduceDrawer({ ...state, open: true, focusTrap: true }, { type: "close" }).state;
+  assert.equal(directClose.open, false);
+  assert.equal(directClose.focusReturn, "workspace-opener");
 });
 
 test("represents Working Set, panel state, and one send effect", () => {
@@ -72,6 +76,10 @@ test("rejects invalid drawer inputs at the public seam", () => {
   );
   assert.throws(
     () => reduceDrawer(createDrawerState(), { type: "set-panel", tab: "Files", panel: { status: "error" } }),
+    (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
+  );
+  assert.throws(
+    () => reduceDrawer(createDrawerState(), { type: "set-panel", tab: "Files", panel: { status: "bogus" } as never }),
     (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
   );
   assert.throws(
