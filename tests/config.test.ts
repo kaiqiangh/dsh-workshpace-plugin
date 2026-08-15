@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -98,6 +98,22 @@ test("falls back when a configured root is missing", async () => {
 
   assert.equal(result.workspace.identity.sessionId, "session-missing-root");
   assert.equal(result.workspace.baseline.source, "unknown");
+  assert.equal(result.config.root, ".");
+  assert.equal(result.warnings.includes("root: defaulted"), true);
+});
+
+test("falls back when a configured root symlink escapes the process root", async () => {
+  const processRoot = await mkdtemp(join(tmpdir(), "dsh-root-"));
+  const outsideRoot = await mkdtemp(join(tmpdir(), "dsh-outside-"));
+  await symlink(outsideRoot, join(processRoot, "link"));
+
+  const result = await startConfiguredWorkspace({
+    sessionId: "session-symlink-root",
+    processCwd: processRoot,
+    fileConfig: { root: "link" },
+  });
+
+  assert.equal(result.config.root, ".");
   assert.equal(result.warnings.includes("root: defaulted"), true);
 });
 

@@ -335,15 +335,17 @@ export async function startConfiguredWorkspace(args: {
   }
   const resolved = resolveWorkspaceConfig(fileConfig, args.hostOverride);
   let workspace: WorkspaceSnapshot;
+  let config = resolved.config;
   try {
-    workspace = startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: resolved.config.root, baseline: args.baseline });
+    workspace = startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: config.root, baseline: args.baseline });
   } catch (error) {
-    if (!(error instanceof WorkspaceIdentityError) || error.code !== "INVALID_ROOT" || resolved.config.root === ".") throw error;
+    if (!(error instanceof WorkspaceIdentityError) || !["INVALID_ROOT", "ROOT_OUTSIDE_PROCESS"].includes(error.code) || config.root === ".") throw error;
     warnings.push("root: defaulted");
+    config = { ...config, root: "." };
     workspace = startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: ".", baseline: args.baseline });
   }
   return {
-    config: resolved.config,
+    config,
     warnings: [...warnings, ...resolved.warnings],
     capabilities: reportWorkspaceCapabilities(
       resolved.config.git.enabled && args.gitAvailable === true,
