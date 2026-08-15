@@ -79,3 +79,7 @@ _Avoid_: file URL, attachment id
 **Continuation Action**:
 The single user-controlled operation that sends the current Working Set as a scope hint to the owning Harness Session without injecting file contents.
 _Avoid_: context injection, silent steer
+
+**Operational Budget**:
+A bounded, operator-tunable limit on Workspace work such as preview bytes, rows, activity events, refresh delay, or Working Set size. A budget cannot exceed its product safety ceiling.
+_Avoid_: performance hint, unlimited setting
