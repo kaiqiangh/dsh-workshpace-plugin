@@ -1,10 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
 import { parseWorkspaceConfigText, readWorkspaceConfigFile, reportWorkspaceCapabilities, resolveWorkspaceConfig, startConfiguredWorkspace } from "../src/domain/config.ts";
+
+const execFile = promisify(execFileCallback);
+
+async function initializeGit(root: string): Promise<boolean> {
+  try {
+    await execFile("git", ["init", "--quiet", root]);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 test("resolves safe defaults and appends mandatory excludes", () => {
   const { config, warnings } = resolveWorkspaceConfig({ files: { exclude: ["reports/**"] } });
@@ -170,4 +183,47 @@ test("reports a disabled Workspace without disabling optional capability reporti
 
 test("reports optional capability degradation locally", () => {
   assert.deepEqual(reportWorkspaceCapabilities(false, true), { core: "ready", git: "unsupported", preview: "ready" });
+});
+
+test("keeps the core workflow ready across Git and non-Git Workspace Roots", async () => {
+  const processRoot = await mkdtemp(join(tmpdir(), "dsh-capabilities-"));
+  try {
+    const gitRoot = join(processRoot, "git-root");
+    const plainRoot = join(processRoot, "plain-root");
+    await mkdir(gitRoot);
+    await mkdir(plainRoot);
+    const gitAvailable = await initializeGit(gitRoot);
+
+    const gitWorkspace = await startConfiguredWorkspace({
+      sessionId: "session-git-root",
+      processCwd: processRoot,
+      fileConfig: { root: "git-root" },
+      gitAvailable,
+      previewAvailable: false,
+    });
+    assert.equal(gitWorkspace.capabilities.core, "ready");
+    assert.equal(gitWorkspace.capabilities.git, gitAvailable ? "ready" : "unsupported");
+    assert.equal(gitWorkspace.capabilities.preview, "unsupported");
+
+    const degradedGitWorkspace = await startConfiguredWorkspace({
+      sessionId: "session-invalid-git",
+      processCwd: processRoot,
+      fileConfig: { root: "git-root" },
+      gitAvailable: false,
+      previewAvailable: false,
+    });
+    assert.deepEqual(degradedGitWorkspace.capabilities, { core: "ready", git: "unsupported", preview: "unsupported" });
+
+    const plainWorkspace = await startConfiguredWorkspace({
+      sessionId: "session-plain-root",
+      processCwd: processRoot,
+      fileConfig: { root: "plain-root" },
+      gitAvailable: false,
+      previewAvailable: true,
+    });
+    assert.deepEqual(plainWorkspace.capabilities, { core: "ready", git: "unsupported", preview: "ready" });
+    assert.notEqual(gitWorkspace.workspace.identity.rootId, plainWorkspace.workspace.identity.rootId);
+  } finally {
+    await rm(processRoot, { recursive: true, force: true });
+  }
 });
