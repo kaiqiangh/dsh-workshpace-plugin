@@ -104,7 +104,9 @@ function assertSelection(value: string, label: string): void {
 
 function normalizedSelectionPath(input: string, label: string): WorkspacePath {
   assertSelection(input, label);
-  return normalizeWorkspacePath(input);
+  const path = normalizeWorkspacePath(input);
+  if (!path) throw new DrawerStateError("INVALID_SELECTION", `${label} is required`);
+  return path;
 }
 
 function assertWorkingSet(summary: WorkingSetSummary): void {
@@ -116,6 +118,9 @@ function assertWorkingSet(summary: WorkingSetSummary): void {
 function assertPanel(panel: PanelState): void {
   if (!panel || typeof panel !== "object" || !panelStatuses.includes(panel.status)) {
     throw new DrawerStateError("INVALID_PANEL", "Unknown Workspace panel status");
+  }
+  if (panel.message !== undefined && typeof panel.message !== "string") {
+    throw new DrawerStateError("INVALID_PANEL", "Panel messages must be strings");
   }
   if (panel.status === "error" && !panel.message?.trim()) {
     throw new DrawerStateError("INVALID_PANEL", "Error panels need a local message");
@@ -158,7 +163,7 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
       return { state: { ...state, panels: { ...state.panels, [action.tab]: { ...action.panel } } } };
     case "set-preview":
       assertPanel(action.panel);
-      return { state: { ...state, preview: { ...state.preview, ...action.panel } } };
+      return { state: { ...state, preview: { target: state.preview.target, ...action.panel } } };
     case "pin-working-set":
       return { state, effect: { type: "pin-working-set", path: normalizedSelectionPath(action.path, "Working Set Path") } };
     case "unpin-working-set":

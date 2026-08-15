@@ -61,6 +61,8 @@ test("opens a preview for each selectable evidence kind", () => {
   assert.deepEqual(state.preview, { target: { type: "change", path: "src/auth.py" }, status: "loading" });
   state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message: "Preview failed" } }).state;
   assert.deepEqual(state.preview, { target: { type: "change", path: "src/auth.py" }, status: "error", message: "Preview failed" });
+  state = reduceDrawer(state, { type: "set-preview", panel: { status: "ready" } }).state;
+  assert.deepEqual(state.preview, { target: { type: "change", path: "src/auth.py" }, status: "ready" });
   state = reduceDrawer(state, { type: "set-panel", tab: "Changes", panel: { status: "loading" } }).state;
   state = reduceDrawer(state, { type: "set-panel", tab: "Changes", panel: { status: "empty" } }).state;
   state = reduceDrawer(state, { type: "set-panel", tab: "Changes", panel: { status: "unsupported" } }).state;
@@ -93,7 +95,15 @@ test("rejects invalid drawer inputs at the public seam", () => {
     (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
   );
   assert.throws(
+    () => reduceDrawer(createDrawerState(), { type: "set-panel", tab: "Files", panel: { status: "ready", message: 1 } } as never),
+    (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
+  );
+  assert.throws(
     () => reduceDrawer(createDrawerState(), { type: "select-file", path: "" }),
+    (error) => error instanceof DrawerStateError && error.code === "INVALID_SELECTION",
+  );
+  assert.throws(
+    () => reduceDrawer(createDrawerState(), { type: "select-file", path: "." }),
     (error) => error instanceof DrawerStateError && error.code === "INVALID_SELECTION",
   );
   assert.throws(
