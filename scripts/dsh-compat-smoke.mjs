@@ -14,9 +14,12 @@ const SOURCE_BASELINE_NOTE = 'ADR-0003 pinned baseline declaration'
 const PACKAGE_VERSIONS = {
   '@deepseek-ai/cordis': '4.0.1',
   '@deepseek-ai/dsh-api-gateway': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
   '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-token-meter': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-generator': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-protocol': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-registry': '0.1.0-rc.6',
@@ -69,8 +72,10 @@ async function installProfile(root) {
 async function createFixture(root) {
   const protocolRoot = join(root, 'packages/protocol')
   const pluginRoot = join(root, 'packages/plugin')
+  const compatTypesRoot = join(root, 'packages/compat-types')
   await mkdir(join(pluginRoot, 'src/web'), { recursive: true })
   await mkdir(join(pluginRoot, 'src/domain'), { recursive: true })
+  await mkdir(compatTypesRoot, { recursive: true })
   await cp(join(process.cwd(), 'src/web/workspace-conversation.ts'), join(pluginRoot, 'src/web/workspace-conversation.ts'))
   await cp(join(process.cwd(), 'src/web/workspace-drawer.ts'), join(pluginRoot, 'src/web/workspace-drawer.ts'))
   await cp(join(process.cwd(), 'src/domain/path.ts'), join(pluginRoot, 'src/domain/path.ts'))
@@ -158,7 +163,7 @@ async function createFixture(root) {
     compilerOptions: { rootDir: 'src', outDir: 'lib/types', noEmit: true },
     include: ['src'],
   })
-  await writeText(join(pluginRoot, 'src/types.ts'), 'export type AgentId = string\n')
+  await writeText(join(pluginRoot, 'src/types.ts'), "import type { SessionId } from '@deepseek-ai/dsh-session'\nexport type AgentId = SessionId\n")
   await writeText(join(pluginRoot, 'src/index.ts'), `
 import { Remote, RemoteScope, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { Context, } from '@deepseek-ai/cordis'
@@ -185,6 +190,19 @@ export class WorkspaceService extends TypertRemoteService {
 
 export type { AgentId } from './types.ts'
 `)
+  await writeText(join(compatTypesRoot, 'compat.ts'), `
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { PromptContext } from '@deepseek-ai/dsh-system-prompt'
+
+export function registerPinnedContext(agent: Agent, context: PromptContext): () => void {
+  return agent.ctx.systemPrompt.context(context)
+}
+`)
+  await writeJson(join(root, 'tsconfig.compat-types.json'), {
+    extends: './tsconfig.base.json',
+    compilerOptions: { noEmit: true },
+    files: ['packages/compat-types/compat.ts'],
+  })
   await writeText(join(pluginRoot, 'src/client.ts'), `
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceConversationDefinition as workspaceContributionDefinition, workspaceConversationView as workspaceContributionView } from './web/workspace-conversation.ts'
@@ -266,6 +284,7 @@ export default defineConfig({
 async function buildFixture(root) {
   const tsc = join(root, 'node_modules/typescript/bin/tsc')
   const tsdown = join(root, 'node_modules/tsdown/dist/run.mjs')
+  await exec(process.execPath, [tsc, '-p', 'tsconfig.compat-types.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
   await exec(process.execPath, [tsc, '-b', 'tsconfig.host.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
   await exec(process.execPath, [tsdown, '--config', 'tsdown.host.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
   await exec(process.execPath, [tsdown, '--config', 'tsdown.client.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
