@@ -170,9 +170,15 @@ test("loads and mutates Pinned Context through typed metadata-only Host operatio
 });
 
 test("keeps Pinned Context inspection failures local to the Context panel", async () => {
-  const client = { pinnedContext: async () => { throw new Error("offline"); } } as unknown as WorkspaceHostClient;
+  const client = {
+    pinnedContext: async () => { throw new Error("offline"); },
+    pinContext: async () => { throw new Error("offline"); },
+  } as unknown as WorkspaceHostClient;
   const controller = createWorkspaceDrawerController(client, createDrawerState());
   const result = await controller.dispatch({ type: "inspect-pinned-context" });
   assert.equal(result.error?.operation, "inspect-pinned-context");
   assert.deepEqual(result.state.panels.Context, { status: "error", message: "Pinned Context is unavailable" });
+  const pinResult = await controller.dispatch({ type: "pin-context", path: "src/auth.ts" });
+  assert.equal(pinResult.error?.operation, "pin-context");
+  assert.deepEqual(pinResult.state.panels.Context, { status: "error", message: "Pinned Context is unavailable" });
 });

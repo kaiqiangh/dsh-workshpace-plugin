@@ -377,7 +377,10 @@ export function createWorkspaceDrawerController(
         }
         return reduced;
       } catch {
-        if (reduced.effect === "inspect-pinned-context") {
+        const contextEffect = reduced.effect === "inspect-pinned-context"
+          || reduced.effect === "clear-context"
+          || (typeof reduced.effect !== "string" && (reduced.effect.type === "pin-context" || reduced.effect.type === "unpin-context"));
+        if (contextEffect) {
           state = reduceDrawer(state, { type: "set-panel", tab: "Context", panel: { status: "error", message: "Pinned Context is unavailable" } }).state;
         }
         return {
