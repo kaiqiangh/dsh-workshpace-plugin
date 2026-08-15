@@ -40,6 +40,7 @@ export interface ActivityProjection {
 
 export interface WorkspaceChangeProjection {
   readonly path: WorkspacePath;
+  readonly previousPath?: WorkspacePath;
   readonly status: string;
   readonly attribution: ActivityAttribution;
 }
@@ -131,7 +132,12 @@ export function deriveArtifacts(projection: ActivityProjection): readonly Artifa
 export function deriveWorkspaceChanges(
   identity: WorkspaceIdentity,
   baseline: SessionBaseline,
-  current: readonly { readonly path: WorkspacePath | string; readonly status: string; readonly attribution?: ActivityAttribution }[],
+  current: readonly {
+    readonly path: WorkspacePath | string;
+    readonly previousPath?: WorkspacePath | string;
+    readonly status: string;
+    readonly attribution?: ActivityAttribution;
+  }[],
 ): readonly WorkspaceChangeProjection[] {
   if (baseline.rootId !== identity.rootId || baseline.sessionId !== identity.sessionId) {
     throw new ActivityProjectionError("Baseline identity does not match");
@@ -141,6 +147,7 @@ export function deriveWorkspaceChanges(
     const path = normalizeWorkspacePath(item.path);
     return {
       path,
+      ...(item.previousPath === undefined ? {} : { previousPath: normalizeWorkspacePath(item.previousPath) }),
       status: item.status,
       attribution: item.attribution ?? (baselinePaths.has(path) ? "pre-existing" : baseline.source === "git" ? "session-observed" : "unknown"),
     };
@@ -162,13 +169,17 @@ export function pinWorkingSet(state: WorkingSetState, pathInput: string): Workin
 export function markWorkingSetResolution(
   state: WorkingSetState,
   projection: ActivityProjection,
+  changes: readonly WorkspaceChangeProjection[] = [],
 ): WorkingSetState {
   assertIdentity(state.identity, projection.identity);
+  const renamed = new Set(changes
+    .filter((change) => /^r|rename/i.test(change.status))
+    .flatMap((change) => [change.path, change.previousPath].filter((path): path is WorkspacePath => path !== undefined)));
   return {
     ...state,
     entries: state.entries.map((entry) => ({
       ...entry,
-      unresolved: projection.files.get(entry.path)?.current === "deleted",
+      unresolved: projection.files.get(entry.path)?.current === "deleted" || renamed.has(entry.path),
     })),
   };
 }

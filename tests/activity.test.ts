@@ -60,6 +60,10 @@ test("working set is ordered, duplicate-free, identity-scoped, and unresolved un
   state = markWorkingSetResolution(state, projection);
   assert.equal(state.entries[0]?.unresolved, true);
   state = unpinWorkingSet(state, "a.ts");
+  state = pinWorkingSet(state, "renamed-old.ts");
+  const changes = deriveWorkspaceChanges(identity, baseline, [{ path: "renamed-new.ts", previousPath: "renamed-old.ts", status: "R  renamed-new.ts" }]);
+  state = markWorkingSetResolution(state, projection, changes);
+  assert.equal(state.entries[1]?.unresolved, true);
   assert.deepEqual(clearWorkingSet(state).entries, []);
   assert.throws(() => markWorkingSetResolution(state, { ...projection, identity: { ...identity, sessionId: "other" } }), ActivityProjectionError);
 });
