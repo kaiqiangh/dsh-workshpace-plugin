@@ -46,6 +46,7 @@ export type DrawerAction =
   | { readonly type: "escape" }
   | { readonly type: "select-tab"; readonly tab: WorkspaceTab }
   | { readonly type: "select-file"; readonly path: string }
+  | { readonly type: "select-artifact"; readonly path: string }
   | { readonly type: "select-activity"; readonly id: string }
   | { readonly type: "select-change"; readonly path: string }
   | { readonly type: "set-working-set"; readonly summary: WorkingSetSummary }
@@ -151,6 +152,12 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction, metrics?:
       {
         const path = normalizedSelectionPath(action.path, "Workspace Path");
         recordMetric(metrics, "preview-opened");
+        return { state: { ...state, selectedPath: path, preview: { target: { type: "file", path }, status: "loading" } } };
+      }
+    case "select-artifact":
+      {
+        const path = normalizedSelectionPath(action.path, "Artifact Path");
+        recordMetric(metrics, "artifact-opened");
         return { state: { ...state, selectedPath: path, preview: { target: { type: "file", path }, status: "loading" } } };
       }
     case "select-activity":

@@ -16,9 +16,10 @@ test("opens the drawer and selects a tab", () => {
 });
 
 test("records drawer interactions through the local metric seam", () => {
-  const metrics = createLocalMetrics({ sessionId: "session-1", rootId: "root-1" });
+  const metrics = createLocalMetrics({ sessionId: "session-1", rootId: "a".repeat(64) });
   let state = reduceDrawer(createDrawerState(), { type: "open" }, metrics).state;
   state = reduceDrawer(state, { type: "select-file", path: "src/auth.py" }, metrics).state;
+  state = reduceDrawer(state, { type: "select-artifact", path: "output/report.md" }, metrics).state;
   state = reduceDrawer(state, { type: "set-preview", panel: { status: "unsupported" } }, metrics).state;
   const result = reduceDrawer(state, { type: "send-working-set" }, metrics);
 
@@ -26,7 +27,7 @@ test("records drawer interactions through the local metric seam", () => {
   assert.deepEqual(metrics.snapshot().counts, {
     "workspace-opened": 1,
     "preview-opened": 1,
-    "artifact-opened": 0,
+    "artifact-opened": 1,
     "working-set-sent": 1,
     "capability-degraded": 1,
   });

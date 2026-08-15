@@ -1,4 +1,6 @@
-export const metricNames = [
+import type { WorkspaceIdentity } from "./workspace.ts";
+
+const metricNames = [
   "workspace-opened",
   "preview-opened",
   "artifact-opened",
@@ -30,6 +32,10 @@ function isMetricName(value: unknown): value is LocalMetricName {
   return metricNames.includes(value as LocalMetricName);
 }
 
+function isOpaqueId(value: unknown): value is string {
+  return typeof value === "string" && Boolean(value.trim()) && !/[\\/\0]/.test(value);
+}
+
 function emptyCounts(): Record<LocalMetricName, number> {
   return Object.fromEntries(metricNames.map((name) => [name, 0])) as Record<LocalMetricName, number>;
 }
@@ -38,10 +44,11 @@ export function createLocalMetrics(identity: WorkspaceIdentity): LocalMetricReco
   snapshot(): LocalMetricSnapshot;
   reset(): void;
 } {
-  if (!identity || typeof identity !== "object" || typeof identity.sessionId !== "string" || !identity.sessionId.trim() || typeof identity.rootId !== "string" || !identity.rootId.trim()) {
+  if (!identity || typeof identity !== "object" || !isOpaqueId(identity.sessionId) || !/^[a-f0-9]{64}$/i.test(identity.rootId)) {
     throw new LocalMetricError("A Workspace identity is required");
   }
 
+  const scopedIdentity: WorkspaceIdentity = { sessionId: identity.sessionId, rootId: identity.rootId };
   let counts = emptyCounts();
   return {
     record(name: unknown): void {
@@ -49,11 +56,10 @@ export function createLocalMetrics(identity: WorkspaceIdentity): LocalMetricReco
       counts[name] += 1;
     },
     snapshot(): LocalMetricSnapshot {
-      return { identity: { ...identity }, counts: { ...counts } };
+      return { identity: { ...scopedIdentity }, counts: { ...counts } };
     },
     reset(): void {
       counts = emptyCounts();
     },
   };
 }
-import type { WorkspaceIdentity } from "./workspace.ts";
