@@ -75,3 +75,7 @@ _Avoid_: file viewer, attachment policy
 **Opaque Resource**:
 A short-lived, session- and root-bound identifier that authorizes one bounded binary preview without exposing a host filesystem path to the browser.
 _Avoid_: file URL, attachment id
+
+**Continuation Action**:
+The single user-controlled operation that sends the current Working Set as a scope hint to the owning Harness Session without injecting file contents.
+_Avoid_: context injection, silent steer
