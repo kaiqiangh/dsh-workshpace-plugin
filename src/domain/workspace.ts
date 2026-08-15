@@ -33,8 +33,6 @@ export interface WorkspaceSnapshot {
   readonly baseline: SessionBaseline;
 }
 
-export type WorkspaceLifecycle = WorkspaceSnapshot;
-
 export class WorkspacePathError extends Error {
   constructor(message: string) {
     super(message);
@@ -142,7 +140,7 @@ export function startWorkspace(args: {
   configuredRoot?: string;
   baseline?: BaselineObservation;
   capturedAt?: number;
-}): WorkspaceLifecycle {
+}): WorkspaceSnapshot {
   if (typeof args.sessionId !== "string" || !args.sessionId.trim()) {
     throw new WorkspaceIdentityError("Harness Session id is required");
   }
@@ -161,7 +159,7 @@ export function resumeWorkspace(args: {
   sessionId: string;
   processCwd: string;
   configuredRoot?: string;
-}): WorkspaceLifecycle {
+}): WorkspaceSnapshot {
   const root = resolveWorkspaceRoot(args.processCwd, args.configuredRoot);
   if (args.snapshot.identity.sessionId !== args.sessionId) {
     throw new WorkspaceIdentityError("Workspace Session does not match the snapshot");
