@@ -1,0 +1,9 @@
+{
+  "name": "dsh-workspace-plugin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "check": "node --experimental-strip-types --check src/domain/workspace.ts"
+  }
+}
