@@ -67,3 +67,11 @@ _Avoid_: agent-owned change, author
 **Evidence Source**:
 The public observation seam that produced Session Activity, such as a final tool outcome, native durable tool event, Git reconciliation, or filesystem observation. Source identifies how an observation was learned, not who caused it.
 _Avoid_: assistant claim, audit trail
+
+**Preview Policy**:
+The type-, size-, and content-safety rules that determine whether a Workspace Path is rendered as text, structured data, a bounded resource, metadata-only, or a local error.
+_Avoid_: file viewer, attachment policy
+
+**Opaque Resource**:
+A short-lived, session- and root-bound identifier that authorizes one bounded binary preview without exposing a host filesystem path to the browser.
+_Avoid_: file URL, attachment id
