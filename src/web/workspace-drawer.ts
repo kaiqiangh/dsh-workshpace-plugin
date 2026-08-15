@@ -95,6 +95,11 @@ function assertSelection(value: string, label: string): void {
   if (!value.trim()) throw new DrawerStateError("INVALID_SELECTION", `${label} is required`);
 }
 
+function normalizedSelectionPath(input: string, label: string): WorkspacePath {
+  assertSelection(input, label);
+  return normalizeWorkspacePath(input);
+}
+
 function assertWorkingSet(summary: WorkingSetSummary): void {
   if (!Number.isInteger(summary.count) || summary.count < 0 || !Number.isInteger(summary.unresolvedCount) || summary.unresolvedCount < 0 || summary.unresolvedCount > summary.count) {
     throw new DrawerStateError("INVALID_WORKING_SET", "Working Set counts must be non-negative integers");
@@ -121,14 +126,18 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
       assertTab(action.tab);
       return { state: { ...state, activeTab: action.tab } };
     case "select-file":
-      assertSelection(action.path, "Workspace Path");
-      return { state: { ...state, selectedPath: normalizeWorkspacePath(action.path), preview: { type: "file", path: normalizeWorkspacePath(action.path) } } };
+      {
+        const path = normalizedSelectionPath(action.path, "Workspace Path");
+        return { state: { ...state, selectedPath: path, preview: { type: "file", path } } };
+      }
     case "select-activity":
       assertSelection(action.id, "Session Activity id");
       return { state: { ...state, selectedActivityId: action.id, preview: { type: "activity", id: action.id } } };
     case "select-change":
-      assertSelection(action.path, "Workspace Path");
-      return { state: { ...state, selectedChangePath: normalizeWorkspacePath(action.path), preview: { type: "change", path: normalizeWorkspacePath(action.path) } } };
+      {
+        const path = normalizedSelectionPath(action.path, "Workspace Path");
+        return { state: { ...state, selectedChangePath: path, preview: { type: "change", path } } };
+      }
     case "set-working-set":
       assertWorkingSet(action.summary);
       return { state: { ...state, workingSet: { ...action.summary } } };
@@ -137,11 +146,9 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
       assertPanel(action.panel);
       return { state: { ...state, panels: { ...state.panels, [action.tab]: { ...action.panel } } } };
     case "pin-working-set":
-      assertSelection(action.path, "Working Set Path");
-      return { state, effect: { type: "pin-working-set", path: normalizeWorkspacePath(action.path) } };
+      return { state, effect: { type: "pin-working-set", path: normalizedSelectionPath(action.path, "Working Set Path") } };
     case "unpin-working-set":
-      assertSelection(action.path, "Working Set Path");
-      return { state, effect: { type: "unpin-working-set", path: normalizeWorkspacePath(action.path) } };
+      return { state, effect: { type: "unpin-working-set", path: normalizedSelectionPath(action.path, "Working Set Path") } };
     case "clear-working-set":
       return { state, effect: "clear-working-set" };
     case "send-working-set":
