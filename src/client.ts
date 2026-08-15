@@ -1,0 +1,91 @@
+import {
+  applyWorkspaceConversationContribution,
+  createWorkspaceChatNodeComponent,
+  createWorkspaceDrawerController,
+  type WorkspaceConversationEventRegistry,
+  type WorkspaceConversationViewRegistry,
+  type WorkspaceConversationContributionOptions,
+  type WorkspaceSlotRegistry,
+  workspaceConversationDefinition,
+  workspaceConversationView,
+} from "./web/workspace-conversation.ts";
+import { createElement } from "react";
+import { TYPERT_REMOTE } from "./typert.remote-client.js";
+import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
+
+interface ClientContributionContext {
+  readonly conversationEvents: WorkspaceConversationEventRegistry;
+  readonly conversationViews: WorkspaceConversationViewRegistry;
+  readonly slots: WorkspaceSlotRegistry;
+  readonly effect: (factory: () => void | (() => void), label?: string) => void;
+  readonly remote: TypertClientRemote;
+  readonly emit: (event: string, ...args: readonly unknown[]) => void;
+}
+
+declare module "@deepseek-ai/cordis" {
+  interface Events {
+    "workspace/open"(): void;
+  }
+}
+
+/** @typert object */
+export interface WorkspaceClientSurface {
+  readonly ready: boolean;
+}
+
+export const workspaceClient: WorkspaceClientSurface = Object.freeze({ ready: true });
+
+export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
+  if (!ctx?.conversationEvents || !ctx.conversationViews || !ctx.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount || typeof ctx.emit !== "function") {
+    throw new Error("DSH Workspace requires the public conversation and Typert Remote seams");
+  }
+  const remoteDispose: TypertDisposer = await ctx.remote.$mount(TYPERT_REMOTE as TypertRemoteContribution);
+  let disposeConversation: (() => void) | undefined;
+  try {
+    ctx.effect(() => {
+      const disposeEvent = ctx.conversationEvents.register(workspaceConversationDefinition);
+      const disposeView = ctx.conversationViews.register(workspaceConversationView);
+      const disposeSlot = ctx.slots.inject("conversation.chat.node", () => ctx.slots.register(
+        { name: "conversation.chat.node", key: "dsh-workspace-summary" },
+        createWorkspaceChatNodeComponent(
+          (model) => createElement(
+            "section",
+            { "data-dsh-workspace": "summary" },
+            createElement("strong", null, model.summary.workspaceName),
+            createElement("span", null, ` ${model.summary.filesTouched} files, ${model.summary.changes} changes`),
+            createElement("button", { type: "button", onClick: model.openWorkspace.action }, model.openWorkspace.label),
+          ),
+          () => ctx.emit("workspace/open"),
+        ),
+      ));
+      let disposed = false;
+      disposeConversation = () => {
+        if (disposed) return;
+        disposed = true;
+        disposeSlot();
+        disposeView();
+        disposeEvent();
+      };
+      return disposeConversation;
+    }, "dsh Workspace client contribution");
+  } catch (error) {
+    await remoteDispose();
+    throw error;
+  }
+  return async () => {
+    const dispose = disposeConversation;
+    disposeConversation = undefined;
+    dispose?.();
+    await remoteDispose();
+  };
+}
+
+export {
+  applyWorkspaceConversationContribution,
+  createWorkspaceChatNodeComponent,
+  createWorkspaceDrawerController,
+  workspaceConversationDefinition,
+  workspaceConversationView,
+};
+
+export type { WorkspaceConversationContributionOptions };

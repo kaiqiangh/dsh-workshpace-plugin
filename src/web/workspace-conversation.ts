@@ -44,7 +44,6 @@ export interface WorkspaceConversationMatch {
   readonly event: WorkspaceSummaryEvent;
   readonly role: "start" | "update";
   readonly id: string;
-  readonly summary: WorkspaceChatData;
 }
 
 export interface WorkspaceConversationContext {
@@ -259,10 +258,10 @@ export const workspaceConversationDefinition: WorkspaceConversationDefinition = 
     return data ? { id: data.id, role: data.phase } : null;
   },
   start(_context, match) {
-    return match.summary;
+    return match.event.data.summary;
   },
   update(_context, match) {
-    return match.summary;
+    return match.event.data.summary;
   },
   buildViewNode(context) {
     if (!context.state) return null;

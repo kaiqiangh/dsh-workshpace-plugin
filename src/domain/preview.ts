@@ -58,7 +58,7 @@ export type PreviewErrorCode =
 export class PreviewPanelError extends Error {
   readonly code: PreviewErrorCode;
 
-  constructor(code: PreviewErrorCode, message = code) {
+  constructor(code: PreviewErrorCode, message: string = code) {
     super(message);
     this.name = "PreviewPanelError";
     this.code = code;

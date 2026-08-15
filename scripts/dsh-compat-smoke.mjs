@@ -14,15 +14,20 @@ const SOURCE_BASELINE_NOTE = 'ADR-0003 pinned baseline declaration'
 const PACKAGE_VERSIONS = {
   '@deepseek-ai/cordis': '4.0.1',
   '@deepseek-ai/dsh-api-gateway': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-api-remotes': '0.1.0-rc.6',
   '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
   '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session': '0.1.0-rc.6',
   '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
   '@deepseek-ai/dsh-token-meter': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-generator': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-protocol': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-registry': '0.1.0-rc.6',
+  '@types/react': '18.3.12',
+  '@types/node': '26.2.0',
+  react: '18.3.1',
   tsdown: '0.22.14',
   typescript: '6.0.3',
   zod: '4.4.3',
@@ -72,13 +77,7 @@ async function installProfile(root) {
 async function createFixture(root) {
   const protocolRoot = join(root, 'packages/protocol')
   const pluginRoot = join(root, 'packages/plugin')
-  const compatTypesRoot = join(root, 'packages/compat-types')
-  await mkdir(join(pluginRoot, 'src/web'), { recursive: true })
-  await mkdir(join(pluginRoot, 'src/domain'), { recursive: true })
-  await mkdir(compatTypesRoot, { recursive: true })
-  await cp(join(process.cwd(), 'src/web/workspace-conversation.ts'), join(pluginRoot, 'src/web/workspace-conversation.ts'))
-  await cp(join(process.cwd(), 'src/web/workspace-drawer.ts'), join(pluginRoot, 'src/web/workspace-drawer.ts'))
-  await cp(join(process.cwd(), 'src/domain/path.ts'), join(pluginRoot, 'src/domain/path.ts'))
+  await mkdir(pluginRoot, { recursive: true })
   await cp(
     join(root, 'node_modules/@deepseek-ai/dsh-typert-protocol/lib'),
     join(protocolRoot, 'lib'),
@@ -94,11 +93,14 @@ async function createFixture(root) {
       noEmit: true,
       allowImportingTsExtensions: true,
       skipLibCheck: true,
+      types: ['node'],
       paths: {
         '@deepseek-ai/dsh-typert-protocol': ['./packages/protocol/lib/types/index.d.ts'],
         '@deepseek-ai/dsh-typert-protocol/types': ['./packages/protocol/lib/types/types.d.ts'],
-        '@fixture/plugin': ['./packages/plugin/src/index.ts'],
-        '@fixture/plugin/*': ['./packages/plugin/src/*'],
+        'dsh-workspace-plugin': ['./packages/plugin/src/index.ts'],
+        'dsh-workspace-plugin/client': ['./packages/plugin/src/client.ts'],
+        'dsh-workspace-plugin/types': ['./packages/plugin/src/types.ts'],
+        'dsh-workspace-plugin/*': ['./packages/plugin/src/*'],
       },
     },
   })
@@ -117,11 +119,18 @@ async function createFixture(root) {
       target: 'ES2024',
       module: 'ESNext',
       moduleResolution: 'Bundler',
-      strict: true,
+    strict: true,
       allowImportingTsExtensions: true,
       skipLibCheck: true,
+      types: ['node'],
     },
   })
+  await cp(join(process.cwd(), 'src'), join(pluginRoot, 'src'), { recursive: true })
+  await writeText(join(pluginRoot, 'src/typert.remote-client.js'), "export const TYPERT_REMOTE = { package: 'dsh-workspace-plugin', descriptors: [] }\n")
+  await writeText(join(pluginRoot, 'src/typert.remote-client.d.ts'), "export declare const TYPERT_REMOTE: import('@deepseek-ai/dsh-typert-protocol').TypertRemoteContribution\n")
+  await cp(join(process.cwd(), 'package.json'), join(pluginRoot, 'package.json'))
+  await cp(join(process.cwd(), 'package-lock.json'), join(pluginRoot, 'package-lock.json'))
+  await cp(join(process.cwd(), 'cordis.patch.yml'), join(pluginRoot, 'cordis.patch.yml'))
   await writeJson(join(protocolRoot, 'package.json'), {
     name: '@deepseek-ai/dsh-typert-protocol',
     private: true,
@@ -136,130 +145,11 @@ async function createFixture(root) {
     compilerOptions: { rootDir: 'lib', outDir: 'lib/types', noEmit: true },
     files: ['lib/types/index.d.ts', 'lib/types/types.d.ts'],
   })
-  await writeJson(join(pluginRoot, 'package.json'), {
-    name: '@fixture/plugin',
-    version: '0.0.0-smoke',
-    private: true,
-    type: 'module',
-    dsh: { client: { inject: [], platform: 'web', immediately: true } },
-    exports: {
-      '.': { types: './lib/types/index.d.ts', default: './lib/index.js' },
-      './types': { types: './lib/types/types.d.ts', default: './lib/types/types.js' },
-      './client': { types: './lib/types/client.d.ts', default: './lib/client.js' },
-      './client/typert': { types: './lib/typert.client.d.ts', default: './lib/typert.client.js' },
-      './typert': { types: './lib/typert.host.d.ts', default: './lib/typert.host.js' },
-      './remote': { types: './lib/typert.remote-client.d.ts', default: './lib/typert.remote-client.js' },
-      './package.json': './package.json',
-    },
-    files: [
-      'lib/index.js', 'lib/client.js',
-      'lib/typert.host.js', 'lib/typert.host.d.ts',
-      'lib/typert.client.js', 'lib/typert.client.d.ts',
-      'lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts',
-    ],
-  })
   await writeJson(join(pluginRoot, 'tsconfig.json'), {
     extends: '../../tsconfig.base.json',
     compilerOptions: { rootDir: 'src', outDir: 'lib/types', noEmit: true },
     include: ['src'],
   })
-  await writeText(join(pluginRoot, 'src/types.ts'), "import type { SessionId } from '@deepseek-ai/dsh-session'\nexport type AgentId = SessionId\n")
-  await writeText(join(pluginRoot, 'src/index.ts'), `
-import { Remote, RemoteScope, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { Context, } from '@deepseek-ai/cordis'
-import type { TypertContext } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentId } from './types.ts'
-
-declare module '@deepseek-ai/dsh-typert-protocol' {
-  interface TypertContextMap { agent: TypertContext<AgentId> }
-}
-
-export class WorkspaceService extends TypertRemoteService {
-  constructor(ctx: Context) { super(ctx, 'workspace') }
-
-  @Remote
-  summary(agent: AgentId): { readonly ready: boolean; readonly agent: AgentId } {
-    return { ready: true, agent }
-  }
-
-  @RemoteScope('agent')
-  focus(): { readonly focused: boolean } {
-    return { focused: true }
-  }
-}
-
-export type { AgentId } from './types.ts'
-`)
-  await writeText(join(compatTypesRoot, 'compat.ts'), `
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { PromptContext } from '@deepseek-ai/dsh-system-prompt'
-
-export function registerPinnedContext(agent: Agent, context: PromptContext): () => void {
-  return agent.ctx.systemPrompt.context(context)
-}
-`)
-  await writeJson(join(root, 'tsconfig.compat-types.json'), {
-    extends: './tsconfig.base.json',
-    compilerOptions: { noEmit: true },
-    files: ['packages/compat-types/compat.ts'],
-  })
-  await writeText(join(pluginRoot, 'src/client.ts'), `
-import { Service, type Context } from '@deepseek-ai/cordis'
-import { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceConversationDefinition as workspaceContributionDefinition, workspaceConversationView as workspaceContributionView } from './web/workspace-conversation.ts'
-
-export const workspaceClient = { ready: true }
-
-export const fixtureConversationDefinition = {
-  kind: 'workspace-summary', target: 'chat',
-  match: (event: any) => event.type === 'workspace/summary' ? { id: String(event.data.id), role: 'start' } : null,
-  start: (_context: any, match: any) => ({ summary: match.event.data.summary }),
-  update: (context: any) => context.state,
-  buildViewNode: (context: any) => ({ key: context.key, kind: context.kind, id: context.id, target: 'chat', data: context.state }),
-}
-
-export const fixtureConversationView = {
-  target: 'chat',
-  create() {
-    let snapshot: any = { order: [], nodes: new Map() }
-    return {
-      empty: snapshot,
-      replace: ({ nodes }: any) => { snapshot = { order: nodes.map((node: any) => node.key), nodes: new Map(nodes.map((node: any) => [node.key, node])) }; return snapshot },
-      apply: ({ upserts }: any) => { const nodes = new Map(snapshot.nodes); const order = [...snapshot.order]; for (const node of upserts as any[]) { if (!nodes.has(node.key)) order.push(node.key); nodes.set(node.key, node) }; snapshot = { order, nodes }; return snapshot },
-    }
-  },
-}
-
-export class ClientBridge extends Service {
-  constructor(ctx: Context) { super(ctx, 'clientBridge') }
-  reflect(value: string): string { return value }
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    workspaceClient: typeof workspaceClient
-    clientBridge: ClientBridge
-  }
-}
-
-type ConversationContributionContext = Context & {
-  conversationEvents?: { register(definition: typeof fixtureConversationDefinition): () => void }
-  conversationViews?: { register(definition: typeof fixtureConversationView): () => void }
-}
-
-export function apply(ctx: ConversationContributionContext): void {
-  ctx.provide('workspaceClient', workspaceClient)
-  if (ctx.conversationEvents === undefined || ctx.conversationViews === undefined || typeof ctx.effect !== 'function') return
-  const events = ctx.conversationEvents
-  const views = ctx.conversationViews
-  ctx.effect(() => {
-    const disposeEvent = events.register(fixtureConversationDefinition)
-    const disposeView = views.register(fixtureConversationView)
-    return () => { disposeView(); disposeEvent() }
-  }, 'workspace conversation contribution')
-}
-
-export { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceContributionDefinition as workspaceConversationDefinition, workspaceContributionView as workspaceConversationView }
-`)
   await writeText(join(root, 'tsdown.host.config.mjs'), `
 import { defineConfig } from 'tsdown'
 import { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
@@ -276,30 +166,48 @@ export default defineConfig({
   entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib',
   format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false,
   dts: false, clean: false, external: ['@deepseek-ai/cordis'],
-})
+  })
 `)
   return { pluginRoot }
 }
 
 async function buildFixture(root) {
+  const pluginRoot = join(root, 'packages/plugin')
   const tsc = join(root, 'node_modules/typescript/bin/tsc')
   const tsdown = join(root, 'node_modules/tsdown/dist/run.mjs')
-  await exec(process.execPath, [tsc, '-p', 'tsconfig.compat-types.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
-  await exec(process.execPath, [tsc, '-b', 'tsconfig.host.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
   await exec(process.execPath, [tsdown, '--config', 'tsdown.host.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
+  await cp(join(pluginRoot, 'lib/typert.remote-client.js'), join(pluginRoot, 'src/typert.remote-client.js'))
   await exec(process.execPath, [tsdown, '--config', 'tsdown.client.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
+  await writeJson(join(root, 'tsconfig.declarations.json'), {
+    extends: './tsconfig.base.json',
+    compilerOptions: {
+      rootDir: 'packages/plugin/src',
+      outDir: 'packages/plugin/lib/types',
+      declaration: true,
+      emitDeclarationOnly: true,
+      noEmit: false,
+    },
+    include: ['packages/plugin/src'],
+  })
+  await exec(process.execPath, [tsc, '-p', 'tsconfig.declarations.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
 }
 
 async function installPackedBundle(root, pluginRoot) {
   const packDir = join(root, 'pack')
   await mkdir(packDir, { recursive: true })
   const packed = JSON.parse((await exec('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: pluginRoot })).stdout)
+  const packedFiles = new Set(packed[0].files.map(file => file.path))
+  for (const file of [
+    'lib/index.js', 'lib/client.js', 'lib/types/index.d.ts', 'lib/types/types.d.ts',
+    'lib/typert.host.js', 'lib/typert.client.js', 'lib/typert.remote-client.js', 'cordis.patch.yml',
+  ]) assert.ok(packedFiles.has(file), `packed bundle must include ${file}`)
+  assert.equal([...packedFiles].some(file => file.startsWith('src/')), false, 'packed bundle must not fall back to source files')
   const tarball = join(packDir, packed[0].filename)
   const consumer = join(root, 'consumer')
   await writeJson(join(consumer, 'package.json'), { name: 'dsh-compat-consumer', private: true, type: 'module' })
   await exec('npm', [
     'install', '--ignore-scripts', '--no-fund', '--no-audit',
-    tarball, ...npmSpecifiers,
+    tarball, ...npmSpecifiers.filter(specifier => !specifier.startsWith('zod@')),
   ], { cwd: consumer, stdio: 'inherit' })
   const lockText = await readFile(join(consumer, 'package-lock.json'), 'utf8')
   const lock = JSON.parse(lockText)
@@ -309,23 +217,27 @@ async function installPackedBundle(root, pluginRoot) {
     assert.equal(entry?.version, expected, `${name} must be pinned in consumer package-lock.json`)
   }
   await writeText(join(consumer, 'runtime.mjs'), `
-const manifest = (await import('@fixture/plugin/package.json', { with: { type: 'json' } })).default
-const host = await import('@fixture/plugin')
-const client = await import('@fixture/plugin/client')
-const hostTypert = await import('@fixture/plugin/typert')
-const clientTypert = await import('@fixture/plugin/client/typert')
-const remote = await import('@fixture/plugin/remote')
+const manifest = (await import('dsh-workspace-plugin/package.json', { with: { type: 'json' } })).default
+const host = await import('dsh-workspace-plugin')
+const client = await import('dsh-workspace-plugin/client')
+const hostTypert = await import('dsh-workspace-plugin/typert')
+const clientTypert = await import('dsh-workspace-plugin/client/typert')
+const remote = await import('dsh-workspace-plugin/remote')
 export { manifest, host, client, hostTypert, clientTypert, remote }
 `)
   await writeText(join(consumer, 'check.mjs'), `
 const { manifest, host, client, hostTypert, clientTypert, remote } = await import('./runtime.mjs')
-if (manifest.dsh?.client?.platform !== 'web') throw new Error('missing web dsh.client metadata')
+  if (manifest.dsh?.bundle?.patch !== './cordis.patch.yml') throw new Error('missing dsh.bundle patch metadata')
+  if (manifest.dsh?.client?.platform !== 'web') throw new Error('missing web dsh.client metadata')
+  if (manifest.dsh?.client?.immediately !== true) throw new Error('web client must be immediate')
+  if (manifest.name !== 'dsh-workspace-plugin') throw new Error('packed consumer did not load the repository package')
 if (typeof manifest.exports?.['./client'] !== 'object') throw new Error('missing public ./client export')
 if (typeof manifest.exports?.['./typert'] !== 'object') throw new Error('missing public ./typert export')
 if (typeof manifest.exports?.['./client/typert'] !== 'object') throw new Error('missing public ./client/typert export')
 if (typeof host.WorkspaceService !== 'function' || typeof client.apply !== 'function') throw new Error('public bundle entries did not load')
 if (hostTypert.TYPERT.face !== 'host' || clientTypert.TYPERT.face !== 'client') throw new Error('generated face mismatch')
-if (remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
+if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.package !== 'dsh-workspace-plugin') throw new Error('generated package identity mismatch')
+if (remote.TYPERT_REMOTE.package !== 'dsh-workspace-plugin' || remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
 console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
@@ -338,15 +250,21 @@ console.log('installed-bundle-ok')
 
 async function publicBundleSmoke(consumer) {
   const { manifest, host, client, hostTypert, clientTypert, remote } = await import(pathToFileURL(join(consumer, 'runtime.mjs')).href)
+  assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh.client.platform, 'web')
+  assert.equal(manifest.dsh.client.immediately, true)
+  assert.equal(manifest.name, 'dsh-workspace-plugin')
   assert.equal(typeof manifest.exports['./client'], 'object')
   assert.equal(typeof manifest.exports['./typert'], 'object')
   assert.equal(typeof manifest.exports['./client/typert'], 'object')
   assert.equal(typeof host.WorkspaceService, 'function')
   assert.equal(typeof client.apply, 'function')
   assert.equal(hostTypert.TYPERT.face, 'host')
+  assert.equal(hostTypert.TYPERT.package, 'dsh-workspace-plugin')
   assert.equal(clientTypert.TYPERT.face, 'client')
-  assert.ok(remote.TYPERT_REMOTE.descriptors.length > 0)
+  assert.equal(clientTypert.TYPERT.package, 'dsh-workspace-plugin')
+  assert.equal(remote.TYPERT_REMOTE.package, 'dsh-workspace-plugin')
+  assert.ok(remote.TYPERT_REMOTE.descriptors.every(descriptor => descriptor.id.startsWith('dsh-workspace-plugin#')))
   const strictJson = JSON.stringify(hostTypert.TYPERT)
   assert.equal(strictJson.includes('src-json'), false, 'compatibility smoke must not downgrade to SRC JSON')
   return { host, client, hostTypert, profileRoot: consumer }
@@ -363,7 +281,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   const scoped = ctx.extend({ fixtureScope: 'agent-1' })
   ctx.typert.contexts.registerHost('agent', {
     wire: 'agentId',
-    wireTypeSymbol: '@fixture/plugin/types#AgentId',
+    wireTypeSymbol: 'dsh-workspace-plugin/types#AgentId',
     resolve: id => id === 'agent-1' ? scoped : undefined,
   })
   ctx.typert.register(hostTypert.TYPERT)
@@ -371,8 +289,59 @@ async function gatewaySmoke(root, host, hostTypert) {
     namespace: 'workspace', method: 'focus', args: { agentId: 'agent-1' },
   })
   assert.deepEqual(result, { focused: true })
-  assert.equal(ctx.typert.local.list().length, 2)
-  return { ctx, registry: ctx.typert }
+  const initialContext = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
+  })
+  assert.equal(initialContext.status, 'omitted')
+  assert.equal(initialContext.capacityTokens, 0)
+  const replacedContext = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'replaceContext',
+    args: {
+      agentId: 'agent-1',
+      snapshot: {
+        version: 1,
+        contentHash: `sha256:${'c'.repeat(64)}`,
+        estimatedTokens: 12,
+        capacityTokens: 512,
+        admittedTokens: 12,
+        availableBudgetTokens: 480,
+        remainingTokens: 468,
+        status: 'ready',
+        omissionReason: '',
+      },
+    },
+  })
+  assert.equal(replacedContext.version, 1)
+  assert.equal(replacedContext.remainingTokens, 468)
+  assert.equal(typeof host.registerPinnedContextCarrier, 'function')
+  assert.equal(typeof host.createPinnedContext, 'function')
+  const registrations = []
+  const carrierAgent = {
+    id: 'agent-1',
+    ctx: {
+      systemPrompt: {
+        context(registration) {
+          registrations.push(registration)
+          return () => registrations.splice(registrations.indexOf(registration), 1)
+        },
+      },
+    },
+  }
+  let contextState = host.createPinnedContext({ sessionId: 'agent-1', rootId: 'root-1' }, { maxItemBytes: 64, reservedOutputTokens: 4 })
+  contextState = host.setContextCapacity(contextState, 256)
+  contextState = host.pinContextPath(contextState, 'src/auth.py')
+  const readyState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'alpha', loadedAt: 1 })
+  const omittedState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'x'.repeat(80), loadedAt: 2 })
+  assert.equal(omittedState.entries[0].status, 'over-budget')
+  const carrier = host.registerPinnedContextCarrier(carrierAgent, readyState)
+  const firstText = registrations[0].text()
+  const changedState = host.updateContextPath(readyState, { path: 'src/auth.py', status: 'ready', content: 'beta', loadedAt: 3 })
+  carrier.update(changedState)
+  assert.notEqual(registrations[0].text(), firstText)
+  carrier.dispose()
+  assert.equal(registrations.length, 0)
+  assert.ok(ctx.typert.local.list().length > 0)
+  return { ctx, registry: ctx.typert, host }
 }
 
 async function webSmoke(root, ctx) {
@@ -439,17 +408,65 @@ async function conversationSmoke(root, client, ctx) {
   })
   const definitions = []
   const views = []
+  const clientSlots = []
+  let clientCleanup
+  let clientRemoteMounted = 0
+  let clientRemoteDisposed = false
+  let clientOpened = 0
   const contribution = ctx.extend({
     conversationEvents: { register(definition) { definitions.push(definition); return () => definitions.splice(definitions.indexOf(definition), 1) } },
     conversationViews: { register(view) { views.push(view); return () => views.splice(views.indexOf(view), 1) } },
+    slots: {
+      inject(key, callback) {
+        assert.equal(key, 'conversation.chat.node')
+        const dispose = callback()
+        return () => { dispose(); clientSlots.splice(0) }
+      },
+      register(options, component) {
+        assert.deepEqual(options, { name: 'conversation.chat.node', key: 'dsh-workspace-summary' })
+        clientSlots.push(component)
+        return () => clientSlots.splice(0)
+      },
+    },
+    effect(factory) { clientCleanup = factory() },
+    remote: {
+      async $mount(remoteContribution) {
+        assert.equal(remoteContribution.package, 'dsh-workspace-plugin')
+        clientRemoteMounted += 1
+        return async () => { clientRemoteMounted -= 1; clientRemoteDisposed = true }
+      },
+    },
+    emit(event) { if (event === 'workspace/open') clientOpened += 1 },
   })
-  client.apply(contribution)
+  const clientDispose = await client.apply(contribution)
   assert.equal(definitions.length, 1)
   assert.equal(views.length, 1)
+  assert.equal(clientSlots.length, 1)
+  assert.equal(clientRemoteMounted, 1)
+  await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
+  const clientNode = clientSlots[0]({ node: {
+    key: 'dsh-workspace-summary:client', kind: 'dsh-workspace-summary', id: 'client', target: 'chat',
+    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client' }, anchorSeq: 1,
+    location: { kind: 'session' }, visibility: 'visible',
+  } })
+  assert.equal(clientNode.type, 'section')
+  assert.equal(clientNode.props['data-dsh-workspace'], 'summary')
+  assert.equal(clientNode.props.children[2].type, 'button')
+  clientNode.props.children[2].props.onClick()
+  assert.equal(clientOpened, 1)
   const events = { entries: () => definitions, fallbackEntry: () => undefined }
   const viewDefinitions = { entries: () => views }
   const assembler = new ConversationNodeAssembler(events, viewDefinitions)
-  const input = { event: { seq: 1, time: 1, type: 'workspace/summary', data: { id: 'summary-1', summary: 'ready' }, ignorable: true }, view: undefined }
+  const input = {
+    event: {
+      seq: 1,
+      time: 1,
+      type: 'workspace/summary',
+      data: { id: 'summary-1', phase: 'start', summary: { filesTouched: 1, changes: 0, artifacts: 0, workspaceName: 'compat' } },
+      ignorable: true,
+    },
+    view: undefined,
+  }
   assembler.replaceWindow([input], false)
   assembler.flush()
   const first = assembler.snapshot('chat')
@@ -552,11 +569,14 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(sendCalls, 1)
   assert.equal(contextCalls, 3)
   assert.equal(controller.getState().pinnedContext.count, 0)
+  await clientDispose()
+  assert.equal(clientRemoteMounted, 0)
+  assert.equal(clientRemoteDisposed, true)
   workspaceCleanup?.()
   assert.equal(workspaceDefinitions.length, 0)
   assert.equal(workspaceViews.length, 0)
   assert.equal(workspaceSlots.length, 0)
-  return { definitions, views, workspaceDefinitions, workspaceViews, workspaceSlots }
+  return { definitions, views, workspaceDefinitions, workspaceViews, workspaceSlots, clientSlots }
 }
 
 async function main() {
@@ -582,6 +602,7 @@ async function main() {
       assert.equal(conversation?.workspaceDefinitions.length ?? 0, 0)
       assert.equal(conversation?.workspaceViews.length ?? 0, 0)
       assert.equal(conversation?.workspaceSlots.length ?? 0, 0)
+      assert.equal(conversation?.clientSlots.length ?? 0, 0)
       if (endpoint !== undefined) await assert.rejects(() => fetch(endpoint))
     }
     console.log(JSON.stringify({
