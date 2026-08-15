@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "node --experimental-strip-types --check src/domain/metrics.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/web/workspace-drawer.ts"
+    "check": "node --experimental-strip-types --check src/domain/config.ts && node --experimental-strip-types --check src/domain/metrics.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/web/workspace-drawer.ts"
   }
 }
