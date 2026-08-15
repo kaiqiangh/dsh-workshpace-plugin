@@ -1,0 +1,9 @@
+# Use evidence-first Session Activity attribution
+
+**Status:** accepted
+
+Session Activity is derived from public final tool outcomes and native durable tool events, not assistant narration. Direct successful first-party file-tool outcomes are the strongest live evidence: read/read-image produce READ, write distinguishes CREATED from MODIFIED, edit produces MODIFIED, and structured editor commands are classified from their arguments. Shell and other potentially mutating tools trigger Git or filesystem reconciliation because indirect outputs are not present in the tool result; failures do not prove that no mutation occurred, and background jobs are reconciled at settlement.
+
+Git or filesystem observations describe current Workspace Change state and can associate a path with the session baseline, but they do not prove agent causality. A path already dirty at baseline remains pre-existing unless direct tool evidence says otherwise. A post-baseline observation without direct evidence is session-observed or unknown, never agent-evidenced. Non-Git observations remain unknown unless a direct tool result identifies the path. Rename is represented as event-time delete/create activity plus a current Git rename status when Git supplies one; no inode identity or semantic rename inference is required.
+
+Resume folds the existing native durable tool records once from the Session log, then consumes new live events incrementally. It does not expect old events to be replayed through the live event hook, and it does not append custom workspace event types on the pinned release because downstream event-vocabulary registration is unavailable. Repeated reads may be coalesced in summary projections while raw evidence identity remains `(session.id, event.seq)` for durable records and `callId`/`rootCallId` for live outcomes.

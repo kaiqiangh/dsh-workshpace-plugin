@@ -59,3 +59,11 @@ _Avoid_: latest Harness, compatible enough
 **Host/Web Adapter**:
 The narrow Workspace boundary that translates the public Harness Host, Web, session, and conversation seams into Workspace operations while keeping Harness-specific lifecycle and transport details out of the domain.
 _Avoid_: private Harness hook, core-loop patch
+
+**Activity Attribution**:
+The evidence label attached to Session Activity: agent-evidenced, session-observed, pre-existing, or unknown. Attribution never upgrades a Git/filesystem observation into agent causality without direct tool evidence.
+_Avoid_: agent-owned change, author
+
+**Evidence Source**:
+The public observation seam that produced Session Activity, such as a final tool outcome, native durable tool event, Git reconciliation, or filesystem observation. Source identifies how an observation was learned, not who caused it.
+_Avoid_: assistant claim, audit trail
