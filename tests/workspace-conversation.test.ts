@@ -6,6 +6,7 @@ import {
   createWorkspaceChatNodeComponent,
   createWorkspaceDrawerController,
   normalizeWorkspaceOperationPath,
+  workspaceKeyboardControls,
   workspaceConversationDefinition,
   workspaceConversationView,
   workspaceSurfaceLayout,
@@ -108,4 +109,18 @@ test("models responsive layout and rejects invalid public paths/seams", () => {
   assert.throws(() => normalizeWorkspaceOperationPath("../secret"), WorkspaceWebIntegrationError);
   assert.throws(() => workspaceSurfaceLayout(Number.NaN), WorkspaceWebIntegrationError);
   assert.throws(() => applyWorkspaceConversationContribution(null as never, { renderSummary: () => undefined, openWorkspace: () => undefined }), (error) => error instanceof WorkspaceWebIntegrationError && error.code === "INTEGRATION_UNAVAILABLE");
+});
+
+test("keeps the drawer keyboard contract explicit at the Web seam", async () => {
+  const client = {
+    sendWorkingSet: async () => undefined,
+  } as unknown as WorkspaceHostClient;
+  const controller = createWorkspaceDrawerController(client);
+  await controller.dispatch({ type: "open" });
+  const closed = await controller.handleKey("Escape");
+  assert.equal(closed.state.open, false);
+  assert.equal(closed.state.focusReturn, "workspace-opener");
+  assert.equal(closed.state.focusTrap, false);
+  assert.equal(closed.state.focusVisible, true);
+  assert.deepEqual(workspaceKeyboardControls.slice(0, 5), ["open-workspace", "close-workspace", "Files", "Session", "Changes"]);
 });

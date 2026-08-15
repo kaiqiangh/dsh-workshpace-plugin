@@ -170,6 +170,7 @@ export class WorkspaceWebIntegrationError extends Error {
 export interface WorkspaceDrawerController {
   readonly getState: () => DrawerState;
   readonly dispatch: (action: DrawerAction) => Promise<WorkspaceDrawerDispatchResult>;
+  readonly handleKey: (key: string) => Promise<WorkspaceDrawerDispatchResult>;
   readonly listDirectory: WorkspaceHostClient["listDirectory"];
   readonly preview: WorkspaceHostClient["preview"];
   readonly readResource: WorkspaceHostClient["readResource"];
@@ -191,6 +192,19 @@ export type WorkspaceSurfaceLayout = {
   readonly chatVisible: boolean;
   readonly drawer: "right-side" | "full-width";
 };
+
+export const workspaceKeyboardControls = [
+  "open-workspace",
+  "close-workspace",
+  "Files",
+  "Session",
+  "Changes",
+  "preview",
+  "pin-working-set",
+  "unpin-working-set",
+  "clear-working-set",
+  "send-working-set",
+] as const;
 
 function validCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
@@ -292,7 +306,7 @@ export function createWorkspaceDrawerController(
     if (effect.type === "pin-working-set") return client.pinWorkingSet(effect.path);
     return client.unpinWorkingSet(effect.path);
   };
-  return {
+  const controller: WorkspaceDrawerController = {
     getState: () => state,
     listDirectory: client.listDirectory,
     preview: client.preview,
@@ -341,7 +355,12 @@ export function createWorkspaceDrawerController(
         };
       }
     },
+    async handleKey(key) {
+      if (key !== "Escape") return { state };
+      return controller.dispatch({ type: "escape" });
+    },
   };
+  return controller;
 }
 
 export function workspaceSurfaceLayout(viewportWidth: number, breakpoint = 760): WorkspaceSurfaceLayout {

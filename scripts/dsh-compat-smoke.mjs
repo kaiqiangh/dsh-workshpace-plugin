@@ -431,7 +431,76 @@ async function conversationSmoke(root, client, ctx) {
   const replayed = assembler.snapshot('chat')
   assert.deepEqual([...first.nodes.keys()], [...replayed.nodes.keys()])
   assert.deepEqual([...first.nodes.values()].map(node => node.data), [...replayed.nodes.values()].map(node => node.data))
-  return { definitions, views }
+
+  const workspace = await import(pathToFileURL(join(process.cwd(), 'src/web/workspace-conversation.ts')).href)
+  const workspaceDefinitions = []
+  const workspaceViews = []
+  const workspaceSlots = []
+  let workspaceCleanup
+  let opened = false
+  let previewCalls = 0
+  let sendCalls = 0
+  let rendered
+  const workspaceContext = {
+    conversationEvents: { register(definition) { workspaceDefinitions.push(definition); return () => workspaceDefinitions.splice(workspaceDefinitions.indexOf(definition), 1) } },
+    conversationViews: { register(view) { workspaceViews.push(view); return () => workspaceViews.splice(workspaceViews.indexOf(view), 1) } },
+    slots: {
+      inject(key, callback) {
+        assert.equal(key, 'conversation.chat.node')
+        const dispose = callback()
+        return () => { dispose(); workspaceSlots.splice(0) }
+      },
+      register(options, component) {
+        assert.deepEqual(options, { name: 'conversation.chat.node', key: 'dsh-workspace-summary' })
+        workspaceSlots.push(component)
+        return () => workspaceSlots.splice(0)
+      },
+    },
+    effect(factory) { workspaceCleanup = factory() },
+  }
+  workspace.applyWorkspaceConversationContribution(workspaceContext, {
+    renderSummary(model) { rendered = model; return model },
+    openWorkspace() { opened = true },
+  })
+  assert.equal(workspaceDefinitions.length, 1)
+  assert.equal(workspaceViews.length, 1)
+  assert.equal(workspaceSlots.length, 1)
+  const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat' }
+  const summaryEvent = { type: 'workspace/summary', seq: 2, data: { id: 'compat-session', phase: 'start', summary } }
+  const summaryMatch = workspace.workspaceConversationDefinition.match(summaryEvent)
+  assert.deepEqual(summaryMatch, { id: 'compat-session', role: 'start' })
+  const summaryNode = workspace.workspaceConversationDefinition.buildViewNode({
+    key: 'dsh-workspace-summary:compat-session', kind: 'dsh-workspace-summary', id: 'compat-session',
+    start: { event: summaryEvent, role: 'start', id: 'compat-session', summary }, state: summary,
+  })
+  rendered = workspaceSlots[0]({ node: summaryNode })
+  assert.deepEqual(rendered.summary, summary)
+  rendered.openWorkspace.action()
+  assert.equal(opened, true)
+  const typedClient = {
+    async listDirectory() { return [] },
+    async stat() { return { path: 'src/auth.py', kind: 'file' } },
+    async preview() { previewCalls += 1; return { type: 'text', path: 'src/auth.py', renderer: 'ui-primitives', content: 'ok', truncated: false } },
+    async readResource() { return new Uint8Array() },
+    async gitStatus() { return [] },
+    async diff() { return '' },
+    async sessionFiles() { return [] },
+    async workingSet() { return { entries: [], summary: { count: 0, unresolvedCount: 0 } } },
+    async pinWorkingSet() {},
+    async unpinWorkingSet() {},
+    async clearWorkingSet() {},
+    async sendWorkingSet() { sendCalls += 1 },
+  }
+  const controller = workspace.createWorkspaceDrawerController(typedClient)
+  await controller.dispatch({ type: 'select-file', path: 'src/auth.py' })
+  await controller.dispatch({ type: 'send-working-set' })
+  assert.equal(previewCalls, 1)
+  assert.equal(sendCalls, 1)
+  workspaceCleanup?.()
+  assert.equal(workspaceDefinitions.length, 0)
+  assert.equal(workspaceViews.length, 0)
+  assert.equal(workspaceSlots.length, 0)
+  return { definitions, views, workspaceDefinitions, workspaceViews, workspaceSlots }
 }
 
 async function main() {
@@ -454,6 +523,9 @@ async function main() {
       assert.equal(registry.local.list().length, 0)
       assert.equal(conversation?.definitions.length ?? 0, 0)
       assert.equal(conversation?.views.length ?? 0, 0)
+      assert.equal(conversation?.workspaceDefinitions.length ?? 0, 0)
+      assert.equal(conversation?.workspaceViews.length ?? 0, 0)
+      assert.equal(conversation?.workspaceSlots.length ?? 0, 0)
       if (endpoint !== undefined) await assert.rejects(() => fetch(endpoint))
     }
     console.log(JSON.stringify({
