@@ -25,7 +25,7 @@ test("keeps selections while closing and returns focus to the opener", () => {
   assert.equal(state.focusTrap, false);
   assert.equal(state.selectedPath, "src/auth.py");
   assert.equal(state.selectedActivityId, "activity-1");
-  assert.deepEqual(state.preview, { type: "activity", id: "activity-1" });
+  assert.deepEqual(state.preview, { target: { type: "activity", id: "activity-1" }, status: "loading" });
 
   const directClose = reduceDrawer({ ...state, open: true, focusTrap: true }, { type: "close" }).state;
   assert.equal(directClose.open, false);
@@ -56,9 +56,11 @@ test("represents Working Set, panel state, and one send effect", () => {
 test("opens a preview for each selectable evidence kind", () => {
   let state = createDrawerState();
   state = reduceDrawer(state, { type: "select-file", path: "src/auth.py" }).state;
-  assert.deepEqual(state.preview, { type: "file", path: "src/auth.py" });
+  assert.deepEqual(state.preview, { target: { type: "file", path: "src/auth.py" }, status: "loading" });
   state = reduceDrawer(state, { type: "select-change", path: "src/auth.py" }).state;
-  assert.deepEqual(state.preview, { type: "change", path: "src/auth.py" });
+  assert.deepEqual(state.preview, { target: { type: "change", path: "src/auth.py" }, status: "loading" });
+  state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message: "Preview failed" } }).state;
+  assert.deepEqual(state.preview, { target: { type: "change", path: "src/auth.py" }, status: "error", message: "Preview failed" });
   state = reduceDrawer(state, { type: "set-panel", tab: "Changes", panel: { status: "loading" } }).state;
   state = reduceDrawer(state, { type: "set-panel", tab: "Changes", panel: { status: "empty" } }).state;
   state = reduceDrawer(state, { type: "set-panel", tab: "Changes", panel: { status: "unsupported" } }).state;
@@ -75,6 +77,10 @@ test("rejects invalid drawer inputs at the public seam", () => {
     (error) => error instanceof DrawerStateError && error.code === "INVALID_WORKING_SET",
   );
   assert.throws(
+    () => reduceDrawer(createDrawerState(), { type: "set-working-set", summary: null } as never),
+    (error) => error instanceof DrawerStateError && error.code === "INVALID_WORKING_SET",
+  );
+  assert.throws(
     () => reduceDrawer(createDrawerState(), { type: "set-panel", tab: "Files", panel: { status: "error" } }),
     (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
   );
@@ -83,11 +89,19 @@ test("rejects invalid drawer inputs at the public seam", () => {
     (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
   );
   assert.throws(
+    () => reduceDrawer(createDrawerState(), { type: "set-panel", tab: "Files", panel: null } as never),
+    (error) => error instanceof DrawerStateError && error.code === "INVALID_PANEL",
+  );
+  assert.throws(
     () => reduceDrawer(createDrawerState(), { type: "select-file", path: "" }),
     (error) => error instanceof DrawerStateError && error.code === "INVALID_SELECTION",
   );
   assert.throws(
     () => reduceDrawer(createDrawerState(), { type: "unknown" } as never),
+    (error) => error instanceof DrawerStateError && error.code === "INVALID_ACTION",
+  );
+  assert.throws(
+    () => reduceDrawer(createDrawerState(), null as never),
     (error) => error instanceof DrawerStateError && error.code === "INVALID_ACTION",
   );
 });

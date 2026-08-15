@@ -19,6 +19,12 @@ export type PreviewTarget =
   | { readonly type: "activity"; readonly id: string }
   | { readonly type: "change"; readonly path: WorkspacePath };
 
+export interface PreviewState {
+  readonly target: PreviewTarget;
+  readonly status: PanelStatus;
+  readonly message?: string;
+}
+
 export interface DrawerState {
   readonly open: boolean;
   readonly activeTab: WorkspaceTab;
@@ -27,7 +33,7 @@ export interface DrawerState {
   readonly selectedChangePath?: WorkspacePath;
   readonly workingSet: WorkingSetSummary;
   readonly panels: Readonly<Record<WorkspaceTab, PanelState>>;
-  readonly preview: PreviewTarget;
+  readonly preview: PreviewState;
   readonly focusReturn: "workspace-opener" | null;
   readonly focusTrap: boolean;
   readonly focusVisible: boolean;
@@ -43,6 +49,7 @@ export type DrawerAction =
   | { readonly type: "select-change"; readonly path: string }
   | { readonly type: "set-working-set"; readonly summary: WorkingSetSummary }
   | { readonly type: "set-panel"; readonly tab: WorkspaceTab; readonly panel: PanelState }
+  | { readonly type: "set-preview"; readonly panel: PanelState }
   | { readonly type: "pin-working-set"; readonly path: string }
   | { readonly type: "unpin-working-set"; readonly path: string }
   | { readonly type: "clear-working-set" }
@@ -78,7 +85,7 @@ export function createDrawerState(): DrawerState {
     activeTab: "Files",
     workingSet: { count: 0, unresolvedCount: 0 },
     panels: emptyPanels(),
-    preview: { type: "none" },
+    preview: { target: { type: "none" }, status: "idle" },
     focusReturn: null,
     focusTrap: false,
     focusVisible: true,
@@ -92,7 +99,7 @@ function assertTab(tab: string): asserts tab is WorkspaceTab {
 }
 
 function assertSelection(value: string, label: string): void {
-  if (!value.trim()) throw new DrawerStateError("INVALID_SELECTION", `${label} is required`);
+  if (typeof value !== "string" || !value.trim()) throw new DrawerStateError("INVALID_SELECTION", `${label} is required`);
 }
 
 function normalizedSelectionPath(input: string, label: string): WorkspacePath {
@@ -101,13 +108,13 @@ function normalizedSelectionPath(input: string, label: string): WorkspacePath {
 }
 
 function assertWorkingSet(summary: WorkingSetSummary): void {
-  if (!Number.isInteger(summary.count) || summary.count < 0 || !Number.isInteger(summary.unresolvedCount) || summary.unresolvedCount < 0 || summary.unresolvedCount > summary.count) {
+  if (!summary || typeof summary !== "object" || !Number.isInteger(summary.count) || summary.count < 0 || !Number.isInteger(summary.unresolvedCount) || summary.unresolvedCount < 0 || summary.unresolvedCount > summary.count) {
     throw new DrawerStateError("INVALID_WORKING_SET", "Working Set counts must be non-negative integers");
   }
 }
 
 function assertPanel(panel: PanelState): void {
-  if (!panelStatuses.includes(panel.status)) {
+  if (!panel || typeof panel !== "object" || !panelStatuses.includes(panel.status)) {
     throw new DrawerStateError("INVALID_PANEL", "Unknown Workspace panel status");
   }
   if (panel.status === "error" && !panel.message?.trim()) {
@@ -116,6 +123,10 @@ function assertPanel(panel: PanelState): void {
 }
 
 export function reduceDrawer(state: DrawerState, action: DrawerAction): { state: DrawerState; effect?: DrawerEffect } {
+  if (!action || typeof action !== "object" || typeof action.type !== "string") {
+    throw new DrawerStateError("INVALID_ACTION", "Unknown Workspace drawer action");
+  }
+
   switch (action.type) {
     case "open":
       return { state: { ...state, open: true, focusReturn: null, focusTrap: true, focusVisible: true } };
@@ -128,15 +139,15 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
     case "select-file":
       {
         const path = normalizedSelectionPath(action.path, "Workspace Path");
-        return { state: { ...state, selectedPath: path, preview: { type: "file", path } } };
+        return { state: { ...state, selectedPath: path, preview: { target: { type: "file", path }, status: "loading" } } };
       }
     case "select-activity":
       assertSelection(action.id, "Session Activity id");
-      return { state: { ...state, selectedActivityId: action.id, preview: { type: "activity", id: action.id } } };
+      return { state: { ...state, selectedActivityId: action.id, preview: { target: { type: "activity", id: action.id }, status: "loading" } } };
     case "select-change":
       {
         const path = normalizedSelectionPath(action.path, "Workspace Path");
-        return { state: { ...state, selectedChangePath: path, preview: { type: "change", path } } };
+        return { state: { ...state, selectedChangePath: path, preview: { target: { type: "change", path }, status: "loading" } } };
       }
     case "set-working-set":
       assertWorkingSet(action.summary);
@@ -145,6 +156,9 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
       assertTab(action.tab);
       assertPanel(action.panel);
       return { state: { ...state, panels: { ...state.panels, [action.tab]: { ...action.panel } } } };
+    case "set-preview":
+      assertPanel(action.panel);
+      return { state: { ...state, preview: { ...state.preview, ...action.panel } } };
     case "pin-working-set":
       return { state, effect: { type: "pin-working-set", path: normalizedSelectionPath(action.path, "Working Set Path") } };
     case "unpin-working-set":
