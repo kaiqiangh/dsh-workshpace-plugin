@@ -1,4 +1,6 @@
-import { normalizeWorkspacePath } from "./workspace.ts";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { normalizeWorkspacePath, startWorkspace, type BaselineObservation, type WorkspaceSnapshot } from "./workspace.ts";
 
 const mib = 1024 * 1024;
 const mandatoryExcludes = [".git/**", "node_modules/**", ".venv/**", "dist/**", "build/**", "__pycache__/**", ".cache/**"] as const;
@@ -82,86 +84,199 @@ function validObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function bool(value: unknown, fallback: boolean, field: string, warnings: string[]): boolean {
+function bool(value: unknown, fallback: boolean, field: string, warnings: string[], warn = true): boolean {
   if (value === undefined) return fallback;
   if (typeof value === "boolean") return value;
-  warnings.push(`${field}: defaulted`);
+  if (warn) warnings.push(`${field}: defaulted`);
   return fallback;
 }
 
-function boundedInt(value: unknown, fallback: number, ceiling: number, field: string, warnings: string[]): number {
+function boundedInt(value: unknown, fallback: number, ceiling: number, field: string, warnings: string[], warn = true): number {
   if (value === undefined) return fallback;
   if (Number.isSafeInteger(value) && value > 0 && value <= ceiling) return value;
-  warnings.push(`${field}: defaulted`);
+  if (warn) warnings.push(`${field}: defaulted`);
   return fallback;
 }
 
-function root(value: unknown, fallback: string, warnings: string[]): string {
+function root(value: unknown, fallback: string, warnings: string[], warn = true): string {
   if (value === undefined) return fallback;
   if (typeof value !== "string") {
-    warnings.push("root: defaulted");
+    if (warn) warnings.push("root: defaulted");
     return fallback;
   }
   try {
     const normalized = normalizeWorkspacePath(value);
     return normalized || ".";
   } catch {
-    warnings.push("root: defaulted");
+    if (warn) warnings.push("root: defaulted");
     return fallback;
   }
 }
 
-function excludes(value: unknown, fallback: readonly string[], warnings: string[]): readonly string[] {
+function excludes(value: unknown, fallback: readonly string[], warnings: string[], warn = true): readonly string[] {
   if (value === undefined) return fallback;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim() || item.startsWith("/") || item.includes(".."))) {
-    warnings.push("files.exclude: defaulted");
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim() || item.startsWith("/") || /^[A-Za-z]:[\\/]/.test(item) || /^(?:\\\\|\/\/)/.test(item) || item.includes(".."))) {
+    if (warn) warnings.push("files.exclude: defaulted");
     return fallback;
   }
   return [...new Set([...mandatoryExcludes, ...value])];
 }
 
-function section(input: WorkspaceConfigInput | undefined, key: string): Record<string, unknown> {
+function section(input: WorkspaceConfigInput | undefined, key: string, warnings: string[], label: string): Record<string, unknown> {
   const value = input?.[key as keyof WorkspaceConfigInput];
-  return validObject(value) ? value : {};
+  if (value === undefined) return {};
+  if (validObject(value)) return value;
+  warnings.push(`${label}: defaulted`);
+  return {};
+}
+
+function layeredBool(fileValue: unknown, hostValue: unknown, fallback: boolean, field: string, warnings: string[]): boolean {
+  const file = bool(fileValue, fallback, field, warnings);
+  return hostValue === undefined ? file : bool(hostValue, file, field, warnings);
+}
+
+function layeredInt(fileValue: unknown, hostValue: unknown, fallback: number, ceiling: number, field: string, warnings: string[]): number {
+  const file = boundedInt(fileValue, fallback, ceiling, field, warnings);
+  return hostValue === undefined ? file : boundedInt(hostValue, file, ceiling, field, warnings);
+}
+
+function layeredRoot(fileValue: unknown, hostValue: unknown, fallback: string, warnings: string[]): string {
+  const file = root(fileValue, fallback, warnings);
+  return hostValue === undefined ? file : root(hostValue, file, warnings);
+}
+
+function layeredExcludes(fileValue: unknown, hostValue: unknown, fallback: readonly string[], warnings: string[]): readonly string[] {
+  const file = excludes(fileValue, fallback, warnings);
+  return hostValue === undefined ? file : excludes(hostValue, file, warnings);
 }
 
 export function resolveWorkspaceConfig(file?: WorkspaceConfigInput, hostOverride?: WorkspaceConfigInput): ConfigResolution {
   const warnings: string[] = [];
-  const input = { ...file, ...hostOverride };
-  const fileSection = section(file, "files");
-  const hostSection = section(hostOverride, "files");
-  const preview = { ...section(file, "preview"), ...section(hostOverride, "preview") };
-  const activity = { ...section(file, "activity"), ...section(hostOverride, "activity") };
-  const git = { ...section(file, "git"), ...section(hostOverride, "git") };
-  const workingSet = { ...section(file, "workingSet"), ...section(hostOverride, "workingSet") };
-  const fileExcludes = hostOverride?.files?.exclude === undefined ? fileSection.exclude : hostSection.exclude;
+  const fileSection = section(file, "files", warnings, "files");
+  const hostSection = section(hostOverride, "files", warnings, "files");
+  const filePreview = section(file, "preview", warnings, "preview");
+  const hostPreview = section(hostOverride, "preview", warnings, "preview");
+  const fileActivity = section(file, "activity", warnings, "activity");
+  const hostActivity = section(hostOverride, "activity", warnings, "activity");
+  const fileGit = section(file, "git", warnings, "git");
+  const hostGit = section(hostOverride, "git", warnings, "git");
+  const fileWorkingSet = section(file, "workingSet", warnings, "workingSet");
+  const hostWorkingSet = section(hostOverride, "workingSet", warnings, "workingSet");
   return {
     config: {
-      enabled: bool(input.enabled, defaults.enabled, "enabled", warnings),
-      root: root(input.root, defaults.root, warnings),
+      enabled: layeredBool(file?.enabled, hostOverride?.enabled, defaults.enabled, "enabled", warnings),
+      root: layeredRoot(file?.root, hostOverride?.root, defaults.root, warnings),
       files: {
-        showHidden: bool(hostOverride?.files?.showHidden ?? fileSection.showHidden, defaults.files.showHidden, "files.showHidden", warnings),
-        exclude: excludes(fileExcludes, defaults.files.exclude, warnings),
+        showHidden: layeredBool(fileSection.showHidden, hostSection.showHidden, defaults.files.showHidden, "files.showHidden", warnings),
+        exclude: layeredExcludes(fileSection.exclude, hostSection.exclude, defaults.files.exclude, warnings),
       },
       preview: {
-        maxTextBytes: boundedInt(preview.maxTextBytes, defaults.preview.maxTextBytes, ceilings.maxTextBytes, "preview.maxTextBytes", warnings),
-        maxJsonBytes: boundedInt(preview.maxJsonBytes, defaults.preview.maxJsonBytes, ceilings.maxJsonBytes, "preview.maxJsonBytes", warnings),
-        maxCsvBytes: boundedInt(preview.maxCsvBytes, defaults.preview.maxCsvBytes, ceilings.maxCsvBytes, "preview.maxCsvBytes", warnings),
-        maxCsvRows: boundedInt(preview.maxCsvRows, defaults.preview.maxCsvRows, ceilings.maxCsvRows, "preview.maxCsvRows", warnings),
-        maxImageBytes: boundedInt(preview.maxImageBytes, defaults.preview.maxImageBytes, ceilings.maxImageBytes, "preview.maxImageBytes", warnings),
-        maxPdfBytes: boundedInt(preview.maxPdfBytes, defaults.preview.maxPdfBytes, ceilings.maxPdfBytes, "preview.maxPdfBytes", warnings),
+        maxTextBytes: layeredInt(filePreview.maxTextBytes, hostPreview.maxTextBytes, defaults.preview.maxTextBytes, ceilings.maxTextBytes, "preview.maxTextBytes", warnings),
+        maxJsonBytes: layeredInt(filePreview.maxJsonBytes, hostPreview.maxJsonBytes, defaults.preview.maxJsonBytes, ceilings.maxJsonBytes, "preview.maxJsonBytes", warnings),
+        maxCsvBytes: layeredInt(filePreview.maxCsvBytes, hostPreview.maxCsvBytes, defaults.preview.maxCsvBytes, ceilings.maxCsvBytes, "preview.maxCsvBytes", warnings),
+        maxCsvRows: layeredInt(filePreview.maxCsvRows, hostPreview.maxCsvRows, defaults.preview.maxCsvRows, ceilings.maxCsvRows, "preview.maxCsvRows", warnings),
+        maxImageBytes: layeredInt(filePreview.maxImageBytes, hostPreview.maxImageBytes, defaults.preview.maxImageBytes, ceilings.maxImageBytes, "preview.maxImageBytes", warnings),
+        maxPdfBytes: layeredInt(filePreview.maxPdfBytes, hostPreview.maxPdfBytes, defaults.preview.maxPdfBytes, ceilings.maxPdfBytes, "preview.maxPdfBytes", warnings),
       },
-      git: { enabled: bool(git.enabled, defaults.git.enabled, "git.enabled", warnings) },
+      git: { enabled: layeredBool(fileGit.enabled, hostGit.enabled, defaults.git.enabled, "git.enabled", warnings) },
       activity: {
-        trackReads: bool(activity.trackReads, defaults.activity.trackReads, "activity.trackReads", warnings),
-        trackWrites: bool(activity.trackWrites, defaults.activity.trackWrites, "activity.trackWrites", warnings),
-        trackShellChanges: bool(activity.trackShellChanges, defaults.activity.trackShellChanges, "activity.trackShellChanges", warnings),
-        maxTimelineEvents: boundedInt(activity.maxTimelineEvents, defaults.activity.maxTimelineEvents, ceilings.maxTimelineEvents, "activity.maxTimelineEvents", warnings),
-        coalesceWindowMs: boundedInt(activity.coalesceWindowMs, defaults.activity.coalesceWindowMs, ceilings.coalesceWindowMs, "activity.coalesceWindowMs", warnings),
+        trackReads: layeredBool(fileActivity.trackReads, hostActivity.trackReads, defaults.activity.trackReads, "activity.trackReads", warnings),
+        trackWrites: layeredBool(fileActivity.trackWrites, hostActivity.trackWrites, defaults.activity.trackWrites, "activity.trackWrites", warnings),
+        trackShellChanges: layeredBool(fileActivity.trackShellChanges, hostActivity.trackShellChanges, defaults.activity.trackShellChanges, "activity.trackShellChanges", warnings),
+        maxTimelineEvents: layeredInt(fileActivity.maxTimelineEvents, hostActivity.maxTimelineEvents, defaults.activity.maxTimelineEvents, ceilings.maxTimelineEvents, "activity.maxTimelineEvents", warnings),
+        coalesceWindowMs: layeredInt(fileActivity.coalesceWindowMs, hostActivity.coalesceWindowMs, defaults.activity.coalesceWindowMs, ceilings.coalesceWindowMs, "activity.coalesceWindowMs", warnings),
       },
-      workingSet: { maxFiles: boundedInt(workingSet.maxFiles, defaults.workingSet.maxFiles, ceilings.maxFiles, "workingSet.maxFiles", warnings) },
+      workingSet: { maxFiles: layeredInt(fileWorkingSet.maxFiles, hostWorkingSet.maxFiles, defaults.workingSet.maxFiles, ceilings.maxFiles, "workingSet.maxFiles", warnings) },
     },
     warnings,
+  };
+}
+
+function scalar(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) return trimmed.slice(1, -1);
+  return trimmed;
+}
+
+export function parseWorkspaceConfigText(text: string): WorkspaceConfigInput {
+  if (typeof text !== "string") throw new TypeError("Workspace config must be text");
+  const rootValue: Record<string, unknown> = {};
+  const stack: Array<{ indent: number; value: Record<string, unknown> | unknown[] }> = [{ indent: -1, value: rootValue }];
+  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+#.*$/, "")).filter((line) => line.trim());
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    const indent = line.match(/^ */)?.[0].length ?? 0;
+    if (/^\s*\t/.test(line)) throw new TypeError("Workspace config cannot use tabs");
+    while (stack.at(-1)!.indent >= indent) stack.pop();
+    const parent = stack.at(-1)!.value;
+    const body = line.trim();
+    if (body.startsWith("- ")) {
+      if (!Array.isArray(parent)) throw new TypeError("Workspace config list is misplaced");
+      parent.push(scalar(body.slice(2)));
+      continue;
+    }
+    const separator = body.indexOf(":");
+    if (separator < 1 || !validObject(parent)) throw new TypeError("Workspace config mapping is invalid");
+    const key = body.slice(0, separator).trim();
+    const value = body.slice(separator + 1).trim();
+    if (value) {
+      parent[key] = scalar(value);
+      continue;
+    }
+    const next = lines[lineIndex + 1]?.trim();
+    const child: Record<string, unknown> | unknown[] = next?.startsWith("- ") ? [] : {};
+    parent[key] = child;
+    stack.push({ indent, value: child });
+  }
+  return rootValue as WorkspaceConfigInput;
+}
+
+export async function readWorkspaceConfigFile(processCwd: string): Promise<WorkspaceConfigInput | undefined> {
+  try {
+    return parseWorkspaceConfigText(await readFile(join(processCwd, ".dsh", "workspace.yaml"), "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+export async function startConfiguredWorkspace(args: {
+  readonly sessionId: string;
+  readonly processCwd: string;
+  readonly fileConfig?: WorkspaceConfigInput;
+  readonly hostOverride?: WorkspaceConfigInput;
+  readonly baseline?: BaselineObservation;
+  /** Host probes are optional; unknown optional services stay conservatively unsupported. */
+  readonly gitAvailable?: boolean;
+  readonly previewAvailable?: boolean;
+}): Promise<{
+  readonly workspace: WorkspaceSnapshot;
+  readonly config: WorkspaceConfig;
+  readonly warnings: readonly string[];
+  readonly capabilities: WorkspaceCapabilities;
+}> {
+  let fileConfig = args.fileConfig;
+  const warnings: string[] = [];
+  if (fileConfig === undefined) {
+    try {
+      fileConfig = await readWorkspaceConfigFile(args.processCwd);
+    } catch {
+      warnings.push("config: defaulted");
+    }
+  }
+  const resolved = resolveWorkspaceConfig(fileConfig, args.hostOverride);
+  return {
+    config: resolved.config,
+    warnings: [...warnings, ...resolved.warnings],
+    capabilities: reportWorkspaceCapabilities(
+      resolved.config.git.enabled && args.gitAvailable === true,
+      args.previewAvailable === true,
+    ),
+    workspace: startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: resolved.config.root, baseline: args.baseline }),
   };
 }
 
