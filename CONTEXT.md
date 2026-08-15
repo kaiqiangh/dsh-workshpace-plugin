@@ -43,3 +43,11 @@ _Avoid_: attachment, deliverable
 **Working Set**:
 An ordered, duplicate-free, session-scoped list of Workspace Paths chosen by the user as a scope hint for a subsequent agent continuation. It does not inject file contents automatically.
 _Avoid_: pinned context, model context
+
+**Workspace Support Boundary**:
+The v0.1 set of Workspace capabilities guaranteed for a supported DeepSeek Harness Web host and its supported host operating systems. It does not imply support for remote workspaces, alternate client carriers, or a broader browser/OS matrix than Harness itself provides.
+_Avoid_: universal workspace support, remote filesystem
+
+**Local-first Metric**:
+An aggregate Workspace interaction count that may be inspected or exported locally without sending paths, file contents, or telemetry to a service by default.
+_Avoid_: analytics profile, remote tracking
