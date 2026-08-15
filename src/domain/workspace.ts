@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 export type WorkspacePath = string & { readonly __workspacePath: unique symbol };
 
@@ -80,12 +80,32 @@ export function resolveWorkspaceRoot(processCwd: string, configuredRoot = "."): 
     throw new WorkspaceIdentityError("Configured Workspace Root must stay below the process working directory");
   }
 
-  const candidate = resolve(processCwd, logicalRoot || ".");
+  let canonicalProcessRoot: string;
+  try {
+    if (!statSync(processCwd).isDirectory()) {
+      throw new WorkspaceIdentityError("Process working directory must be a directory");
+    }
+    canonicalProcessRoot = realpathSync.native(processCwd);
+  } catch (error) {
+    if (error instanceof WorkspaceIdentityError) throw error;
+    throw new WorkspaceIdentityError("Process working directory is unavailable");
+  }
+
+  const candidate = resolve(canonicalProcessRoot, logicalRoot || ".");
   try {
     if (!statSync(candidate).isDirectory()) {
       throw new WorkspaceIdentityError("Workspace Root must be a directory");
     }
-    return realpathSync.native(candidate);
+    const canonicalCandidate = realpathSync.native(candidate);
+    const relativeCandidate = relative(canonicalProcessRoot, canonicalCandidate);
+    if (
+      relativeCandidate === ".." ||
+      relativeCandidate.startsWith(`..${sep}`) ||
+      isAbsolute(relativeCandidate)
+    ) {
+      throw new WorkspaceIdentityError("Configured Workspace Root must stay below the process working directory");
+    }
+    return canonicalCandidate;
   } catch (error) {
     if (error instanceof WorkspaceIdentityError) throw error;
     throw new WorkspaceIdentityError("Workspace Root is unavailable");

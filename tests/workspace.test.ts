@@ -1,6 +1,6 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -12,9 +12,14 @@ import {
 } from "../src/domain/workspace.ts";
 
 const testRoot = mkdtempSync(join("/tmp", "dsh-workspace-"));
+const outsideRoot = mkdtempSync(join("/tmp", "dsh-workspace-outside-"));
 mkdirSync(join(testRoot, "project"));
 mkdirSync(join(testRoot, "other"));
-after(() => rmSync(testRoot, { recursive: true, force: true }));
+symlinkSync(outsideRoot, join(testRoot, "project-link"), "dir");
+after(() => {
+  rmSync(testRoot, { recursive: true, force: true });
+  rmSync(outsideRoot, { recursive: true, force: true });
+});
 
 test("normalizes a relative Workspace Path", () => {
   assert.equal(normalizeWorkspacePath("src\\auth.ts"), "src/auth.ts");
@@ -77,7 +82,7 @@ test("resumes the existing baseline and rejects a root mismatch", () => {
 });
 
 test("keeps configured roots below the process working directory", () => {
-  for (const configuredRoot of ["/", "../outside", "C:\\outside"]) {
+  for (const configuredRoot of ["/", "../outside", "C:\\outside", "project-link"]) {
     assert.throws(
       () => startWorkspace({ sessionId: "session-3", processCwd: testRoot, configuredRoot }),
       WorkspaceIdentityError,
