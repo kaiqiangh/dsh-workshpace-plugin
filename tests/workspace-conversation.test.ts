@@ -17,6 +17,30 @@ import {
 } from "../src/web/workspace-conversation.ts";
 import { createDrawerState } from "../src/web/workspace-drawer.ts";
 
+const pinnedContextSummary = {
+  count: 0,
+  capacity: "available" as const,
+  capacityTokens: 500,
+  admittedTokens: 0,
+  availableBudgetTokens: 400,
+  remainingTokens: 400,
+  entries: [],
+};
+const pinnedContextOne = {
+  ...pinnedContextSummary,
+  count: 1,
+  entries: [{
+    path: "src/auth.ts",
+    order: 0,
+    sourceStatus: "ready" as const,
+    status: "ready" as const,
+    contentHash: `sha256:${"a".repeat(64)}`,
+    bytes: 4,
+    estimatedTokens: 9,
+    loadedAt: 1,
+  }],
+};
+
 const summary: WorkspaceChatData = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: "repo" };
 const event = { type: "workspace/summary" as const, seq: 4, data: { id: "session-1", phase: "start" as const, summary } };
 
@@ -123,4 +147,32 @@ test("keeps the drawer keyboard contract explicit at the Web seam", async () => 
   assert.equal(closed.state.focusTrap, false);
   assert.equal(closed.state.focusVisible, true);
   assert.deepEqual(workspaceKeyboardControls.slice(0, 5), ["open-workspace", "close-workspace", "Files", "Session", "Changes"]);
+});
+
+test("loads and mutates Pinned Context through typed metadata-only Host operations", async () => {
+  const calls: string[] = [];
+  const client = {
+    pinnedContext: async () => { calls.push("inspect"); return pinnedContextSummary; },
+    pinContext: async (path: string) => { calls.push(`pin:${path}`); return pinnedContextOne; },
+    unpinContext: async (path: string) => { calls.push(`unpin:${path}`); return pinnedContextSummary; },
+    clearContext: async () => { calls.push("clear"); return pinnedContextSummary; },
+  } as unknown as WorkspaceHostClient;
+  const controller = createWorkspaceDrawerController(client, createDrawerState());
+  const inspected = await controller.dispatch({ type: "inspect-pinned-context" });
+  assert.deepEqual(inspected.data, pinnedContextSummary);
+  const pinned = await controller.dispatch({ type: "pin-context", path: "src\\auth.ts" });
+  assert.equal(pinned.state.pinnedContext.count, 1);
+  const unpinned = await controller.dispatch({ type: "unpin-context", path: "src/auth.ts" });
+  assert.equal(unpinned.state.pinnedContext.count, 0);
+  await controller.dispatch({ type: "clear-context" });
+  assert.deepEqual(calls, ["inspect", "pin:src/auth.ts", "unpin:src/auth.ts", "clear"]);
+  assert.equal("content" in (controller.getState().pinnedContext.entries[0] ?? {}), false);
+});
+
+test("keeps Pinned Context inspection failures local to the Context panel", async () => {
+  const client = { pinnedContext: async () => { throw new Error("offline"); } } as unknown as WorkspaceHostClient;
+  const controller = createWorkspaceDrawerController(client, createDrawerState());
+  const result = await controller.dispatch({ type: "inspect-pinned-context" });
+  assert.equal(result.error?.operation, "inspect-pinned-context");
+  assert.deepEqual(result.state.panels.Context, { status: "error", message: "Pinned Context is unavailable" });
 });

@@ -469,6 +469,7 @@ async function conversationSmoke(root, client, ctx) {
   let opened = false
   let previewCalls = 0
   let sendCalls = 0
+  let contextCalls = 0
   let rendered
   const workspaceContext = {
     conversationEvents: { register(definition) { workspaceDefinitions.push(definition); return () => workspaceDefinitions.splice(workspaceDefinitions.indexOf(definition), 1) } },
@@ -519,12 +520,38 @@ async function conversationSmoke(root, client, ctx) {
     async unpinWorkingSet() {},
     async clearWorkingSet() {},
     async sendWorkingSet() { sendCalls += 1 },
+    async pinnedContext() {
+      contextCalls += 1
+      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
+    },
+    async pinContext(path) {
+      contextCalls += 1
+      return {
+        count: 1, capacity: 'available', capacityTokens: 500, admittedTokens: 12, availableBudgetTokens: 488, remainingTokens: 488,
+        entries: [{ path, order: 0, sourceStatus: 'ready', status: 'ready', contentHash: `sha256:${'b'.repeat(64)}`, bytes: 48, estimatedTokens: 12, loadedAt: 1 }],
+      }
+    },
+    async unpinContext() {
+      contextCalls += 1
+      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
+    },
+    async clearContext() {
+      contextCalls += 1
+      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
+    },
   }
   const controller = workspace.createWorkspaceDrawerController(typedClient)
   await controller.dispatch({ type: 'select-file', path: 'src/auth.py' })
   await controller.dispatch({ type: 'send-working-set' })
+  await controller.dispatch({ type: 'inspect-pinned-context' })
+  await controller.dispatch({ type: 'pin-context', path: 'src/auth.py' })
+  assert.equal(controller.getState().pinnedContext.count, 1)
+  assert.equal('content' in controller.getState().pinnedContext.entries[0], false)
+  await controller.dispatch({ type: 'clear-context' })
   assert.equal(previewCalls, 1)
   assert.equal(sendCalls, 1)
+  assert.equal(contextCalls, 3)
+  assert.equal(controller.getState().pinnedContext.count, 0)
   workspaceCleanup?.()
   assert.equal(workspaceDefinitions.length, 0)
   assert.equal(workspaceViews.length, 0)
