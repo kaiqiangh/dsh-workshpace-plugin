@@ -15,7 +15,7 @@ const roleOverhead = 4;
 const snapshotOpen = "<dsh-workspace-context>";
 const snapshotClose = "</dsh-workspace-context>";
 
-export type PinnedContextSourceStatus = "pending" | "ready" | "stale" | "unreadable" | "unsupported";
+export type PinnedContextSourceStatus = "pending" | "ready" | "stale" | "unreadable" | "unsupported" | "oversized";
 export type PinnedContextStatus = PinnedContextSourceStatus | "over-budget" | "capacity-unavailable";
 export type PinnedContextOmissionReason =
   | "per-item-bytes"
@@ -24,7 +24,8 @@ export type PinnedContextOmissionReason =
   | "capacity-unavailable"
   | "unreadable"
   | "stale"
-  | "unsupported";
+  | "unsupported"
+  | "oversized";
 
 export interface PinnedContextLimits {
   readonly maxItems: number;
@@ -135,7 +136,7 @@ function pathFor(input: string): WorkspacePath {
   }
 }
 
-function hashContent(content: string): string {
+export function hashPinnedContextContent(content: string): string {
   return `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
 }
 
@@ -301,7 +302,7 @@ export function updateContextPath(state: PinnedContextState, update: PinnedConte
     order: previous.order,
     sourceStatus: "ready",
     status: "ready",
-    contentHash: hashContent(update.content),
+    contentHash: hashPinnedContextContent(update.content),
     bytes,
     estimatedTokens: estimatePinnedContextTokens(update.content),
     loadedAt: update.loadedAt,

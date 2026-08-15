@@ -146,6 +146,14 @@ export interface OpenedResource {
   readonly bytes: Uint8Array;
 }
 
+export interface BoundedTextRead {
+  readonly path: WorkspacePath;
+  readonly content: string;
+  readonly bytes: number;
+  readonly version: string;
+  readonly loadedAt: number;
+}
+
 interface ResourceRecord {
   readonly identity: WorkspaceIdentity;
   readonly path: WorkspacePath;
@@ -253,7 +261,14 @@ async function readBounded(path: string, maxBytes: number, expectedCanonicalPath
   try {
     handle = await open(path, "r");
     if (await realpath(path) !== expectedCanonicalPath) throw new PreviewPanelError("SYMLINK_ESCAPE", "Workspace Path escapes its root");
-    return await readHandle(handle, maxBytes, expectedVersion);
+    const read = await readHandle(handle, maxBytes, expectedVersion);
+    try {
+      if (await realpath(path) !== expectedCanonicalPath) throw new PreviewPanelError("SYMLINK_ESCAPE", "Workspace Path escapes its root");
+    } catch (error) {
+      if (error instanceof PreviewPanelError) throw error;
+      throw new PreviewPanelError("RESOURCE_STALE", "Workspace Path changed during read");
+    }
+    return read;
   } finally {
     await handle?.close();
   }
@@ -356,6 +371,25 @@ export class PreviewService {
     } catch (error) {
       return descriptorError(error);
     }
+  }
+
+  /** Read one bounded text file with canonical containment and before/after version checks. */
+  async readText(pathInput: string, maxBytes: number, signal?: AbortSignal): Promise<BoundedTextRead> {
+    if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new PreviewPanelError("FILE_TOO_LARGE", "Read limit is invalid");
+    signal?.throwIfAborted();
+    const resolved = await this.resolve(pathInput);
+    signal?.throwIfAborted();
+    const read = await readBounded(resolved.canonicalPath, maxBytes, resolved.canonicalPath);
+    signal?.throwIfAborted();
+    if (read.size > maxBytes) throw new PreviewPanelError("FILE_TOO_LARGE", "Context item exceeds its safety limit");
+    return {
+      path: resolved.path,
+      content: textFrom(read.bytes),
+      bytes: read.size,
+      version: read.version,
+      loadedAt: this.now(),
+    };
   }
 
   async openResource(resourceId: string, request: ResourceRequest): Promise<OpenedResource> {
