@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { normalizeWorkspacePath, startWorkspace, type BaselineObservation, type WorkspaceSnapshot } from "./workspace.ts";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
+import { normalizeWorkspacePath, resolveWorkspaceRoot, startWorkspace, WorkspaceIdentityError, type BaselineObservation, type WorkspaceSnapshot } from "./workspace.ts";
 
 const mib = 1024 * 1024;
+const maxConfigBytes = mib;
 const mandatoryExcludes = [".git/**", "node_modules/**", ".venv/**", "dist/**", "build/**", "__pycache__/**", ".cache/**"] as const;
 
 export interface WorkspaceConfig {
@@ -115,7 +116,7 @@ function root(value: unknown, fallback: string, warnings: string[], warn = true)
 
 function excludes(value: unknown, fallback: readonly string[], warnings: string[], warn = true): readonly string[] {
   if (value === undefined) return fallback;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim() || item.startsWith("/") || /^[A-Za-z]:[\\/]/.test(item) || /^(?:\\\\|\/\/)/.test(item) || item.includes(".."))) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim() || /^[\\/]/.test(item) || /^[A-Za-z]:/.test(item) || item.includes("\0") || item.includes(".."))) {
     if (warn) warnings.push("files.exclude: defaulted");
     return fallback;
   }
@@ -128,6 +129,13 @@ function section(input: WorkspaceConfigInput | undefined, key: string, warnings:
   if (validObject(value)) return value;
   warnings.push(`${label}: defaulted`);
   return {};
+}
+
+function warnUnknownFields(input: unknown, allowed: readonly string[], label: string, warnings: string[]): void {
+  if (!validObject(input)) return;
+  for (const key of Object.keys(input)) {
+    if (!allowed.includes(key)) warnings.push(`${label}.${key}: ignored`);
+  }
 }
 
 function layeredBool(fileValue: unknown, hostValue: unknown, fallback: boolean, field: string, warnings: string[]): boolean {
@@ -152,6 +160,8 @@ function layeredExcludes(fileValue: unknown, hostValue: unknown, fallback: reado
 
 export function resolveWorkspaceConfig(file?: WorkspaceConfigInput, hostOverride?: WorkspaceConfigInput): ConfigResolution {
   const warnings: string[] = [];
+  warnUnknownFields(file, ["enabled", "root", "files", "preview", "git", "activity", "workingSet"], "config", warnings);
+  warnUnknownFields(hostOverride, ["enabled", "root", "files", "preview", "git", "activity", "workingSet"], "host", warnings);
   const fileSection = section(file, "files", warnings, "files");
   const hostSection = section(hostOverride, "files", warnings, "files");
   const filePreview = section(file, "preview", warnings, "preview");
@@ -162,6 +172,16 @@ export function resolveWorkspaceConfig(file?: WorkspaceConfigInput, hostOverride
   const hostGit = section(hostOverride, "git", warnings, "git");
   const fileWorkingSet = section(file, "workingSet", warnings, "workingSet");
   const hostWorkingSet = section(hostOverride, "workingSet", warnings, "workingSet");
+  warnUnknownFields(fileSection, ["showHidden", "exclude"], "files", warnings);
+  warnUnknownFields(hostSection, ["showHidden", "exclude"], "files", warnings);
+  warnUnknownFields(filePreview, Object.keys(defaults.preview), "preview", warnings);
+  warnUnknownFields(hostPreview, Object.keys(defaults.preview), "preview", warnings);
+  warnUnknownFields(fileGit, ["enabled"], "git", warnings);
+  warnUnknownFields(hostGit, ["enabled"], "git", warnings);
+  warnUnknownFields(fileActivity, Object.keys(defaults.activity), "activity", warnings);
+  warnUnknownFields(hostActivity, Object.keys(defaults.activity), "activity", warnings);
+  warnUnknownFields(fileWorkingSet, ["maxFiles"], "workingSet", warnings);
+  warnUnknownFields(hostWorkingSet, ["maxFiles"], "workingSet", warnings);
   return {
     config: {
       enabled: layeredBool(file?.enabled, hostOverride?.enabled, defaults.enabled, "enabled", warnings),
@@ -192,12 +212,47 @@ export function resolveWorkspaceConfig(file?: WorkspaceConfigInput, hostOverride
   };
 }
 
+function flowParts(value: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === quote && value[index - 1] !== "\\") quote = "";
+    } else if (character === "\"" || character === "'") {
+      quote = character;
+    } else if (character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === "]" || character === "}") {
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      parts.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  parts.push(value.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
 function scalar(value: string): unknown {
   const trimmed = value.trim();
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
   if (trimmed === "null") return null;
   if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) return flowParts(trimmed.slice(1, -1)).map((part) => scalar(part));
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    const object: Record<string, unknown> = {};
+    for (const part of flowParts(trimmed.slice(1, -1))) {
+      const separator = part.indexOf(":");
+      if (separator < 1) throw new TypeError("Workspace config flow mapping is invalid");
+      const key = part.slice(0, separator).trim().replace(/^(?:\"|')|(?:\"|')$/g, "");
+      object[key] = scalar(part.slice(separator + 1));
+    }
+    return object;
+  }
   if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) return trimmed.slice(1, -1);
   return trimmed;
 }
@@ -236,8 +291,17 @@ export function parseWorkspaceConfigText(text: string): WorkspaceConfigInput {
 }
 
 export async function readWorkspaceConfigFile(processCwd: string): Promise<WorkspaceConfigInput | undefined> {
+  const processRoot = resolveWorkspaceRoot(processCwd, ".");
+  const configPath = join(processRoot, ".dsh", "workspace.yaml");
   try {
-    return parseWorkspaceConfigText(await readFile(join(processCwd, ".dsh", "workspace.yaml"), "utf8"));
+    const info = await stat(configPath);
+    if (!info.isFile() || info.size > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
+    const canonicalConfigPath = await realpath(configPath);
+    const relativeConfigPath = relative(processRoot, canonicalConfigPath);
+    if (relativeConfigPath === ".." || relativeConfigPath.startsWith(`..${sep}`) || isAbsolute(relativeConfigPath)) {
+      throw new TypeError("Workspace config escapes the process root");
+    }
+    return parseWorkspaceConfigText(await readFile(canonicalConfigPath, "utf8"));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -269,6 +333,14 @@ export async function startConfiguredWorkspace(args: {
     }
   }
   const resolved = resolveWorkspaceConfig(fileConfig, args.hostOverride);
+  let workspace: WorkspaceSnapshot;
+  try {
+    workspace = startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: resolved.config.root, baseline: args.baseline });
+  } catch (error) {
+    if (!(error instanceof WorkspaceIdentityError) || error.code !== "INVALID_ROOT" || resolved.config.root === ".") throw error;
+    warnings.push("root: defaulted");
+    workspace = startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: ".", baseline: args.baseline });
+  }
   return {
     config: resolved.config,
     warnings: [...warnings, ...resolved.warnings],
@@ -276,7 +348,7 @@ export async function startConfiguredWorkspace(args: {
       resolved.config.git.enabled && args.gitAvailable === true,
       args.previewAvailable === true,
     ),
-    workspace: startWorkspace({ sessionId: args.sessionId, processCwd: args.processCwd, configuredRoot: resolved.config.root, baseline: args.baseline }),
+    workspace,
   };
 }
 

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { parseWorkspaceConfigText, reportWorkspaceCapabilities, resolveWorkspaceConfig, startConfiguredWorkspace } from "../src/domain/config.ts";
+import { parseWorkspaceConfigText, readWorkspaceConfigFile, reportWorkspaceCapabilities, resolveWorkspaceConfig, startConfiguredWorkspace } from "../src/domain/config.ts";
 
 test("resolves safe defaults and appends mandatory excludes", () => {
   const { config, warnings } = resolveWorkspaceConfig({ files: { exclude: ["reports/**"] } });
@@ -26,12 +29,20 @@ test("applies host overrides and defaults invalid fields", () => {
 });
 
 test("rejects unsafe roots and excludes without taking down the core", () => {
-  const result = resolveWorkspaceConfig({ root: "../../private", files: { exclude: ["C:\\\\outside\\\\**"] } });
+  const result = resolveWorkspaceConfig({ root: "../../private", files: { exclude: ["C:outside/**"] } });
 
   assert.equal(result.config.root, ".");
   assert.equal(result.config.files.exclude.includes(".git/**"), true);
   assert.equal(result.warnings.includes("root: defaulted"), true);
   assert.equal(result.warnings.includes("files.exclude: defaulted"), true);
+});
+
+test("rejects Windows root-relative and NUL excludes", () => {
+  const result = resolveWorkspaceConfig({ files: { exclude: ["\\\\outside/**"] } });
+  const nul = resolveWorkspaceConfig({ files: { exclude: ["safe\0path/**"] } });
+
+  assert.equal(result.warnings.includes("files.exclude: defaulted"), true);
+  assert.equal(nul.warnings.includes("files.exclude: defaulted"), true);
 });
 
 test("warns on malformed sections and parses the supported YAML subset", () => {
@@ -41,6 +52,29 @@ test("warns on malformed sections and parses the supported YAML subset", () => {
   assert.equal(result.config.preview.maxTextBytes, 4 * 1024 * 1024);
   assert.equal(result.config.files.exclude.includes("reports/**"), true);
   assert.equal(result.warnings.includes("activity: defaulted"), true);
+});
+
+test("accepts documented inline YAML collections", () => {
+  const parsed = parseWorkspaceConfigText('files: { exclude: ["reports/**"] }\n');
+  const result = resolveWorkspaceConfig(parsed);
+
+  assert.equal(result.config.files.exclude.includes("reports/**"), true);
+  assert.deepEqual(result.warnings, []);
+});
+
+test("warns when config contains unknown fields", () => {
+  const result = resolveWorkspaceConfig({ evil: true } as never);
+
+  assert.equal(result.warnings.includes("config.evil: ignored"), true);
+});
+
+test("discovers bounded config from .dsh/workspace.yaml", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-config-"));
+  await mkdir(join(root, ".dsh"));
+  await writeFile(join(root, ".dsh", "workspace.yaml"), "preview:\n  maxTextBytes: 4194304\n");
+
+  const result = await readWorkspaceConfigFile(root);
+  assert.deepEqual(result, { preview: { maxTextBytes: 4194304 } });
 });
 
 test("starts the real Workspace lifecycle with resolved config", async () => {
@@ -53,6 +87,18 @@ test("starts the real Workspace lifecycle with resolved config", async () => {
   assert.equal(result.workspace.identity.sessionId, "session-1");
   assert.equal(result.config.root, ".");
   assert.deepEqual(result.capabilities, { core: "ready", git: "unsupported", preview: "unsupported" });
+});
+
+test("falls back when a configured root is missing", async () => {
+  const result = await startConfiguredWorkspace({
+    sessionId: "session-missing-root",
+    processCwd: process.cwd(),
+    fileConfig: { root: "does-not-exist" },
+  });
+
+  assert.equal(result.workspace.identity.sessionId, "session-missing-root");
+  assert.equal(result.workspace.baseline.source, "unknown");
+  assert.equal(result.warnings.includes("root: defaulted"), true);
 });
 
 test("reports probed optional capabilities without changing the core lifecycle", async () => {
