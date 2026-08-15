@@ -78,6 +78,14 @@ test("warns when config contains unknown fields", () => {
   assert.equal(result.warnings.includes("config.evil: ignored"), true);
 });
 
+test("keeps valid fields when a later YAML line is malformed", () => {
+  const parsed = parseWorkspaceConfigText("preview:\n  maxTextBytes: 4194304\n- malformed\n");
+  const result = resolveWorkspaceConfig(parsed);
+
+  assert.equal(result.config.preview.maxTextBytes, 4 * 1024 * 1024);
+  assert.equal(result.warnings.includes("config: defaulted"), true);
+});
+
 test("discovers bounded config from .dsh/workspace.yaml", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-config-"));
   try {

@@ -5,6 +5,7 @@ import { normalizeWorkspacePath, resolveWorkspaceRoot, startWorkspace, Workspace
 const mib = 1024 * 1024;
 const maxConfigBytes = mib;
 const maxConfigDepth = 64;
+const parseWarningsKey = Symbol("parseWarnings");
 const mandatoryExcludes = [".git/**", "node_modules/**", ".venv/**", "dist/**", "build/**", "__pycache__/**", ".cache/**"] as const;
 
 export interface WorkspaceConfig {
@@ -161,6 +162,10 @@ function layeredExcludes(fileValue: unknown, hostValue: unknown, fallback: reado
 
 export function resolveWorkspaceConfig(file?: WorkspaceConfigInput, hostOverride?: WorkspaceConfigInput): ConfigResolution {
   const warnings: string[] = [];
+  for (const input of [file, hostOverride]) {
+    const parseWarnings = validObject(input) ? input[parseWarningsKey] : undefined;
+    if (Array.isArray(parseWarnings)) warnings.push(...parseWarnings);
+  }
   warnUnknownFields(file, ["enabled", "root", "files", "preview", "git", "activity", "workingSet"], "config", warnings);
   warnUnknownFields(hostOverride, ["enabled", "root", "files", "preview", "git", "activity", "workingSet"], "host", warnings);
   const fileSection = section(file, "files", warnings, "files");
@@ -278,27 +283,42 @@ export function parseWorkspaceConfigText(text: string): WorkspaceConfigInput {
   if (typeof text !== "string") throw new TypeError("Workspace config must be text");
   if (Buffer.byteLength(text, "utf8") > maxConfigBytes) throw new TypeError("Workspace config exceeds its byte limit");
   const rootValue: Record<string, unknown> = {};
+  const parseWarnings: string[] = [];
   const stack: Array<{ indent: number; value: Record<string, unknown> | unknown[] }> = [{ indent: -1, value: rootValue }];
   const lines = text.split(/\r?\n/).map(stripYamlComment).filter((line) => line.trim());
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     const indent = line.match(/^ */)?.[0].length ?? 0;
-    if (/^\s*\t/.test(line)) throw new TypeError("Workspace config cannot use tabs");
+    if (/^\s*\t/.test(line)) {
+      parseWarnings.push("config: defaulted");
+      continue;
+    }
     while (stack.at(-1)!.indent >= indent) stack.pop();
     if (stack.length > maxConfigDepth) throw new TypeError("Workspace config nesting is too deep");
     const parent = stack.at(-1)!.value;
     const body = line.trim();
     if (body.startsWith("- ")) {
-      if (!Array.isArray(parent)) throw new TypeError("Workspace config list is misplaced");
+      if (!Array.isArray(parent)) {
+        parseWarnings.push("config: defaulted");
+        continue;
+      }
       parent.push(scalar(body.slice(2)));
       continue;
     }
     const separator = body.indexOf(":");
-    if (separator < 1 || !validObject(parent)) throw new TypeError("Workspace config mapping is invalid");
+    if (separator < 1 || !validObject(parent)) {
+      parseWarnings.push("config: defaulted");
+      continue;
+    }
     const key = body.slice(0, separator).trim();
     const value = body.slice(separator + 1).trim();
     if (value) {
-      parent[key] = scalar(value);
+      try {
+        parent[key] = scalar(value);
+      } catch (error) {
+        if (error instanceof TypeError && error.message.includes("nesting is too deep")) throw error;
+        parseWarnings.push("config: defaulted");
+      }
       continue;
     }
     const next = lines[lineIndex + 1]?.trim();
@@ -306,6 +326,7 @@ export function parseWorkspaceConfigText(text: string): WorkspaceConfigInput {
     parent[key] = child;
     stack.push({ indent, value: child });
   }
+  if (parseWarnings.length) Object.defineProperty(rootValue, parseWarningsKey, { value: parseWarnings });
   return rootValue as WorkspaceConfigInput;
 }
 
