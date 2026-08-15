@@ -37,7 +37,7 @@ pins the directly exercised contracts and build tools as follows:
 | `@deepseek-ai/dsh-token-meter` | `0.1.0-rc.6` |
 | `@deepseek-ai/dsh-typert-generator` | `0.1.0-rc.6` |
 | `@deepseek-ai/dsh-typert-protocol` | `0.1.0-rc.6` |
-| `@deepseek-ai/dsh-typert-registry` | `0.0.1-rc.1` |
+| `@deepseek-ai/dsh-typert-registry` | `0.1.0-rc.6` |
 | `tsdown` | `0.22.14` |
 | `typescript` | `6.0.3` |
 | `zod` | `4.4.3` |
@@ -46,8 +46,10 @@ The registry exposes `0.1.0-rc.6` as the `latest`/`next` tag for
 `@deepseek-ai/dsh` and `dsh-agent`, but most leaf packages still expose
 `0.0.1-rc.1` as `latest` and `0.1.0-rc.6` as `next`. Every leaf must therefore
 be specified explicitly; `npm install` without a version is not reproducible.
-The `dsh-typert-registry` package is the deliberate `0.0.1-rc.1` pin in the
-existing fixture and must not be silently upgraded by a broad `rc.6` range.
+The `dsh-typert-registry` package is explicitly pinned to `0.1.0-rc.6` in the
+existing fixture and must not be replaced by the `latest` tag (`0.0.1-rc.1`)
+or silently widened to a prerelease range. The smoke's exact lock assertion is
+the authority for the tested baseline.
 
 The generated consumer lockfile is part of the evidence. The smoke script
 asserts lockfile version 3 and checks every entry's resolved package version;
