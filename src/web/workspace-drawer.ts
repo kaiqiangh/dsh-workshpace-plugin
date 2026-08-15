@@ -1,4 +1,5 @@
 import { normalizeWorkspacePath, type WorkspacePath } from "../domain/workspace.ts";
+import type { LocalMetricRecorder } from "../domain/metrics.ts";
 
 export type WorkspaceTab = "Files" | "Session" | "Changes";
 export type PanelStatus = "idle" | "loading" | "ready" | "empty" | "unsupported" | "error";
@@ -127,13 +128,18 @@ function assertPanel(panel: PanelState): void {
   }
 }
 
-export function reduceDrawer(state: DrawerState, action: DrawerAction): { state: DrawerState; effect?: DrawerEffect } {
+function recordMetric(metrics: LocalMetricRecorder | undefined, name: string): void {
+  metrics?.record(name);
+}
+
+export function reduceDrawer(state: DrawerState, action: DrawerAction, metrics?: LocalMetricRecorder): { state: DrawerState; effect?: DrawerEffect } {
   if (!action || typeof action !== "object" || typeof action.type !== "string") {
     throw new DrawerStateError("INVALID_ACTION", "Unknown Workspace drawer action");
   }
 
   switch (action.type) {
     case "open":
+      recordMetric(metrics, "workspace-opened");
       return { state: { ...state, open: true, focusReturn: null, focusTrap: true, focusVisible: true } };
     case "close":
     case "escape":
@@ -144,14 +150,17 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
     case "select-file":
       {
         const path = normalizedSelectionPath(action.path, "Workspace Path");
+        recordMetric(metrics, "preview-opened");
         return { state: { ...state, selectedPath: path, preview: { target: { type: "file", path }, status: "loading" } } };
       }
     case "select-activity":
       assertSelection(action.id, "Session Activity id");
+      recordMetric(metrics, "preview-opened");
       return { state: { ...state, selectedActivityId: action.id, preview: { target: { type: "activity", id: action.id }, status: "loading" } } };
     case "select-change":
       {
         const path = normalizedSelectionPath(action.path, "Workspace Path");
+        recordMetric(metrics, "preview-opened");
         return { state: { ...state, selectedChangePath: path, preview: { target: { type: "change", path }, status: "loading" } } };
       }
     case "set-working-set":
@@ -160,9 +169,11 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
     case "set-panel":
       assertTab(action.tab);
       assertPanel(action.panel);
+      if (action.panel.status === "error" || action.panel.status === "unsupported") recordMetric(metrics, "capability-degraded");
       return { state: { ...state, panels: { ...state.panels, [action.tab]: { ...action.panel } } } };
     case "set-preview":
       assertPanel(action.panel);
+      if (action.panel.status === "error" || action.panel.status === "unsupported") recordMetric(metrics, "capability-degraded");
       return { state: { ...state, preview: { target: state.preview.target, ...action.panel } } };
     case "pin-working-set":
       return { state, effect: { type: "pin-working-set", path: normalizedSelectionPath(action.path, "Working Set Path") } };
@@ -171,6 +182,7 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction): { state:
     case "clear-working-set":
       return { state, effect: "clear-working-set" };
     case "send-working-set":
+      recordMetric(metrics, "working-set-sent");
       return { state, effect: "send-working-set" };
     default:
       throw new DrawerStateError("INVALID_ACTION", "Unknown Workspace drawer action");

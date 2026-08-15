@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createDrawerState, DrawerStateError, reduceDrawer } from "../src/web/workspace-drawer.ts";
+import { createLocalMetrics } from "../src/domain/metrics.ts";
 
 test("opens the drawer and selects a tab", () => {
   const initial = createDrawerState();
@@ -12,6 +13,23 @@ test("opens the drawer and selects a tab", () => {
   assert.equal(selected.activeTab, "Session");
   assert.equal(selected.focusTrap, true);
   assert.equal(selected.focusVisible, true);
+});
+
+test("records drawer interactions through the local metric seam", () => {
+  const metrics = createLocalMetrics({ sessionId: "session-1", rootId: "root-1" });
+  let state = reduceDrawer(createDrawerState(), { type: "open" }, metrics).state;
+  state = reduceDrawer(state, { type: "select-file", path: "src/auth.py" }, metrics).state;
+  state = reduceDrawer(state, { type: "set-preview", panel: { status: "unsupported" } }, metrics).state;
+  const result = reduceDrawer(state, { type: "send-working-set" }, metrics);
+
+  assert.equal(result.effect, "send-working-set");
+  assert.deepEqual(metrics.snapshot().counts, {
+    "workspace-opened": 1,
+    "preview-opened": 1,
+    "artifact-opened": 0,
+    "working-set-sent": 1,
+    "capability-degraded": 1,
+  });
 });
 
 test("keeps selections while closing and returns focus to the opener", () => {
