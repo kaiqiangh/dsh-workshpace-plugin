@@ -51,3 +51,11 @@ _Avoid_: universal workspace support, remote filesystem
 **Local-first Metric**:
 An aggregate Workspace interaction count that may be inspected or exported locally without sending paths, file contents, or telemetry to a service by default.
 _Avoid_: analytics profile, remote tracking
+
+**Compatibility Baseline**:
+The exact DeepSeek Harness source revision and resolved package versions against which a Workspace release is verified. A baseline is a release input, not a floating version range.
+_Avoid_: latest Harness, compatible enough
+
+**Host/Web Adapter**:
+The narrow Workspace boundary that translates the public Harness Host, Web, session, and conversation seams into Workspace operations while keeping Harness-specific lifecycle and transport details out of the domain.
+_Avoid_: private Harness hook, core-loop patch
