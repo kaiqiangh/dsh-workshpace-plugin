@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { open, realpath, stat, type FileHandle } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 
 import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspacePath } from "./workspace.ts";
 
@@ -143,6 +143,7 @@ export interface ResourceRequest {
 export interface OpenedResource {
   readonly mediaType: string;
   readonly version: string;
+  readonly downloadName: string;
   readonly bytes: Uint8Array;
 }
 
@@ -160,6 +161,7 @@ interface ResourceRecord {
   readonly mediaType: string;
   readonly version: string;
   readonly expiresAt: number;
+  readonly downloadName: string;
 }
 
 interface ResolvedPath {
@@ -219,6 +221,12 @@ function mediaTypeFor(path: WorkspacePath): string | undefined {
   if (extension === ".md") return "text/markdown";
   if (binaryExtensions.has(extension)) return "application/octet-stream";
   return "text/plain";
+}
+
+function resourceName(path: WorkspacePath, mediaType: string): string {
+  const raw = basename(path).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/gu, "_").trim().replace(/^[. ]+|[. ]+$/gu, "");
+  if (raw) return raw.slice(0, 180);
+  return mediaType === "application/pdf" ? "workspace-download.pdf" : "workspace-download.bin";
 }
 
 function versionFor(info: { readonly size: number; readonly mtimeMs: number; readonly ctimeMs: number; readonly ino?: number }): string {
@@ -411,7 +419,7 @@ export class PreviewService {
       if (info.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
       const read = await readBounded(resolved.canonicalPath, limit, resolved.canonicalPath, resource.version);
       if (read.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
-      return { mediaType: resource.mediaType, version: resource.version, bytes: read.bytes };
+      return { mediaType: resource.mediaType, version: resource.version, downloadName: resource.downloadName, bytes: read.bytes };
     } catch (error) {
       throw safeError(error);
     }
@@ -449,7 +457,7 @@ export class PreviewService {
     if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
     const resourceId = randomBytes(18).toString("base64url");
     const expiresAt = this.now() + this.resourceTtlMs;
-    this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version: versionFor(info), expiresAt });
+    this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version: versionFor(info), expiresAt, downloadName: resourceName(resolved.path, mediaType) });
     return { type: "binary", path: resolved.path, mediaType, resourceId, version: versionFor(info), expiresAt };
   }
 

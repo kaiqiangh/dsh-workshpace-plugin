@@ -74,6 +74,7 @@ export interface ResourceRequest {
 export interface OpenedResource {
     readonly mediaType: string;
     readonly version: string;
+    readonly downloadName: string;
     readonly bytes: Uint8Array;
 }
 export interface BoundedTextRead {

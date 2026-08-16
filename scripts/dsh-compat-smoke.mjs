@@ -376,53 +376,40 @@ async function gatewaySmoke(root, host, hostTypert) {
   return { ctx, registry: ctx.typert, host }
 }
 
-async function webSmoke(root, ctx) {
+async function webSmoke(root, host, ctx) {
   const WebServer = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js')).href)).default
   const webFiber = ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
   await webFiber
-  const resource = {
-    id: 'opaque-session-bound', session: 'session-1', root: 'root-1',
-    body: Buffer.from('bounded-resource'), type: 'application/octet-stream',
-  }
+  const session = { sessionId: 'session-1', rootId: 'root-1' }
+  const file = join(root, 'workspace-smoke.png')
+  await writeFile(file, Buffer.from([98, 111, 117, 110, 100, 101, 100]))
+  const preview = new host.PreviewService(root, session)
+  const descriptor = await preview.preview('workspace-smoke.png')
+  assert.equal(descriptor.type, 'binary')
+  assert.equal(typeof host.registerWorkspaceResourceRoute, 'function')
+  const resourceId = descriptor.resourceId
   const endpoint = `http://127.0.0.1:${ctx.webServer.port}/workspace/resource`
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'exact', path: '/workspace/resource',
-    handler: async (req, res) => {
-      const url = new URL(req.url ?? '/', 'http://localhost')
-      const requestedType = url.searchParams.get('type')
-      if (url.searchParams.get('id') !== resource.id
-        || requestedType !== resource.type
-        || req.headers['x-dsh-session'] !== resource.session
-        || req.headers['x-dsh-root'] !== resource.root
-        || resource.body.byteLength > 1024) {
-        res.writeHead(404); res.end(); return
-      }
-      res.writeHead(200, { 'content-type': resource.type, 'content-length': resource.body.byteLength })
-      res.end(resource.body.subarray(0, 1024))
-    },
-  }), 'workspace opaque resource route')
-  const authorized = await fetch(`${endpoint}?id=${resource.id}&type=${encodeURIComponent(resource.type)}`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': resource.root },
+  ctx.effect(() => host.registerWorkspaceResourceRoute(ctx.webServer, { preview }), 'workspace opaque resource route')
+  const authorized = await fetch(`${endpoint}?id=${resourceId}&type=image%2Fpng&download=1`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
   assert.equal(authorized.status, 200)
-  assert.equal(authorized.headers.get('content-type'), resource.type)
-  assert.ok(Number(authorized.headers.get('content-length')) <= 1024)
-  assert.equal(await authorized.text(), 'bounded-resource')
-  const tampered = await fetch(`${endpoint}?id=tampered&type=${encodeURIComponent(resource.type)}`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': resource.root },
+  assert.equal(authorized.headers.get('content-type'), 'image/png')
+  assert.equal(authorized.headers.get('content-disposition'), 'attachment; filename="workspace-smoke.png"')
+  assert.equal(await authorized.text(), 'bounded')
+  const tampered = await fetch(`${endpoint}?id=tampered&type=image%2Fpng`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
   assert.equal(tampered.status, 404)
-  const wrongType = await fetch(`${endpoint}?id=${resource.id}&type=text/plain`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': resource.root },
+  const wrongType = await fetch(`${endpoint}?id=${resourceId}&type=text%2Fplain`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
   assert.equal(wrongType.status, 404)
-  const replaced = resource.root
-  resource.root = 'root-replaced'
-  const staleIdentity = await fetch(`${endpoint}?id=${resource.id}&type=${encodeURIComponent(resource.type)}`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': replaced },
+  const staleIdentity = await fetch(`${endpoint}?id=${resourceId}&type=image%2Fpng`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': 'root-replaced' },
   })
   assert.equal(staleIdentity.status, 404)
-  return { endpoint }
+  return { endpoint, preview }
 }
 
 async function conversationSmoke(root, client, ctx) {
@@ -626,9 +613,10 @@ async function main() {
     const { host, client, hostTypert, profileRoot } = await publicBundleSmoke(consumer)
     const { ctx, registry } = await gatewaySmoke(profileRoot, host, hostTypert)
     let endpoint
+    let preview
     let conversation
     try {
-      ({ endpoint } = await webSmoke(profileRoot, ctx))
+      ({ endpoint, preview } = await webSmoke(profileRoot, host, ctx))
       conversation = await conversationSmoke(profileRoot, client, ctx)
     } finally {
       await ctx.fiber.dispose()
@@ -640,6 +628,7 @@ async function main() {
       assert.equal(conversation?.workspaceSlots.length ?? 0, 0)
       assert.equal(conversation?.clientSlots.length ?? 0, 0)
       if (endpoint !== undefined) await assert.rejects(() => fetch(endpoint))
+      preview?.dispose()
     }
     console.log(JSON.stringify({
       ok: true,
