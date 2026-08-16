@@ -6,14 +6,16 @@ import {
   MemoryStoreError,
   memoryStorePath,
   type MemoryDraft,
+  hashMemoryContent,
   type MemoryListOptions,
   type MemoryReadState,
   type MemoryRecord,
+  type MemoryGovernance,
   type MemoryScope,
   type MemorySearchOptions,
   type MemoryStoreOptions,
 } from "./memory-store.ts";
-import { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
+import { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, memoryGovernance, memoryRetentionForScope, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
 import type { WorkspaceIdentity } from "./workspace.ts";
 
 export interface MemoryScopeRequest {
@@ -97,22 +99,39 @@ export class WorkspaceMemoryDomain {
 
   async upsert(context: MemoryWorkspaceContext, request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord> {
     const store = await this.store(context, request);
-    const previous = draft.id === undefined ? undefined : ["active", "archived", "forgotten"].flatMap((status) => store.list({ status: status as MemoryRecord["status"], limit: 100 })).find((record) => record.id === draft.id);
+    const previous = draft.id === undefined ? undefined : store.all().find((record) => record.id === draft.id);
     if (previous) {
       if (draft.expectedRevision === undefined || draft.expectedHash === undefined) throw new MemoryGovernanceError("CONFLICT", `Memory ${previous.id} requires a revision and content hash`);
       assertMemoryRevision(previous, draft.expectedRevision, draft.expectedHash);
     }
-    const duplicate = draft.id === undefined && store.list({ status: "active", limit: 100 }).find((record) => record.title.trim().toLocaleLowerCase() === draft.title.trim().toLocaleLowerCase());
-    const governance = duplicate ? {
+    if (draft.id === undefined) {
+      const contentHash = hashMemoryContent(draft.content);
+      const exact = store.all({ type: draft.type }).find((record) => record.contentHash === contentHash);
+      if (exact) return exact;
+    }
+    const duplicate = draft.id === undefined && store.all({ type: draft.type }).find((record) => record.title.trim().toLocaleLowerCase() === draft.title.trim().toLocaleLowerCase() && record.contentHash !== hashMemoryContent(draft.content));
+    const currentGovernance = previous ? memoryGovernance(previous) : undefined;
+    const changed = previous !== undefined && (previous.title !== draft.title || previous.content !== draft.content || previous.type !== draft.type || JSON.stringify(previous.tags) !== JSON.stringify(draft.tags));
+    const editedGovernance: MemoryGovernance | undefined = currentGovernance === undefined ? undefined : {
+      ...currentGovernance,
+      verification: changed && currentGovernance.verification === "verified" ? "stale" : currentGovernance.verification,
+      ...(changed ? { verifiedAt: undefined, verifiedBy: undefined, pinnedAt: undefined, pinnedBy: undefined } : {}),
+      revision: currentGovernance.revision + 1,
+    };
+    const governance: MemoryGovernance | undefined = draft.governance ?? editedGovernance ?? (duplicate ? {
       origin: "user-authored" as const,
       sourceRefs: [],
       verification: "unverified" as const,
       revision: 1,
       conflictGroup: conflictGroupFor(draft.title),
-      retention: request.scope === "session" ? "session-end" as const : request.scope === "user" ? "user-managed" as const : "project-delete" as const,
-    } : draft.governance;
-    const { expectedRevision: _expectedRevision, expectedHash: _expectedHash, ...persisted } = draft;
-    return store.upsert({ ...persisted, ...(governance === undefined ? {} : { governance }) });
+      retention: memoryRetentionForScope(request.scope),
+    } : undefined);
+    try {
+      return await store.upsert({ ...draft, ...(governance === undefined ? {} : { governance }) });
+    } catch (error) {
+      if (error instanceof MemoryStoreError && error.code === "CONFLICT") throw new MemoryGovernanceError("CONFLICT", error.message);
+      throw error;
+    }
   }
 
   async archive(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
@@ -137,7 +156,7 @@ export class WorkspaceMemoryDomain {
 
   async govern(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord> {
     const store = await this.store(context, request);
-    const current = ["active", "archived", "forgotten"].flatMap((status) => store.list({ status: status as MemoryRecord["status"], limit: 100 })).find((record) => record.id === id);
+    const current = store.all().find((record) => record.id === id);
     if (!current) throw new MemoryStoreError("INVALID_RECORD", "Memory record is unavailable");
     assertMemoryRevision(current, expectedRevision, expectedHash);
     let next: MemoryRecord;
@@ -162,13 +181,14 @@ export class WorkspaceMemoryDomain {
       useCount: current.useCount,
       status: next.status,
       governance: next.governance,
+      expectedRevision,
+      expectedHash,
     });
   }
 
   async export(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string> {
     const store = await this.store(context, request);
-    const records = ["active", "archived", "forgotten"].flatMap((status) => store.list({ status: status as MemoryRecord["status"], limit: 100 }));
-    return exportMemoryBundle(records);
+    return exportMemoryBundle(store.all());
   }
 
   async import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {
@@ -188,7 +208,7 @@ export class WorkspaceMemoryDomain {
         createdAt: record.createdAt,
         updatedAt: Date.now(),
         status: record.status,
-        governance: record.governance,
+        governance: { ...memoryGovernance(record), retention: memoryRetentionForScope(store.scope) },
       }));
     }
     return saved;

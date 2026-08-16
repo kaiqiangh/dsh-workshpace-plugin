@@ -15,6 +15,7 @@ export type MemoryVerification = "unverified" | "verified" | "rejected" | "stale
 export type MemoryConfidence = "low" | "medium" | "high";
 export type MemoryRetention = "session-end" | "project-delete" | "user-managed";
 export type MemoryContentHash = string;
+export declare function hashMemoryContent(content: string): MemoryContentHash;
 export interface MemorySourceRef {
     readonly kind: "session" | "event" | "file" | "url" | "import";
     readonly id: string;
@@ -107,7 +108,7 @@ export interface MemoryListOptions {
 export interface MemorySearchOptions extends MemoryListOptions {
     readonly limit?: number;
 }
-export type MemoryStoreErrorCode = "INVALID_RECORD" | "SCOPE_MISMATCH" | "PROJECT_UNAVAILABLE" | "STORE_UNAVAILABLE" | "STORE_CLOSED" | "SAVE_FAILURE" | "UNSUPPORTED_SCHEMA";
+export type MemoryStoreErrorCode = "INVALID_RECORD" | "SCOPE_MISMATCH" | "PROJECT_UNAVAILABLE" | "STORE_UNAVAILABLE" | "STORE_CLOSED" | "SAVE_FAILURE" | "CONFLICT" | "UNSUPPORTED_SCHEMA";
 export declare class MemoryStoreError extends Error {
     readonly code: MemoryStoreErrorCode;
     constructor(code: MemoryStoreErrorCode, message: string);
@@ -132,6 +133,8 @@ export declare class MemoryStore {
     open(): Promise<MemoryReadState>;
     state(): MemoryReadState;
     list(options?: MemoryListOptions): readonly MemoryRecord[];
+    all(options?: Omit<MemoryListOptions, "limit">): readonly MemoryRecord[];
+    private expiredView;
     upsert(draft: MemoryDraft): Promise<MemoryRecord>;
     archive(id: string): Promise<MemoryRecord>;
     forget(id: string): Promise<MemoryRecord>;
@@ -143,7 +146,7 @@ export declare class MemoryStore {
     private require;
     private ensureOpen;
     private ensureWritable;
-    private append;
+    private appendLocked;
     private reloadLatest;
     private withLock;
     private quarantine;

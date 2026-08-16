@@ -22,6 +22,10 @@ export type MemoryRetention = "session-end" | "project-delete" | "user-managed";
 // Remote codecs accept string only; runtime validation below enforces sha256:<64 hex>.
 export type MemoryContentHash = string;
 
+export function hashMemoryContent(content: string): MemoryContentHash {
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
 export interface MemorySourceRef {
   readonly kind: "session" | "event" | "file" | "url" | "import";
   readonly id: string;
@@ -133,6 +137,7 @@ export type MemoryStoreErrorCode =
   | "STORE_UNAVAILABLE"
   | "STORE_CLOSED"
   | "SAVE_FAILURE"
+  | "CONFLICT"
   | "UNSUPPORTED_SCHEMA";
 
 export class MemoryStoreError extends Error {
@@ -168,10 +173,6 @@ function contentText(value: unknown, max: number): asserts value is string {
 
 function boundedInteger(value: unknown, label: string): asserts value is number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) throw new MemoryStoreError("INVALID_RECORD", `${label} is invalid`);
-}
-
-function hashFor(content: string): MemoryContentHash {
-  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
 function validateGovernance(value: unknown, scope: MemoryScope): MemoryGovernance | undefined {
@@ -265,7 +266,7 @@ function validateRecord(value: unknown, expectedScope: MemoryScope, expectedScop
   boundedInteger(record.useCount, "Memory useCount");
   if (!statuses.includes(record.status as MemoryStatus)) throw new MemoryStoreError("INVALID_RECORD", "Memory status is invalid");
   text(record.contentHash, 80, "Memory content hash");
-  if (!/^sha256:[0-9a-f]{64}$/u.test(record.contentHash) || record.contentHash !== hashFor(record.content)) throw new MemoryStoreError("INVALID_RECORD", "Memory content hash is invalid");
+  if (!/^sha256:[0-9a-f]{64}$/u.test(record.contentHash) || record.contentHash !== hashMemoryContent(record.content)) throw new MemoryStoreError("INVALID_RECORD", "Memory content hash is invalid");
   const governance = validateGovernance(record.governance, expectedScope);
   const normalizedProvenance: { kind: MemoryProvenanceKind; sessionId?: string; eventSeq?: number; note?: string } = { kind: provenance.kind as MemoryProvenanceKind };
   if (provenance.sessionId !== undefined) normalizedProvenance.sessionId = provenance.sessionId as string;
@@ -456,45 +457,75 @@ export class MemoryStore {
   }
 
   state(): MemoryReadState {
-    return Object.freeze({ scope: this.scope, scopeKey: this.scopeKey, records: Object.freeze([...this.records.values()]), warnings: Object.freeze([...this.warnings]), readOnly: this.readOnly });
+    return Object.freeze({ scope: this.scope, scopeKey: this.scopeKey, records: Object.freeze([...this.records.values()].map((record) => this.expiredView(record))), warnings: Object.freeze([...this.warnings]), readOnly: this.readOnly });
   }
 
   list(options: MemoryListOptions = {}): readonly MemoryRecord[] {
     this.ensureOpen();
     const limit = safeLimit(options.limit, MEMORY_MAX_RESULTS);
+    return Object.freeze(this.all({ ...options, status: options.status ?? "active" }).slice(0, limit));
+  }
+
+  all(options: Omit<MemoryListOptions, "limit"> = {}): readonly MemoryRecord[] {
+    this.ensureOpen();
     return Object.freeze([...this.records.values()]
-      .filter((record) => (options.type === undefined || record.type === options.type) && (options.status === undefined ? record.status === "active" : record.status === options.status) && (record.governance?.expiresAt === undefined || record.governance.expiresAt > this.now()))
+      .map((record) => this.expiredView(record))
+      .filter((record) => (options.type === undefined || record.type === options.type) && (options.status === undefined || record.status === options.status))
       .sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
-      .slice(0, limit));
+    );
+  }
+
+  private expiredView(record: MemoryRecord): MemoryRecord {
+    const governance = record.governance;
+    if (!governance || governance.verification !== "verified" || governance.expiresAt === undefined || governance.expiresAt > this.now()) return record;
+    return Object.freeze({
+      ...record,
+      governance: Object.freeze({
+        ...governance,
+        verification: "stale" as const,
+        revision: governance.revision + 1,
+        pinnedAt: undefined,
+        pinnedBy: undefined,
+      }),
+    });
   }
 
   async upsert(draft: MemoryDraft): Promise<MemoryRecord> {
     this.ensureWritable();
     if (draft.scope !== this.scope || draft.scopeKey !== this.scopeKey) throw new MemoryStoreError("SCOPE_MISMATCH", "Memory draft scope does not match this store");
-    const now = this.now();
     const id = draft.id ?? this.idFactory();
-    const previous = this.records.get(id);
-    const record = validateRecord({
-      schemaVersion: MEMORY_SCHEMA_VERSION,
-      id,
-      scope: this.scope,
-      scopeKey: this.scopeKey,
-      type: draft.type,
-      title: draft.title,
-      content: draft.content,
-      tags: draft.tags,
-      provenance: draft.provenance,
-      createdAt: draft.createdAt ?? previous?.createdAt ?? now,
-      updatedAt: draft.updatedAt ?? now,
-      ...(draft.lastUsedAt === undefined && previous?.lastUsedAt === undefined ? {} : { lastUsedAt: draft.lastUsedAt ?? previous?.lastUsedAt }),
-      useCount: draft.useCount ?? previous?.useCount ?? 0,
-      contentHash: hashFor(draft.content),
-      status: draft.status ?? "active",
-      ...(draft.governance === undefined && previous?.governance === undefined ? {} : { governance: draft.governance ?? previous?.governance }),
-    }, this.scope, this.scopeKey, this.maxContentBytes);
-    await this.append(record);
-    this.records.set(record.id, record);
-    return record;
+    return this.withLock(async () => {
+      await this.reloadLatest();
+      const previous = this.records.get(id);
+      const current = previous === undefined ? undefined : this.expiredView(previous);
+      if (draft.expectedRevision !== undefined || draft.expectedHash !== undefined) {
+        if (draft.expectedRevision === undefined || draft.expectedHash === undefined || current === undefined) throw new MemoryStoreError("CONFLICT", `Memory ${id} changed before this edit`);
+        const revision = current.governance?.revision ?? 1;
+        if (revision !== draft.expectedRevision || current.contentHash !== draft.expectedHash) throw new MemoryStoreError("CONFLICT", `Memory ${id} changed before this edit`);
+      }
+      const now = this.now();
+      const record = validateRecord({
+        schemaVersion: MEMORY_SCHEMA_VERSION,
+        id,
+        scope: this.scope,
+        scopeKey: this.scopeKey,
+        type: draft.type,
+        title: draft.title,
+        content: draft.content,
+        tags: draft.tags,
+        provenance: draft.provenance,
+        createdAt: draft.createdAt ?? previous?.createdAt ?? now,
+        updatedAt: draft.updatedAt ?? now,
+        ...(draft.lastUsedAt === undefined && previous?.lastUsedAt === undefined ? {} : { lastUsedAt: draft.lastUsedAt ?? previous?.lastUsedAt }),
+        useCount: draft.useCount ?? previous?.useCount ?? 0,
+        contentHash: hashMemoryContent(draft.content),
+        status: draft.status ?? "active",
+        ...(draft.governance === undefined && previous?.governance === undefined ? {} : { governance: draft.governance ?? previous?.governance }),
+      }, this.scope, this.scopeKey, this.maxContentBytes);
+      await this.appendLocked(record);
+      this.records.set(record.id, record);
+      return record;
+    });
   }
 
   async archive(id: string): Promise<MemoryRecord> {
@@ -509,7 +540,7 @@ export class MemoryStore {
     this.ensureWritable();
     const current = this.require(id);
     const now = this.now();
-    const record = await this.upsert({ ...current, id: current.id, updatedAt: now, lastUsedAt: now, useCount: current.useCount + 1, provenance: current.provenance });
+    const record = await this.upsert({ ...current, id: current.id, updatedAt: now, lastUsedAt: now, useCount: current.useCount + 1, provenance: current.provenance, expectedRevision: current.governance?.revision ?? 1, expectedHash: current.contentHash });
     return record;
   }
 
@@ -517,8 +548,7 @@ export class MemoryStore {
     this.ensureOpen();
     text(query, MEMORY_MAX_QUERY_BYTES, "Memory query");
     const limit = safeLimit(options.limit, MEMORY_MAX_RESULTS);
-    return Object.freeze([...this.records.values()]
-      .filter((record) => record.status === (options.status ?? "active") && (options.type === undefined || record.type === options.type) && (record.governance?.expiresAt === undefined || record.governance.expiresAt > this.now()))
+    return Object.freeze(this.all({ status: options.status ?? "active", ...(options.type === undefined ? {} : { type: options.type }) })
       .filter((record) => recordRank(record, query) < 5)
       .sort((left, right) => recordRank(left, query) - recordRank(right, query) || right.updatedAt - left.updatedAt || (right.lastUsedAt ?? 0) - (left.lastUsedAt ?? 0) || left.id.localeCompare(right.id))
       .slice(0, limit));
@@ -572,7 +602,7 @@ export class MemoryStore {
     text(id, 256, "Memory id");
     const record = this.records.get(id);
     if (!record) throw new MemoryStoreError("INVALID_RECORD", "Memory record is unavailable");
-    return record;
+    return this.expiredView(record);
   }
 
   private ensureOpen(): void {
@@ -584,20 +614,17 @@ export class MemoryStore {
     if (this.readOnly) throw new MemoryStoreError("UNSUPPORTED_SCHEMA", "Memory store is read-only because its schema is newer");
   }
 
-  private async append(record: MemoryRecord): Promise<void> {
-    await this.ensureSafePath();
-    return this.withLock(async () => {
-      try {
-        await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
-        const handle = await openFile(this.filePath, "a", 0o600);
-        await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
-        await handle.sync();
-        await handle.close();
-        await chmod(this.filePath, 0o600);
-      } catch {
-        throw new MemoryStoreError("SAVE_FAILURE", "Memory record could not be saved");
-      }
-    });
+  private async appendLocked(record: MemoryRecord): Promise<void> {
+    try {
+      await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+      const handle = await openFile(this.filePath, "a", 0o600);
+      await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
+      await handle.sync();
+      await handle.close();
+      await chmod(this.filePath, 0o600);
+    } catch {
+      throw new MemoryStoreError("SAVE_FAILURE", "Memory record could not be saved");
+    }
   }
 
   private async reloadLatest(): Promise<void> {

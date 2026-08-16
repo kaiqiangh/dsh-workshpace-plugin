@@ -392,6 +392,24 @@ async function gatewaySmoke(root, host, hostTypert) {
     },
   })
   assert.equal(governedMemory.status, 'archived')
+  const legacyRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed archive memory', content: 'compatibility archive', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const archivedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryArchive', args: {
+      agentId: 'agent-1', request: memoryRequest, id: legacyRecord.id, expectedRevision: legacyRecord.governance?.revision ?? 1, expectedHash: legacyRecord.contentHash,
+    },
+  })
+  assert.equal(archivedMemory.status, 'archived')
+  const forgottenMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryForget', args: {
+      agentId: 'agent-1', request: memoryRequest, id: archivedMemory.id, expectedRevision: archivedMemory.governance?.revision ?? 1, expectedHash: archivedMemory.contentHash,
+    },
+  })
+  assert.equal(forgottenMemory.status, 'forgotten')
   const memoryExport = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryExport', args: { agentId: 'agent-1', request: memoryRequest },
   })

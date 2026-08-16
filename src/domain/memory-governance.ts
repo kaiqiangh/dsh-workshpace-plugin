@@ -1,14 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type {
-  MemoryGovernance,
-  MemoryContentHash,
-  MemoryOrigin,
-  MemoryRecord,
-  MemoryRetention,
-  MemorySourceRef,
-  MemoryVerification,
+import {
+  hashMemoryContent,
+  MEMORY_MAX_FILE_BYTES,
+  type MemoryGovernance,
+  type MemoryContentHash,
+  type MemoryOrigin,
+  type MemoryRecord,
+  type MemoryRetention,
+  type MemorySourceRef,
+  type MemoryVerification,
 } from "./memory-store.ts";
+
+export const MEMORY_MAX_IMPORT_RECORDS = 10_000;
 
 export type MemoryGovernanceAction = "verify" | "reject" | "reverify" | "pin" | "unpin" | "archive" | "restore" | "stale" | "forget";
 
@@ -34,7 +38,7 @@ export interface MemoryRevisionConflict {
 }
 
 const originFor = (record: MemoryRecord): MemoryOrigin => record.provenance.kind === "user" ? "user-authored" : record.provenance.kind === "import" ? "imported" : record.provenance.kind === "agent" ? "derived" : "derived";
-const retentionFor = (scope: MemoryRecord["scope"]): MemoryRetention => scope === "session" ? "session-end" : scope === "user" ? "user-managed" : "project-delete";
+export const memoryRetentionForScope = (scope: MemoryRecord["scope"]): MemoryRetention => scope === "session" ? "session-end" : scope === "user" ? "user-managed" : "project-delete";
 
 export function memoryGovernance(record: MemoryRecord): MemoryGovernance {
   return record.governance ?? {
@@ -43,7 +47,7 @@ export function memoryGovernance(record: MemoryRecord): MemoryGovernance {
     verification: record.provenance.kind === "user" ? "verified" : "unverified",
     ...(record.provenance.kind === "user" ? { verifiedAt: record.updatedAt, verifiedBy: "user" as const } : {}),
     revision: 1,
-    retention: retentionFor(record.scope),
+    retention: memoryRetentionForScope(record.scope),
   };
 }
 
@@ -126,11 +130,17 @@ export function exportMemoryBundle(records: readonly MemoryRecord[], now = Date.
 }
 
 export function importMemoryBundle(serialized: string, now = Date.now()): readonly MemoryRecord[] {
+  if (typeof serialized !== "string" || Buffer.byteLength(serialized, "utf8") > MEMORY_MAX_FILE_BYTES) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import exceeds the safe size limit");
   let parsed: unknown;
   try { parsed = JSON.parse(serialized); } catch { throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import is not valid JSON"); }
   if (!parsed || typeof parsed !== "object" || (parsed as Record<string, unknown>).schemaVersion !== 1 || !Array.isArray((parsed as Record<string, unknown>).records)) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import bundle is invalid");
-  return (parsed as { records: readonly MemoryRecord[] }).records.map((record) => {
+  const records = (parsed as { records: readonly MemoryRecord[] }).records;
+  if (records.length > MEMORY_MAX_IMPORT_RECORDS) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import contains too many records");
+  return records.map((record) => {
+    if (!record || typeof record !== "object" || typeof record.content !== "string" || record.contentHash !== hashMemoryContent(record.content)) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import content hash is invalid");
     const governance = memoryGovernance(record);
-    return Object.freeze({ ...record, id: `memory:import:${randomUUID()}`, status: "active" as const, updatedAt: now, governance: { ...governance, origin: "imported" as const, sourceRefs: [sourceRef("import", record.id)], verification: "unverified" as const, verifiedAt: undefined, verifiedBy: undefined, pinnedAt: undefined, pinnedBy: undefined, revision: 1 } });
+    const sourceRefs = [...governance.sourceRefs, sourceRef("import", record.id, record.contentHash)];
+    if (sourceRefs.length > 32) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import has too many source references");
+    return Object.freeze({ ...record, id: `memory:import:${randomUUID()}`, status: "active" as const, updatedAt: now, governance: { ...governance, origin: "imported" as const, sourceRefs, verification: "unverified" as const, verifiedAt: undefined, verifiedBy: undefined, pinnedAt: undefined, pinnedBy: undefined, revision: 1 } });
   });
 }

@@ -1,4 +1,5 @@
-import type { MemoryGovernance, MemoryContentHash, MemoryRecord, MemorySourceRef } from "./memory-store.ts";
+import { type MemoryGovernance, type MemoryContentHash, type MemoryRecord, type MemoryRetention, type MemorySourceRef } from "./memory-store.ts";
+export declare const MEMORY_MAX_IMPORT_RECORDS = 10000;
 export type MemoryGovernanceAction = "verify" | "reject" | "reverify" | "pin" | "unpin" | "archive" | "restore" | "stale" | "forget";
 export type MemoryGovernanceErrorCode = "INVALID_TRANSITION" | "UNAUTHORIZED" | "CONFLICT" | "INELIGIBLE" | "INVALID_SOURCE";
 export declare class MemoryGovernanceError extends Error {
@@ -13,6 +14,7 @@ export interface MemoryRevisionConflict {
     readonly expectedRevision: number;
     readonly expectedHash: string;
 }
+export declare const memoryRetentionForScope: (scope: MemoryRecord["scope"]) => MemoryRetention;
 export declare function memoryGovernance(record: MemoryRecord): MemoryGovernance;
 export declare function memoryGovernanceEligible(record: MemoryRecord, now?: number): boolean;
 export declare function assertMemoryRevision(record: MemoryRecord, expectedRevision: number, expectedHash: string): void;

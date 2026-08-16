@@ -47,6 +47,23 @@ test("round-trips bounded records, deterministic search, tombstones, and last-us
   assert.equal(state.records[0]?.useCount, 1);
 });
 
+test("keeps expired verified Memory visible as stale for repair and export", async () => {
+  let now = 10;
+  const root = await mkdtemp(join(tmpdir(), "dsh-memory-expiry-"));
+  const filePath = join(root, "records.jsonl");
+  const value = new MemoryStore({ scope: "project", scopeKey: "root:expiry", projectRoot: root, filePath, now: () => now, idFactory: () => "memory:expiry" });
+  await value.open();
+  const record = await value.upsert({
+    scope: "project", scopeKey: "root:expiry", type: "fact", title: "Expires", content: "repair me", tags: [], provenance: { kind: "user" },
+    governance: { origin: "user-authored", sourceRefs: [], verification: "verified", verifiedAt: 10, verifiedBy: "user", revision: 1, expiresAt: 20, retention: "project-delete" },
+  });
+  now = 21;
+  assert.equal(value.list()[0]?.governance?.verification, "stale");
+  assert.equal(value.search("Expires")[0]?.governance?.verification, "stale");
+  assert.equal(value.all()[0]?.governance?.revision, 2);
+  assert.equal(record.content, "repair me");
+});
+
 test("quarantines malformed and bad-hash lines while preserving valid records", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-memory-corrupt-"));
   const filePath = join(root, "records.jsonl");

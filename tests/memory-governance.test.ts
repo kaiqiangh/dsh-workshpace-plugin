@@ -26,7 +26,7 @@ function record(): MemoryRecord {
     createdAt: 1,
     updatedAt: 1,
     useCount: 0,
-    contentHash: "sha256:" + "a".repeat(64),
+    contentHash: "sha256:0d47c2b8c3b7680ab3550031a9d01621f795c686cf6af82b2a48e81c6598f455",
     status: "active",
     governance: {
       origin: "imported",
