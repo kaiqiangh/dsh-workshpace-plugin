@@ -388,6 +388,11 @@ async function webSmoke(root, host, ctx) {
   assert.equal(descriptor.type, 'binary')
   assert.equal(typeof host.registerWorkspaceResourceRoute, 'function')
   const resourceId = descriptor.resourceId
+  const deliverable = host.createWorkspaceDeliverable(descriptor, {
+    sessionId: session.sessionId, workspaceId: session.rootId, kind: 'artifact',
+  }, 7)
+  assert.equal(deliverable.resourceId, resourceId)
+  assert.equal(deliverable.id.includes('workspace-smoke'), false)
   const endpoint = `http://127.0.0.1:${ctx.webServer.port}/workspace/resource`
   host.installWorkspaceResourceRoute(ctx, ctx.webServer, { preview })
   const authorized = await fetch(`${endpoint}?id=${resourceId}&type=image%2Fpng&download=1`, {

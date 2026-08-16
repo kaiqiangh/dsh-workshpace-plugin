@@ -34,6 +34,14 @@ test("builds bounded deliverable metadata with a safe download name", async () =
     assert.equal(deliverable.resourceId, descriptor.resourceId);
     assert.deepEqual(deliverable.source, { sessionId: identity.sessionId, workspaceId: identity.rootId, kind: "artifact" });
     assert.equal(deliverable.id.includes("report"), false);
+    const oversized = createWorkspaceDeliverable({ type: "error", code: "FILE_TOO_LARGE", message: "too large" }, {
+      sessionId: identity.sessionId,
+      workspaceId: identity.rootId,
+      kind: "file",
+    }, 3, { name: "large.pdf", mediaType: "application/pdf", version: "v1" });
+    assert.deepEqual({ name: oversized.name, mediaType: oversized.mediaType, preview: oversized.preview, version: oversized.version }, {
+      name: "large.pdf", mediaType: "application/pdf", preview: "oversized", version: "v1",
+    });
     await writeFile(join(root, "报告.png"), Buffer.from([4, 5, 6]));
     const unicode = await service.preview("报告.png");
     assert.equal(unicode.type, "binary");

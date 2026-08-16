@@ -25,6 +25,12 @@ export interface WorkspaceDeliverable {
   readonly altText?: string;
 }
 
+export interface WorkspaceDeliverableOptions {
+  readonly name?: string;
+  readonly mediaType?: string;
+  readonly version?: string;
+}
+
 export class WorkspaceDeliverableError extends Error {
   constructor(message: string) {
     super(message);
@@ -68,8 +74,9 @@ function previewState(descriptor: PreviewDescriptor): WorkspaceDeliverablePrevie
   return "available";
 }
 
-function previewMediaType(descriptor: PreviewDescriptor): string {
+function previewMediaType(descriptor: PreviewDescriptor, fallback?: string): string {
   if (descriptor.type === "binary" || descriptor.type === "unsupported") return descriptor.mediaType ?? "application/octet-stream";
+  if (descriptor.type === "error") return fallback ?? "text/plain";
   if (descriptor.type === "markdown") return "text/markdown";
   if (descriptor.type === "json") return "application/json";
   if (descriptor.type === "csv") return "text/csv";
@@ -81,11 +88,15 @@ export function createWorkspaceDeliverable(
   descriptor: PreviewDescriptor,
   source: WorkspaceDeliverableSource,
   sizeBytes: number,
+  options: WorkspaceDeliverableOptions = {},
 ): WorkspaceDeliverable {
-  if (!descriptor || typeof descriptor !== "object" || !source || typeof source !== "object") throw new WorkspaceDeliverableError("Deliverable metadata is invalid");
+  if (!descriptor || typeof descriptor !== "object" || !source || typeof source !== "object" || !options || typeof options !== "object") throw new WorkspaceDeliverableError("Deliverable metadata is invalid");
   assertText(source.sessionId, "Source session", 256);
   assertText(source.workspaceId, "Source workspace", 256);
   if (source.kind !== "artifact" && source.kind !== "file") throw new WorkspaceDeliverableError("Source kind is invalid");
+  if (options.name !== undefined) assertText(options.name, "Deliverable name", 256);
+  if (options.mediaType !== undefined) assertText(options.mediaType, "Deliverable media type", 256);
+  if (options.version !== undefined) assertText(options.version, "Deliverable version", 512);
   let path: WorkspacePath | undefined;
   if ("path" in descriptor) {
     assertText(descriptor.path, "Descriptor path", 4_096);
@@ -96,10 +107,17 @@ export function createWorkspaceDeliverable(
     }
   }
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new WorkspaceDeliverableError("Deliverable size is invalid");
-  const mediaType = previewMediaType(descriptor);
+  const mediaType = previewMediaType(descriptor, options.mediaType);
   const resourceId = descriptor.type === "binary" ? descriptor.resourceId : undefined;
-  const version = descriptor.type === "binary" ? descriptor.version : undefined;
-  const name = path ? basename(path) || "workspace-file" : "workspace-file";
+  const version = descriptor.type === "binary" ? descriptor.version : options.version;
+  let name = path ? basename(path) || "workspace-file" : "workspace-file";
+  if (!path && options.name) {
+    try {
+      name = basename(normalizeWorkspacePath(options.name)) || "workspace-file";
+    } catch {
+      throw new WorkspaceDeliverableError("Deliverable name is invalid");
+    }
+  }
   const id = resourceId ? `workspace:${resourceId}` : opaqueId(source, path ?? name);
   return Object.freeze({
     id,

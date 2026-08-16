@@ -27,6 +27,7 @@ export {
   safeDownloadName,
   WorkspaceDeliverableError,
   type WorkspaceDeliverable,
+  type WorkspaceDeliverableOptions,
   type WorkspaceDeliverablePreview,
   type WorkspaceDeliverableSource,
 } from "./domain/deliverable.ts";

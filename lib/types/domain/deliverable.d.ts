@@ -17,11 +17,16 @@ export interface WorkspaceDeliverable {
     readonly downloadName: string;
     readonly altText?: string;
 }
+export interface WorkspaceDeliverableOptions {
+    readonly name?: string;
+    readonly mediaType?: string;
+    readonly version?: string;
+}
 export declare class WorkspaceDeliverableError extends Error {
     constructor(message: string);
 }
 /** Return a single safe basename suitable for Content-Disposition. */
 export declare function safeDownloadName(pathInput: string, mediaType?: string): string;
 /** Build bounded metadata without copying preview bytes into the envelope. */
-export declare function createWorkspaceDeliverable(descriptor: PreviewDescriptor, source: WorkspaceDeliverableSource, sizeBytes: number): WorkspaceDeliverable;
+export declare function createWorkspaceDeliverable(descriptor: PreviewDescriptor, source: WorkspaceDeliverableSource, sizeBytes: number, options?: WorkspaceDeliverableOptions): WorkspaceDeliverable;
 export declare function deliverableResourceId(descriptor: PreviewDescriptor): string | undefined;
