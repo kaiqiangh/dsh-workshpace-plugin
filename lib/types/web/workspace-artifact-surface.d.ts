@@ -18,6 +18,9 @@ export interface WorkspaceArtifactSurfaceOptions {
     readonly refreshMs?: number;
     readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceArtifactRemote | undefined;
 }
+export type WorkspaceArtifactCategory = "documents" | "data" | "images" | "other";
+/** Deterministic PRD-style grouping by media type (documents / data / images / other). */
+export declare function workspaceArtifactCategory(mediaType: string): WorkspaceArtifactCategory;
 /** Convert a path-free Host preview into the existing bounded renderer contract. */
 export declare function workspaceArtifactPreviewDescriptor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor;
 /** Build one additive, keyboard-operable artifact list/detail surface. */

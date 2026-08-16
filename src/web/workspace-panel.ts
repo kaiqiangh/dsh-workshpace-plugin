@@ -384,6 +384,107 @@ const WORKSPACE_PANEL_STYLES = `
   overflow: auto;
 }
 
+[data-dsh-workspace="artifact-toolbar"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+[data-dsh-workspace="artifact-group"] h3 {
+  margin: 12px 0 6px;
+}
+
+[data-dsh-workspace="artifact-group"] ul {
+  display: grid;
+  gap: 6px;
+  max-height: none;
+  margin: 6px 0;
+  padding: 0;
+  overflow: visible;
+  list-style: none;
+}
+
+[data-dsh-workspace="artifact-group"] li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-dsh-workspace="artifact-type"] {
+  flex: none;
+  min-width: 34px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border-radius: 6px;
+  color: color-mix(in srgb, CanvasText 62%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-align: center;
+}
+
+[data-dsh-workspace="memory-badge"] {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, CanvasText 60%, transparent);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+[data-dsh-workspace="memory-badge"][data-dsh-workspace-verification="verified"] {
+  border-color: color-mix(in srgb, Highlight 45%, transparent);
+  color: color-mix(in srgb, Highlight 80%, CanvasText 20%);
+}
+
+[data-dsh-workspace="memory-badge"][data-dsh-workspace-verification="unverified"] {
+  border-color: color-mix(in srgb, CanvasText 24%, transparent);
+}
+
+[data-dsh-workspace="memory-badge"][data-dsh-workspace-proposal="true"] {
+  border-color: color-mix(in srgb, Highlight 40%, transparent);
+  background: color-mix(in srgb, Highlight 10%, transparent);
+  color: CanvasText;
+}
+
+[data-dsh-workspace="memory-card"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-dsh-workspace="memory-preview"] {
+  flex-basis: 100%;
+  color: color-mix(in srgb, CanvasText 52%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+[data-dsh-workspace="memory-conflict-columns"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 8px 0;
+}
+
+[data-dsh-workspace="memory-conflict-columns"] pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="memory-editor"] summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
 @media (max-width: 760px) {
   [data-dsh-workspace="panel"] [data-dsh-workspace="drawer"] {
     top: 8px;

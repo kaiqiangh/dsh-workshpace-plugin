@@ -63,6 +63,39 @@ function formatSize(sizeBytes: number): string {
   return `${Math.round(sizeBytes / (102.4 * 1024)) / 10} MB`;
 }
 
+export type WorkspaceArtifactCategory = "documents" | "data" | "images" | "other";
+
+const documentTypes = new Set(["text/markdown", "text/plain", "application/pdf", "text/html", "application/x-yaml", "text/yaml", "application/x-toml"]);
+const dataTypes = new Set(["application/json", "text/csv", "application/x-ndjson", "application/xml"]);
+const imageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+/** Deterministic PRD-style grouping by media type (documents / data / images / other). */
+export function workspaceArtifactCategory(mediaType: string): WorkspaceArtifactCategory {
+  if (imageTypes.has(mediaType)) return "images";
+  if (dataTypes.has(mediaType)) return "data";
+  if (documentTypes.has(mediaType) || mediaType.startsWith("text/")) return "documents";
+  return "other";
+}
+
+const categoryLabels: Record<WorkspaceArtifactCategory, string> = {
+  documents: "Documents",
+  data: "Data",
+  images: "Images",
+  other: "Other",
+};
+
+function artifactGroups(artifacts: readonly WorkspaceDeliverable[]): readonly (readonly WorkspaceDeliverable[])[] {
+  const groups: WorkspaceArtifactCategory[] = ["documents", "data", "images", "other"];
+  return groups.map((group) => artifacts.filter((artifact) => workspaceArtifactCategory(artifact.mediaType) === group));
+}
+
+function artifactTypeBadge(artifact: WorkspaceDeliverable): string {
+  const name = artifact.name;
+  const index = name.lastIndexOf(".");
+  const extension = index === -1 ? "FILE" : name.slice(index + 1).toUpperCase().slice(0, 6);
+  return extension;
+}
+
 function artifactIdentity(artifact: WorkspaceDeliverable | undefined): string {
   if (!artifact) return "";
   return [artifact.id, artifact.resourceId, artifact.version, artifact.sizeBytes, artifact.preview, artifact.mediaType].join("\u0000");
@@ -90,6 +123,7 @@ export function createWorkspaceArtifactSurfaceComponent(
     const [detailStatus, setDetailStatus] = useState("idle");
     const [message, setMessage] = useState<string | undefined>();
     const [download, setDownload] = useState<{ readonly url?: string; readonly name?: string; readonly status?: string }>({});
+    const [refreshTick, setRefreshTick] = useState(0);
     const selectedButton = useRef<HTMLButtonElement | null>(null);
     const downloadController = useRef<ReturnType<typeof createWorkspaceDownloadController> | undefined>();
     const request = useRef(0);
@@ -145,7 +179,7 @@ export function createWorkspaceArtifactSurfaceComponent(
       const refreshMs = options.refreshMs ?? 5_000;
       const timer = Number.isFinite(refreshMs) && refreshMs > 0 ? setInterval(() => { void refresh(); }, refreshMs) : undefined;
       return () => { active = false; refreshRequest.current += 1; if (timer !== undefined) clearInterval(timer); };
-    }, [activeRemote, options.refreshMs]);
+    }, [activeRemote, options.refreshMs, refreshTick]);
 
     useEffect(() => {
       if (selectedId) selectedButton.current?.focus();
@@ -236,21 +270,31 @@ export function createWorkspaceArtifactSurfaceComponent(
         : createElement(
           "div",
           { "data-dsh-workspace": "artifact-surface" },
-          createElement("ul", { "aria-label": "Workspace artifacts" }, artifacts.map((artifact) => createElement(
-            "li",
-            { key: artifact.id },
-            createElement(
-              "button",
-              {
-                ref: artifact.id === selectedId ? selectedButton : undefined,
-                type: "button",
-                "aria-pressed": artifact.id === selectedId,
-                onClick: () => select(artifact),
-              },
-              artifact.name,
-            ),
-            createElement("span", { "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${artifact.preview}` }, ` ${artifact.mediaType} · ${formatSize(artifact.sizeBytes)} · ${artifact.preview}`),
-          ))),
+          createElement("div", { "data-dsh-workspace": "artifact-toolbar" },
+            createElement("span", { "aria-label": "Artifact count" }, `${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}`),
+            createElement("button", { type: "button", onClick: () => setRefreshTick((tick) => tick + 1) }, "Refresh"),
+          ),
+          artifactGroups(artifacts).map((group, groupIndex) => group.length === 0
+            ? null
+            : createElement("section", { key: groupIndex, "data-dsh-workspace": "artifact-group", "aria-label": `${categoryLabels[["documents", "data", "images", "other"][groupIndex] as WorkspaceArtifactCategory]} artifacts` },
+              createElement("h3", null, categoryLabels[["documents", "data", "images", "other"][groupIndex] as WorkspaceArtifactCategory]),
+              createElement("ul", null, group.map((artifact) => createElement(
+                "li",
+                { key: artifact.id },
+                createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-type" }, artifactTypeBadge(artifact)),
+                createElement(
+                  "button",
+                  {
+                    ref: artifact.id === selectedId ? selectedButton : undefined,
+                    type: "button",
+                    "aria-pressed": artifact.id === selectedId,
+                    onClick: () => select(artifact),
+                  },
+                  artifact.name,
+                ),
+                createElement("span", { "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${artifact.preview}` }, ` ${formatSize(artifact.sizeBytes)} · ${artifact.preview}`),
+              ))),
+            )),
           selected && detail && createElement(
             "article",
             { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
@@ -263,7 +307,7 @@ export function createWorkspaceArtifactSurfaceComponent(
             message && createElement("p", { role: "status" }, message),
           ),
           selected && !detail && detailStatus === "loading" && createElement("p", { role: "status" }, "Loading artifact preview…"),
-          artifacts.length === 0 && createElement("p", { role: "status" }, "No session artifacts yet."),
+          artifacts.length === 0 && createElement("p", { role: "status" }, "No session artifacts yet — ask the agent to create a file and it appears here automatically."),
           selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
         );
     if (!sessionId) {

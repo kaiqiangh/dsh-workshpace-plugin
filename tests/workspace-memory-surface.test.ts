@@ -60,3 +60,46 @@ test("keeps a single governance Pin control (no UI-only Pin for review)", async 
   assert.equal(buttons.includes("Pin for review"), false);
   assert.equal(buttons.includes("Pinned for review"), false);
 });
+
+test("renders model-suggested proposals with a Proposal badge", async () => {
+  const record = {
+    schemaVersion: 1 as const,
+    id: "memory:proposal-1",
+    scope: "project" as const,
+    scopeKey: "root:one",
+    type: "convention" as const,
+    title: "Proposed convention",
+    content: "Use conventional commits.",
+    tags: [],
+    provenance: { kind: "agent", sessionId: "session-1" },
+    createdAt: 1,
+    updatedAt: 2,
+    useCount: 0,
+    contentHash: `sha256:${"c".repeat(64)}`,
+    status: "active" as const,
+    governance: {
+      origin: "model-suggested" as const,
+      sourceRefs: [{ kind: "session", id: "session-1" }],
+      verification: "unverified" as const,
+      revision: 1,
+      retention: "project-delete" as const,
+    },
+  };
+  const remote = {
+    memoryOpen: async () => ({ ok: true, value: { scope: "project", scopeKey: "root:one", records: [record], warnings: [], readOnly: false } }),
+    memoryList: async () => ({ ok: true, value: [record] }),
+    memorySearch: async () => ({ ok: true, value: [record] }),
+    memoryUpsert: async () => ({ ok: true, value: record }),
+    memoryArchive: async () => ({ ok: true, value: record }),
+    memoryForget: async () => ({ ok: true, value: record }),
+    memoryGovern: async () => ({ ok: true, value: record }),
+    memoryExport: async () => ({ ok: true, value: "{}" }),
+    memoryImport: async () => ({ ok: true, value: [] }),
+  };
+  const render = createWorkspaceMemorySurfaceComponent({ remote });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  const badges = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "memory-badge").map((node) => node.children.join(""));
+  assert.ok(badges.includes("Proposal"));
+  assert.ok(badges.includes("unverified"));
+});

@@ -5,6 +5,7 @@ import TestRenderer, { act } from "react-test-renderer";
 
 import {
   createWorkspaceArtifactSurfaceComponent,
+  workspaceArtifactCategory,
   workspaceArtifactPreviewDescriptor,
   workspaceArtifactResourceUrl,
 } from "../src/web/workspace-artifact-surface.ts";
@@ -35,6 +36,15 @@ test("adapts path-free preview data with a display-only path", () => {
 
 test("builds only the relative opaque resource URL", () => {
   assert.equal(workspaceArtifactResourceUrl(artifact), "/workspace/resource?id=resource-1&type=text%2Fmarkdown&download=1");
+});
+
+test("groups artifacts by media type", () => {
+  assert.equal(workspaceArtifactCategory("text/markdown"), "documents");
+  assert.equal(workspaceArtifactCategory("text/plain"), "documents");
+  assert.equal(workspaceArtifactCategory("application/json"), "data");
+  assert.equal(workspaceArtifactCategory("text/csv"), "data");
+  assert.equal(workspaceArtifactCategory("image/png"), "images");
+  assert.equal(workspaceArtifactCategory("application/zip"), "other");
 });
 
 test("renders a degraded notice instead of nothing without an active session", () => {
