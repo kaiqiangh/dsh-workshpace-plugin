@@ -118,35 +118,56 @@ export class WorkspaceMemoryDomain {
     }
     const duplicate = draft.id === undefined && store.all({ type: draft.type }).find((record) => record.title.trim().toLocaleLowerCase() === draft.title.trim().toLocaleLowerCase() && record.contentHash !== hashMemoryContent(draft.content));
     const currentGovernance = previous ? memoryGovernance(previous) : undefined;
-    const changed = previous !== undefined && (previous.title !== draft.title || previous.content !== draft.content || previous.type !== draft.type || JSON.stringify(previous.tags) !== JSON.stringify(draft.tags));
+    const changed = previous !== undefined && (previous.title !== draft.title || previous.content !== draft.content || previous.type !== draft.type || JSON.stringify(previous.tags) !== JSON.stringify(draft.tags) || JSON.stringify(previous.provenance) !== JSON.stringify(draft.provenance));
     const editedGovernance: MemoryGovernance | undefined = currentGovernance === undefined ? undefined : {
       ...currentGovernance,
       verification: changed && currentGovernance.verification === "verified" ? "stale" : currentGovernance.verification,
       ...(changed ? { verifiedAt: undefined, verifiedBy: undefined, pinnedAt: undefined, pinnedBy: undefined } : {}),
       revision: currentGovernance.revision + 1,
     };
-    const governance: MemoryGovernance | undefined = previous ? editedGovernance : draft.governance ?? (duplicate ? {
-      origin: "user-authored" as const,
-      sourceRefs: [],
-      verification: "unverified" as const,
+    const retention = memoryRetentionForScope(request.scope);
+    const newGovernance: MemoryGovernance = draft.governance ? {
+      ...draft.governance,
+      verification: "unverified",
+      verifiedAt: undefined,
+      verifiedBy: undefined,
+      pinnedAt: undefined,
+      pinnedBy: undefined,
       revision: 1,
-      conflictGroup: conflictGroupFor(draft.title),
-      retention: memoryRetentionForScope(request.scope),
-    } : undefined);
+      retention,
+      ...(duplicate ? { conflictGroup: conflictGroupFor(draft.title) } : {}),
+    } : {
+      origin: "user-authored",
+      sourceRefs: [],
+      verification: "unverified",
+      revision: 1,
+      retention,
+      ...(duplicate ? { conflictGroup: conflictGroupFor(draft.title) } : {}),
+    };
+    const governance: MemoryGovernance | undefined = previous ? editedGovernance : newGovernance;
     try {
       return await store.upsert({ ...draft, ...(governance === undefined ? {} : { governance }) });
     } catch (error) {
-      if (error instanceof MemoryStoreError && error.code === "CONFLICT") throw new MemoryGovernanceError("CONFLICT", error.message);
+      if (error instanceof MemoryStoreError && error.code === "CONFLICT") {
+        const current = draft.id === undefined ? undefined : store.all().find((record) => record.id === draft.id);
+        if (current && draft.expectedRevision !== undefined && draft.expectedHash !== undefined) {
+          const currentGovernance = memoryGovernance(current);
+          throw new MemoryGovernanceError("CONFLICT", error.message, { code: "CONFLICT", id: current.id, currentRevision: currentGovernance.revision, currentHash: current.contentHash, expectedRevision: draft.expectedRevision, expectedHash: draft.expectedHash });
+        }
+        throw new MemoryGovernanceError("CONFLICT", error.message);
+      }
       throw error;
     }
   }
 
   async archive(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
+    assertWritableRequest(request);
     const store = await this.store(context, request);
     return store.archive(id);
   }
 
   async forget(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
+    assertWritableRequest(request);
     const store = await this.store(context, request);
     return store.forget(id);
   }
@@ -157,6 +178,7 @@ export class WorkspaceMemoryDomain {
   }
 
   async markUsed(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
+    assertWritableRequest(request);
     const store = await this.store(context, request);
     return store.markUsed(id);
   }
@@ -213,7 +235,6 @@ export class WorkspaceMemoryDomain {
         content: record.content,
         tags: record.tags,
         provenance: { kind: "import", note: "v0.5 import" },
-        id: record.id,
         createdAt: record.createdAt,
         updatedAt: Date.now(),
         status: record.status,

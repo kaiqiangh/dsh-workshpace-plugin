@@ -500,7 +500,23 @@ export class MemoryStore {
       const contentHash = hashMemoryContent(draft.content);
       if (draft.id === undefined) {
         const exact = [...this.records.values()].find((record) => record.type === draft.type && record.contentHash === contentHash);
-        if (exact) return this.expiredView(exact);
+        if (exact) {
+          const incomingRefs = draft.governance?.sourceRefs ?? [];
+          const currentGovernance = exact.governance;
+          const refs = currentGovernance ? [...currentGovernance.sourceRefs] : [];
+          for (const incoming of incomingRefs) if (!refs.some((existing) => existing.kind === incoming.kind && existing.id === incoming.id && existing.contentHash === incoming.contentHash)) refs.push(incoming);
+          if (currentGovernance && refs.length === currentGovernance.sourceRefs.length) return this.expiredView(exact);
+          if (!currentGovernance && refs.length === 0) return this.expiredView(exact);
+          const mergedGovernance = {
+            ...(currentGovernance ?? draft.governance!),
+            sourceRefs: refs,
+            revision: (currentGovernance?.revision ?? draft.governance?.revision ?? 1) + 1,
+          };
+          const merged = validateRecord({ ...exact, updatedAt: this.now(), governance: mergedGovernance }, this.scope, this.scopeKey, this.maxContentBytes);
+          await this.appendLocked(merged);
+          this.records.set(merged.id, merged);
+          return merged;
+        }
       }
       const previous = this.records.get(id);
       const current = previous === undefined ? undefined : this.expiredView(previous);

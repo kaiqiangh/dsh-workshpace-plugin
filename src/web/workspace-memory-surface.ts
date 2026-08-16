@@ -180,6 +180,19 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       } catch (error) { setMessage(errorMessage(error)); }
     };
 
+    const resolveConflict = async (): Promise<void> => {
+      if (!remote || !selected || !hasConflict || !writesAllowed) return;
+      try {
+        if (selectedGovernance?.verification === "unverified") valueOf(await remote.memoryGovern(request, selected.id, "verify", selectedGovernance.revision, selected.contentHash));
+        for (const conflict of conflictingRecords) {
+          const governance = displayGovernance(conflict);
+          if (governance.verification === "unverified") valueOf(await remote.memoryGovern(request, conflict.id, "reject", governance.revision, conflict.contentHash));
+        }
+        await load("");
+        setMessage("Kept the selected Memory version and rejected unverified conflicts.");
+      } catch (error) { setMessage(errorMessage(error)); }
+    };
+
     useEffect(() => {
       if (forgetPending) confirmButton.current?.focus();
     }, [forgetPending]);
@@ -265,6 +278,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           hasConflict && createElement("p", { role: "status" }, "Conflicting Memory uses the same title and type with different content. Verify one or reject this item."),
           hasConflict && createElement("aside", { "aria-label": "Memory conflict comparison" },
             createElement("h3", null, "Conflict comparison"),
+            createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void resolveConflict() }, "Keep this version"),
             [selected!, ...conflictingRecords].map((record) => createElement("article", { key: record.id },
               createElement("button", { type: "button", onClick: () => setSelectedId(record.id) }, `Review ${record.id}`),
               createElement("span", null, ` · ${displayGovernance(record).verification} · revision ${displayGovernance(record).revision} · ${record.contentHash.slice(0, 15)}`),
