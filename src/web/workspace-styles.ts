@@ -736,6 +736,267 @@ const WORKSPACE_VIEW_STYLES = `
   color: color-mix(in srgb, CanvasText 62%, transparent);
   white-space: nowrap;
 }
+
+/* ============ v0.7: segmented tab chrome ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tabs"] {
+  gap: 4px;
+  padding: 5px;
+  margin: 10px 12px 0;
+  border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, CanvasText 4%, Canvas);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"] {
+  min-height: 30px;
+  font-size: 12.5px;
+  border-radius: 7px;
+}
+
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [for="dsh-workspace-view-tab-artifacts"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [for="dsh-workspace-view-tab-memory"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [for="dsh-workspace-view-tab-changes"] {
+  border-color: color-mix(in srgb, Highlight 50%, transparent);
+  background: color-mix(in srgb, Highlight 18%, transparent);
+  color: CanvasText;
+  font-weight: 650;
+  box-shadow: 0 1px 2px color-mix(in srgb, CanvasText 12%, transparent);
+}
+
+/* ============ v0.7: filter chips ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="filter-chip"] {
+  flex: none;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 999px;
+  background: var(--dsw-surface);
+  color: var(--dsw-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="filter-chip"]:hover,
+[data-dsh-workspace="view"] [data-dsh-workspace="filter-chip"]:focus-visible {
+  border-color: color-mix(in srgb, Highlight 55%, CanvasText 18%);
+  outline: 2px solid color-mix(in srgb, Highlight 45%, transparent);
+  outline-offset: 1px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="filter-chip"][aria-pressed="true"] {
+  border-color: color-mix(in srgb, Highlight 50%, transparent);
+  background: var(--dsw-accent-soft);
+  color: CanvasText;
+}
+
+/* ============ v0.7: two-column list | detail ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="columns"] {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-items: start;
+}
+
+@media (min-width: 760px) {
+  [data-dsh-workspace="view"] [data-dsh-workspace="columns"] {
+    grid-template-columns: minmax(250px, 340px) minmax(0, 1fr);
+  }
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="column-list"],
+[data-dsh-workspace="view"] [data-dsh-workspace="column-detail"] {
+  min-width: 0;
+}
+
+/* ============ v0.7: readable diff ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-code"] {
+  padding: 0;
+  overflow: hidden;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-lines"] {
+  display: grid;
+  grid-template-columns: min-content min-content minmax(0, 1fr);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-line-num"] {
+  padding: 0 6px;
+  color: var(--dsw-faint);
+  font-size: 10px;
+  text-align: right;
+  user-select: none;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-line-text"] {
+  padding: 0 10px 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-code-line"][data-kind="add"] {
+  background: color-mix(in srgb, var(--dsw-success) 17%, transparent);
+  box-shadow: inset 3px 0 0 var(--dsw-success);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-code-line"][data-kind="remove"] {
+  background: color-mix(in srgb, var(--dsw-danger) 17%, transparent);
+  box-shadow: inset 3px 0 0 var(--dsw-danger);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-code-line"][data-kind="hunk"] {
+  background: var(--dsw-accent-soft);
+  color: color-mix(in srgb, var(--dsw-accent) 82%, CanvasText 18%);
+  font-weight: 600;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-code-line"][data-kind="header"] {
+  color: var(--dsw-faint);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-stats"] {
+  color: var(--dsw-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-stats"] b[data-sign="add"] {
+  color: var(--dsw-success);
+  font-weight: 700;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-stats"] b[data-sign="del"] {
+  color: var(--dsw-danger);
+  font-weight: 700;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="change-diff"] [data-dsh-workspace="diff-block"] + [data-dsh-workspace="diff-block"] {
+  margin-top: 12px;
+}
+
+/* ============ v0.7: artifact status chips ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"] {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--dsw-border-strong);
+  border-radius: 999px;
+  color: var(--dsw-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="available"] {
+  border-color: color-mix(in srgb, var(--dsw-success) 50%, transparent);
+  color: var(--dsw-success);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="oversized"],
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="stale"] {
+  border-color: color-mix(in srgb, var(--dsw-warning) 50%, transparent);
+  color: var(--dsw-warning);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="error"] {
+  border-color: color-mix(in srgb, var(--dsw-danger) 50%, transparent);
+  color: var(--dsw-danger);
+}
+
+/* ============ v0.7: toolbar rows + segmented scopes + primary actions ============ */
+
+[data-dsh-workspace="view"] [data-dsw-row] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsw-row] + [data-dsw-row] {
+  margin-top: 8px;
+}
+
+[data-dsh-workspace="view"] [data-dsw-segment] {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, CanvasText 4%, Canvas);
+}
+
+[data-dsh-workspace="view"] [data-dsw-segment] button {
+  min-height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12px;
+}
+
+[data-dsh-workspace="view"] [data-dsw-segment] button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, Highlight 45%, transparent);
+  background: var(--dsw-accent-soft);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-content"] button[data-dsw-primary="true"] {
+  background: color-mix(in srgb, Highlight 24%, Canvas);
+  border-color: color-mix(in srgb, Highlight 55%, transparent);
+  color: CanvasText;
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsw-editor-actions] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsw-editor-actions] button {
+  flex: 1 1 120px;
+}
+
+/* ============ v0.7: memory conflict version identity ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-conflict-columns"] section {
+  border: 1px solid var(--dsw-border);
+  border-radius: 9px;
+  padding: 8px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-conflict-columns"] section[data-dsw-version="keep"] {
+  border-color: color-mix(in srgb, var(--dsw-success) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--dsw-success);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-conflict-columns"] section[data-dsw-version="conflict"] {
+  border-color: color-mix(in srgb, var(--dsw-warning) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--dsw-warning);
+}
+
+/* ============ v0.7: artifact item grid with status chip ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-item"] [data-dsh-workspace="artifact-status-chip"] {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-item"] [data-dsh-workspace="artifact-meta"] {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
 `;
 
 let styleUsers = 0;

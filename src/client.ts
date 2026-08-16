@@ -132,7 +132,8 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
           };
           remotes.set(sessionId, adapted);
           return adapted;
-        };        const disposeStyles = installWorkspaceStyles();
+        };
+        const disposeStyles = installWorkspaceStyles();
         const disposers: (() => void)[] = [disposeStyles];
         const artifacts = createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
           resolveRemote,

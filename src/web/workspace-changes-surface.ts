@@ -29,17 +29,6 @@ const statusLabels: Record<GitChange["status"], string> = {
   unmerged: "U",
 };
 
-const statusNames: Record<GitChange["status"], string> = {
-  added: "Added",
-  modified: "Modified",
-  deleted: "Deleted",
-  renamed: "Renamed",
-  copied: "Copied",
-  untracked: "Untracked",
-  typechange: "Type change",
-  unmerged: "Unmerged",
-};
-
 type ChangeFilter = "all" | "added" | "modified" | "deleted" | "untracked" | "staged";
 
 const filterLabels: readonly { readonly key: ChangeFilter; readonly label: string }[] = [
@@ -142,11 +131,11 @@ export function createWorkspaceChangesSurfaceComponent(
       setDiff(undefined);
       activeRemote.gitDiff(selectedPath).then((result) => {
         if (token !== request.current) return;
-        if (!result.ok) { setDiffStatus("error"); setMessage("Diff is unavailable for this change."); return; }
+        if (!result.ok) { setDiffStatus("error"); setMessage(friendlyRemoteMessage(result.error.code, "Diff is unavailable for this change.")); return; }
         setDiff(result.value);
         setDiffStatus("idle");
         setMessage(undefined);
-      }).catch(() => { if (token === request.current) setDiffStatus("error"); });
+      }).catch((error) => { if (token === request.current) { setDiffStatus("error"); setMessage(friendlyRemoteMessage(remoteCode(error), "Diff is unavailable for this change.")); } });
     }, [selectedPath, activeRemote]);
 
     useEffect(() => {
@@ -175,6 +164,12 @@ export function createWorkspaceChangesSurfaceComponent(
     const visible = changes.filter((change) => matchesFilter(change, filter));
     const selected = changes.find((change) => change.path === selectedPath);
     const selectedIsUntracked = selected?.status === "untracked";
+    // Parse each diff section once per render; the surface needs the typed
+    // lines for rendering and the stats for the header.
+    const stagedDiff = diff ? parseUnifiedDiff(diff.staged) : undefined;
+    const unstagedDiff = diff ? parseUnifiedDiff(diff.unstaged) : undefined;
+    const diffInsertions = (stagedDiff?.insertions ?? 0) + (unstagedDiff?.insertions ?? 0);
+    const diffDeletions = (stagedDiff?.deletions ?? 0) + (unstagedDiff?.deletions ?? 0);
 
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading git changes…")
@@ -214,9 +209,9 @@ export function createWorkspaceChangesSurfaceComponent(
               createElement("div", { "data-dsh-workspace": "surface-title" },
                 createElement("h3", null, selectedPath),
                 selected && createElement("span", { "data-dsh-workspace": "diff-stats" },
-                  createElement("b", { "data-sign": "add" }, `+${diffLinesCount(diff.staged).insertions + diffLinesCount(diff.unstaged).insertions}`),
+                  createElement("b", { "data-sign": "add" }, `+${diffInsertions}`),
                   " ",
-                  createElement("b", { "data-sign": "del" }, `−${diffLinesCount(diff.staged).deletions + diffLinesCount(diff.unstaged).deletions}`),
+                  createElement("b", { "data-sign": "del" }, `−${diffDeletions}`),
                 ),
               ),
               createElement("div", { "data-dsh-workspace": "surface-actions" },
@@ -227,11 +222,11 @@ export function createWorkspaceChangesSurfaceComponent(
             selectedIsUntracked && workspaceNotice("info", "Untracked file — stage it to see a diff."),
             !selectedIsUntracked && diff.staged && createElement("section", { "aria-label": "Staged diff", "data-dsh-workspace": "diff-block" },
               createElement("h4", null, "Staged"),
-              createElement("pre", { "data-dsh-workspace": "diff-code" }, diffLines(parseUnifiedDiff(diff.staged).lines)),
+              createElement("pre", { "data-dsh-workspace": "diff-code" }, diffLines(stagedDiff!.lines)),
             ),
             !selectedIsUntracked && diff.unstaged && createElement("section", { "aria-label": "Unstaged diff", "data-dsh-workspace": "diff-block" },
               createElement("h4", null, "Unstaged"),
-              createElement("pre", { "data-dsh-workspace": "diff-code" }, diffLines(parseUnifiedDiff(diff.unstaged).lines)),
+              createElement("pre", { "data-dsh-workspace": "diff-code" }, diffLines(unstagedDiff!.lines)),
             ),
             !selectedIsUntracked && !diff.staged && !diff.unstaged && createElement("p", { role: "status" }, "No diff content for this change."),
           ),
@@ -246,9 +241,6 @@ export function createWorkspaceChangesSurfaceComponent(
   };
 }
 
-function diffLinesCount(diffText: string): { readonly insertions: number; readonly deletions: number } {
-  const parsed = parseUnifiedDiff(diffText);
-  return { insertions: parsed.insertions, deletions: parsed.deletions };
-}
-
 export type { GitDiffResult };
+export type { ChangeFilter };
+export { matchesFilter };

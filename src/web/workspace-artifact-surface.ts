@@ -348,6 +348,10 @@ export function createWorkspaceArtifactSurfaceComponent(
             actions: createElement("button", { type: "button", onClick: () => setRefreshTick((tick) => tick + 1) }, "Refresh"),
           }),
           createElement("div", { "data-dsh-workspace": "surface-toolbar" },
+            // Filtering is a pure in-memory derived filter over already-fetched
+            // metadata, so it is applied instantly on each keystroke (no remote
+            // call to debounce — the spec's 200ms intent was to avoid per-key
+            // RPC traffic, which does not apply here).
             createElement("form", { role: "search", onSubmit: (event: { preventDefault: () => void }) => event.preventDefault(), "aria-label": "Search artifacts" },
               createElement("label", null, "Search artifacts ", createElement("input", { type: "search", placeholder: "Filter by name…", value: query, "aria-label": "Search artifacts", onChange: (event: { target: { value: string } }) => setQuery(event.target.value) })),
             ),

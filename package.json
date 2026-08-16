@@ -2,6 +2,9 @@
   "name": "dsh-workspace-plugin",
   "version": "0.3.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./lib/index.js",
   "files": [
     "lib/index.js",
