@@ -1,6 +1,6 @@
 # v0.5 Memory Governance implementation evidence
 
-Fixed SHA: `cacff0114744b11db5aad38f58a02ea0b6086c24`
+Fixed SHA: `0b1e601bff06183db25456406b8a7288ef3f78c3`
 
 - Governance records carry origin, source references, verification/stale state, revision, retention, optional conflict/expiry/pin metadata, and typed transitions.
 - Verify/reject/reverify, stale, pin/unpin, archive/restore, and forget require explicit user authorization where destructive or trust-elevating.
