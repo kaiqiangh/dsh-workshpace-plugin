@@ -1,0 +1,10 @@
+# v0.5 Memory Governance implementation evidence
+
+Fixed SHA: `5f25a05`
+
+- Governance records carry origin, source references, verification/stale state, revision, retention, optional conflict/expiry/pin metadata, and typed transitions.
+- Verify/reject/reverify, stale, pin/unpin, archive/restore, and forget require explicit user authorization where destructive or trust-elevating.
+- Host governance uses revision plus content hash optimistic checks; export/import remaps IDs and quarantines imports as unverified with unretractable-copy disclosure in the Web surface.
+- Memory inspection stays review-only: search, render, pin-for-review, export, and import never call Agent/followup/model seams.
+
+Evidence: governance, conflict, import/export, scope, and no-injection tests are included in the 109-test suite; check/build/pack/compatibility smoke are green. Browser governance dialogs remain environment-blocked by the same missing API key/session/workspace limitation recorded for v0.3/v0.4.
