@@ -93,7 +93,6 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const [type, setType] = useState<MemoryType>("fact");
     const [filterType, setFilterType] = useState<MemoryType | "">("");
     const [statusFilter, setStatusFilter] = useState<MemoryStatus>("active");
-    const [pinnedId, setPinnedId] = useState<string | undefined>();
     const [forgetPending, setForgetPending] = useState(false);
     const [status, setStatus] = useState<"loading" | "ready" | "degraded">("loading");
     const [message, setMessage] = useState<string | undefined>();
@@ -139,7 +138,6 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       setState(undefined);
       setRecords([]);
       setSelectedId(undefined);
-      setPinnedId(undefined);
       setSharedWriteAcknowledged(false);
       setTitle("");
       setContent("");
@@ -280,7 +278,6 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       selectedGovernance?.verification === "unverified" && hasConflict && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("reject") }, "Reject conflict"),
       selectedGovernance?.verification === "stale" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("reverify") }, "Re-verify"),
       selectedGovernance?.verification === "verified" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate(selectedGovernance.pinnedAt === undefined ? "pin" : "unpin") }, selectedGovernance.pinnedAt === undefined ? "Pin" : "Unpin"),
-      selected && createElement("button", { type: "button", "aria-pressed": pinnedId === selected.id, onClick: () => { setPinnedId(selected.id); setMessage("Pinned for review only; Memory is not injected into Agent context."); } }, pinnedId === selected.id ? "Pinned for review" : "Pin for review"),
     );
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace Memory…")
@@ -327,7 +324,11 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("button", { ref: confirmButton, type: "button", onClick: () => { setForgetPending(false); void mutate("forget"); } }, "Forget record"),
       createElement("button", { type: "button", onClick: () => { setForgetPending(false); forgetTrigger.current?.focus(); } }, "Cancel"),
     );
-    if (!sessionId) return null;
+    if (!sessionId) {
+      return createElement("section", { role: "region", "aria-label": "Workspace Memory", "data-dsh-workspace": "memory" },
+        createElement("h2", null, "Workspace Memory"),
+        createElement("p", { role: "status" }, "Workspace Memory requires an active Harness session."));
+    }
     return createElement("section", { role: "region", "aria-label": "Workspace Memory", "data-dsh-workspace": "memory" }, createElement("h2", null, "Workspace Memory"), body, confirmation);
   };
 }

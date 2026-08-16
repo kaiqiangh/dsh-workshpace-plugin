@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import TestRenderer, { act } from "react-test-renderer";
 
-import { workspaceMemoryRecordSummary, workspaceMemoryRequest } from "../src/web/workspace-memory-surface.ts";
+import { createWorkspaceMemorySurfaceComponent, workspaceMemoryRecordSummary, workspaceMemoryRequest } from "../src/web/workspace-memory-surface.ts";
 
 test("builds explicit scope requests without exposing filesystem paths", () => {
   assert.deepEqual(workspaceMemoryRequest("project", "ignored"), { scope: "project" });
@@ -28,4 +30,12 @@ test("renders bounded provenance and hash metadata before review", () => {
   });
   assert.equal(summary, "project · decision · agent/session-1 · sha256:aaaaaaaa · updated 2 · last-used never · used 0");
   assert.doesNotMatch(summary, /root:one/u);
+});
+
+test("renders a degraded notice instead of nothing without an active session", () => {
+  const render = createWorkspaceMemorySurfaceComponent({});
+  let tree!: TestRenderer.ReactTestRenderer;
+  act(() => { tree = TestRenderer.create(createElement(render, {})); });
+  const texts = tree.root.findAllByType("p").map((node) => node.children.join(""));
+  assert.ok(texts.includes("Workspace Memory requires an active Harness session."));
 });

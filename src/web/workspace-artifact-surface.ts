@@ -266,7 +266,11 @@ export function createWorkspaceArtifactSurfaceComponent(
           artifacts.length === 0 && createElement("p", { role: "status" }, "No session artifacts yet."),
           selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
         );
-    if (!sessionId) return null;
+    if (!sessionId) {
+      return createElement("section", { "data-dsh-workspace": "artifacts", role: "region", "aria-label": "Workspace artifacts" },
+        createElement("h2", null, "Workspace artifacts"),
+        createElement("p", { role: "status" }, "Workspace artifacts require an active Harness session."));
+    }
     return createElement("section", { "data-dsh-workspace": "artifacts", role: "region", "aria-label": "Workspace artifacts" }, createElement("h2", null, "Workspace artifacts"), body);
   };
 }

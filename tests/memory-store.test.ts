@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -45,6 +45,29 @@ test("round-trips bounded records, deterministic search, tombstones, and last-us
   const state = await reopened.open();
   assert.equal(state.records[0]?.status, "forgotten");
   assert.equal(state.records[0]?.useCount, 1);
+});
+
+test("reclaims a lock older than the configured stale threshold", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-memory-"));
+  const filePath = join(root, "records.jsonl");
+  const value = new MemoryStore({ scope: "project", scopeKey: "root:project", projectRoot: root, filePath, now: () => 100, idFactory: () => "memory:one", lockStaleMs: 100 });
+  await value.open();
+  const lockPath = `${filePath}.lock`;
+  await writeFile(lockPath, "12345\n", "utf8");
+  const old = new Date(100 - 200);
+  await utimes(lockPath, old, old);
+
+  const record = await value.upsert({
+    scope: "project",
+    scopeKey: "root:project",
+    type: "fact",
+    title: "Recovered",
+    content: "A stale lock must not block writes.",
+    tags: [],
+    provenance: { kind: "user" },
+  });
+  assert.equal(record.title, "Recovered");
+  await value.close();
 });
 
 test("keeps expired verified Memory visible as stale for repair and export", async () => {

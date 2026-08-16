@@ -98,6 +98,11 @@ export interface MemoryStoreOptions extends MemoryStoreLocationOptions {
   readonly idFactory?: () => string;
   readonly maxContentBytes?: number;
   readonly migrations?: readonly MemoryMigration[];
+  /**
+   * Age after which a `.lock` file is considered stale and reclaimed.
+   * Defaults to 60_000ms so long compactions are not falsely reported busy.
+   */
+  readonly lockStaleMs?: number;
 }
 
 export interface MemoryMigration {
@@ -331,6 +336,7 @@ export class MemoryStore {
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private readonly maxContentBytes: number;
+  private readonly lockStaleMs: number;
   private readonly projectRoot?: string;
   private readonly migrations: readonly MemoryMigration[];
   private records = new Map<string, MemoryRecord>();
@@ -377,6 +383,7 @@ export class MemoryStore {
     this.now = options.now ?? Date.now;
     this.idFactory = options.idFactory ?? (() => `memory:${randomUUID()}`);
     this.maxContentBytes = safeLimit(options.maxContentBytes, MEMORY_MAX_CONTENT_BYTES);
+    this.lockStaleMs = Number.isSafeInteger(options.lockStaleMs) && options.lockStaleMs! > 0 ? options.lockStaleMs : 60_000;
   }
 
   async open(): Promise<MemoryReadState> {
@@ -691,7 +698,7 @@ export class MemoryStore {
         if ((error as { code?: string })?.code !== "EEXIST" || attempt > 0) throw new MemoryStoreError("SAVE_FAILURE", "Memory store is busy");
         try {
           const info = await stat(lockPath);
-          if (Date.now() - info.mtimeMs < 30_000) throw new MemoryStoreError("SAVE_FAILURE", "Memory store is busy");
+          if (Date.now() - info.mtimeMs < this.lockStaleMs) throw new MemoryStoreError("SAVE_FAILURE", "Memory store is busy");
           await unlink(lockPath);
         } catch (staleError) {
           if (staleError instanceof MemoryStoreError) throw staleError;
