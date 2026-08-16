@@ -29,7 +29,7 @@ export interface MemoryRecord {
     readonly updatedAt: number;
     readonly lastUsedAt?: number;
     readonly useCount: number;
-    readonly contentHash: `sha256:${string}`;
+    readonly contentHash: string;
     readonly status: MemoryStatus;
 }
 export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "title" | "content" | "tags" | "provenance"> & {

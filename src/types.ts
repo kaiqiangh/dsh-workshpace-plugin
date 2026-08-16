@@ -31,6 +31,7 @@ export type {
   MemoryStoreWarning,
   MemoryType,
 } from "./domain/memory-store.ts";
+export type { MemoryScopeRequest, MemoryWorkspaceContext } from "./domain/memory.ts";
 
 export type AgentId = SessionId;
 

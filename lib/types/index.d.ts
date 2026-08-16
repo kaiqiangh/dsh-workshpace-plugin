@@ -1,7 +1,10 @@
 import { TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
 import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
+import { type MemoryScopeRequest } from "./domain/memory.ts";
+import { type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
 export { MEMORY_MAX_CONTENT_BYTES, MEMORY_MAX_QUERY_BYTES, MEMORY_MAX_RESULTS, MEMORY_MAX_TAGS, MEMORY_MAX_TAG_BYTES, MEMORY_MAX_TITLE_BYTES, MEMORY_SCHEMA_VERSION, memoryStorePath, MemoryStore, MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryProvenance, type MemoryReadState, type MemoryRecord, type MemoryScope, type MemorySearchOptions, type MemoryStatus, type MemoryStoreErrorCode, type MemoryStoreLocationOptions, type MemoryStoreOptions, type MemoryStoreWarning, type MemoryType, } from "./domain/memory-store.ts";
+export { WorkspaceMemoryDomain, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export { PreviewPanelError, PreviewService, type BinaryPreviewDescriptor, type BoundedTextRead, type CsvPreviewDescriptor, type JsonPreviewDescriptor, type MarkdownPreviewDescriptor, type OpenedResource, type PreviewDescriptor, type PreviewErrorCode, type PreviewErrorDescriptor, type PreviewLimits, type ResourceRequest, type TextPreviewDescriptor, type UnsupportedPreviewDescriptor, } from "./domain/preview.ts";
@@ -15,6 +18,7 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
 }
 export declare class WorkspaceService extends TypertRemoteService {
     private snapshot;
+    private readonly memoryDomain;
     private artifactCarrier?;
     private artifactAgentId?;
     private artifactRouteDispose?;
@@ -30,6 +34,15 @@ export declare class WorkspaceService extends TypertRemoteService {
     replaceContext(snapshot: PinnedContextRemoteSnapshot): PinnedContextRemoteSnapshot;
     artifactMetadata(): Promise<readonly WorkspaceDeliverable[]>;
     previewArtifact(id: string): Promise<WorkspaceArtifactPreview>;
+    memoryOpen(request: MemoryScopeRequest): Promise<MemoryReadState>;
+    memoryList(request: MemoryScopeRequest, options?: MemoryListOptions): Promise<readonly MemoryRecord[]>;
+    memoryUpsert(request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord>;
+    memoryArchive(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
+    memoryForget(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
+    memorySearch(request: MemoryScopeRequest, query: string, options?: MemorySearchOptions): Promise<readonly MemoryRecord[]>;
+    memoryMarkUsed(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
+    memoryClose(request: MemoryScopeRequest): Promise<void>;
+    private memoryContext;
     private carrier;
 }
 export declare const name = "dsh-workspace-plugin";

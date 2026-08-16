@@ -36,7 +36,7 @@ export interface MemoryRecord {
   readonly updatedAt: number;
   readonly lastUsedAt?: number;
   readonly useCount: number;
-  readonly contentHash: `sha256:${string}`;
+  readonly contentHash: string;
   readonly status: MemoryStatus;
 }
 
@@ -131,7 +131,7 @@ function boundedInteger(value: unknown, label: string): asserts value is number 
   if (!Number.isSafeInteger(value) || (value as number) < 0) throw new MemoryStoreError("INVALID_RECORD", `${label} is invalid`);
 }
 
-function hashFor(content: string): `sha256:${string}` {
+function hashFor(content: string): string {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
@@ -200,7 +200,7 @@ function validateRecord(value: unknown, expectedScope: MemoryScope, expectedScop
     updatedAt: record.updatedAt,
     ...(record.lastUsedAt === undefined ? {} : { lastUsedAt: record.lastUsedAt }),
     useCount: record.useCount,
-    contentHash: record.contentHash as `sha256:${string}`,
+    contentHash: record.contentHash,
     status: record.status as MemoryStatus,
   });
 }

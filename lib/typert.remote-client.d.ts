@@ -4,7 +4,7 @@ import type {
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceDeliverable } from 'dsh-workspace-plugin/client'
-import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview } from 'dsh-workspace-plugin/types'
+import type { AgentId, MemoryDraft, MemoryListOptions, MemoryReadState, MemoryRecord, MemoryScopeRequest, MemorySearchOptions, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview } from 'dsh-workspace-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$776f726b7370616365 {
@@ -20,6 +20,14 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'agent:workspace/artifactMetadata': () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
     'agent:workspace/contextSnapshot': () => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     'agent:workspace/focus': () => Promise<RemoteResult<{ readonly focused: boolean; }>>
+    'agent:workspace/memoryArchive': (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    'agent:workspace/memoryClose': (request: MemoryScopeRequest) => Promise<RemoteResult<void>>
+    'agent:workspace/memoryForget': (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    'agent:workspace/memoryList': (request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    'agent:workspace/memoryMarkUsed': (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    'agent:workspace/memoryOpen': (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>
+    'agent:workspace/memorySearch': (request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    'agent:workspace/memoryUpsert': (request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
     'agent:workspace/previewArtifact': (id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
     'agent:workspace/replaceContext': (snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
   }

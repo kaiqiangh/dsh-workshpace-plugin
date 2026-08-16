@@ -2,6 +2,8 @@ import { Remote, RemoteScope, TypertRemoteService, type TypertContext } from "@d
 import type { Context } from "@deepseek-ai/cordis";
 import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
 import { resolveWorkspaceRoot, startWorkspace } from "./domain/workspace.ts";
+import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
+import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
 import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
@@ -30,6 +32,7 @@ export {
   type MemoryStoreWarning,
   type MemoryType,
 } from "./domain/memory-store.ts";
+export { WorkspaceMemoryDomain, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
 
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
@@ -126,6 +129,7 @@ function validateSnapshot(snapshot: PinnedContextRemoteSnapshot): PinnedContextR
 
 export class WorkspaceService extends TypertRemoteService {
   private snapshot: PinnedContextRemoteSnapshot = emptySnapshot;
+  private readonly memoryDomain = new WorkspaceMemoryDomain();
   private artifactCarrier?: WorkspaceArtifactCarrier;
   private artifactAgentId?: string;
   private artifactRouteDispose?: () => void | Promise<void>;
@@ -133,6 +137,7 @@ export class WorkspaceService extends TypertRemoteService {
   constructor(ctx: Context) {
     super(ctx, "workspace");
     ctx.effect(() => () => {
+      void this.memoryDomain.dispose();
       this.artifactRouteDispose?.();
       this.artifactRouteDispose = undefined;
       this.artifactCarrier?.dispose();
@@ -171,6 +176,61 @@ export class WorkspaceService extends TypertRemoteService {
   async previewArtifact(id: string): Promise<WorkspaceArtifactPreview> {
     const carrier = await this.carrier();
     return carrier ? carrier.previewArtifact(id) : { type: "error", code: "PROVIDER_UNAVAILABLE", message: "Workspace artifact carrier is unavailable" };
+  }
+
+  @RemoteScope("agent")
+  async memoryOpen(request: MemoryScopeRequest): Promise<MemoryReadState> {
+    return this.memoryDomain.open(this.memoryContext(request), request);
+  }
+
+  @RemoteScope("agent")
+  async memoryList(request: MemoryScopeRequest, options?: MemoryListOptions): Promise<readonly MemoryRecord[]> {
+    return this.memoryDomain.list(this.memoryContext(request), request, options ?? {});
+  }
+
+  @RemoteScope("agent")
+  async memoryUpsert(request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord> {
+    return this.memoryDomain.upsert(this.memoryContext(request), request, draft);
+  }
+
+  @RemoteScope("agent")
+  async memoryArchive(request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
+    return this.memoryDomain.archive(this.memoryContext(request), request, id);
+  }
+
+  @RemoteScope("agent")
+  async memoryForget(request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
+    return this.memoryDomain.forget(this.memoryContext(request), request, id);
+  }
+
+  @RemoteScope("agent")
+  async memorySearch(request: MemoryScopeRequest, query: string, options?: MemorySearchOptions): Promise<readonly MemoryRecord[]> {
+    return this.memoryDomain.search(this.memoryContext(request), request, query, options ?? {});
+  }
+
+  @RemoteScope("agent")
+  async memoryMarkUsed(request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
+    return this.memoryDomain.markUsed(this.memoryContext(request), request, id);
+  }
+
+  @RemoteScope("agent")
+  async memoryClose(request: MemoryScopeRequest): Promise<void> {
+    return this.memoryDomain.close(this.memoryContext(request), request);
+  }
+
+  private memoryContext(request: MemoryScopeRequest): { readonly identity: { readonly sessionId: string; readonly rootId: string }; readonly root?: string } {
+    const scoped = this.ctx as Context & { readonly agent?: { readonly id: AgentId; readonly session?: { readonly header?: { readonly cwd?: string } } } };
+    const cwd = scoped.agent?.session?.header?.cwd;
+    if (!scoped.agent) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Workspace Session is unavailable");
+    if (!cwd && request.scope === "user") return { identity: { sessionId: scoped.agent.id, rootId: "root:unavailable" } };
+    if (!cwd) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Workspace Session is unavailable");
+    try {
+      const root = resolveWorkspaceRoot(cwd, ".");
+      return { identity: startWorkspace({ sessionId: scoped.agent.id, processCwd: cwd }).identity, root };
+    } catch (error) {
+      if (request.scope === "user") return { identity: { sessionId: scoped.agent.id, rootId: "root:unavailable" } };
+      throw error;
+    }
   }
 
   private async carrier(): Promise<WorkspaceArtifactCarrier | undefined> {
