@@ -1,11 +1,9 @@
 import type { PreviewDescriptor } from "./preview.ts";
-import { type WorkspaceIdentity, type WorkspacePath } from "./workspace.ts";
 export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale";
 export interface WorkspaceDeliverableSource {
-    readonly identity: WorkspaceIdentity;
-    readonly path: WorkspacePath;
+    readonly sessionId: string;
+    readonly workspaceId: string;
     readonly kind: "artifact" | "file";
-    readonly createdAt?: number;
 }
 export interface WorkspaceDeliverable {
     readonly id: string;

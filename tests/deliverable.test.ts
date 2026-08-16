@@ -23,14 +23,16 @@ test("builds bounded deliverable metadata with a safe download name", async () =
     assert.equal(descriptor.type, "binary");
     if (descriptor.type !== "binary") return;
     const deliverable = createWorkspaceDeliverable(descriptor, {
-      identity,
-      path: descriptor.path,
+      sessionId: identity.sessionId,
+      workspaceId: identity.rootId,
       kind: "artifact",
     }, 3);
     assert.equal(deliverable.preview, "available");
     assert.equal(deliverable.mediaType, "image/png");
     assert.equal(deliverable.downloadName, "report__.png");
     assert.equal(deliverable.resourceId, descriptor.resourceId);
+    assert.deepEqual(deliverable.source, { sessionId: identity.sessionId, workspaceId: identity.rootId, kind: "artifact" });
+    assert.equal(deliverable.id.includes("report"), false);
     assert.equal("content" in deliverable, false);
     service.dispose();
   } finally {

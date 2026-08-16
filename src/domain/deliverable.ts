@@ -1,15 +1,15 @@
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 
 import type { PreviewDescriptor } from "./preview.ts";
-import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspacePath } from "./workspace.ts";
+import { normalizeWorkspacePath, type WorkspacePath } from "./workspace.ts";
 
 export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale";
 
 export interface WorkspaceDeliverableSource {
-  readonly identity: WorkspaceIdentity;
-  readonly path: WorkspacePath;
+  readonly sessionId: string;
+  readonly workspaceId: string;
   readonly kind: "artifact" | "file";
-  readonly createdAt?: number;
 }
 
 export interface WorkspaceDeliverable {
@@ -35,6 +35,10 @@ function assertText(value: unknown, label: string, max: number): asserts value i
   if (typeof value !== "string" || !value.trim() || value.length > max || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new WorkspaceDeliverableError(`${label} is invalid`);
   }
+}
+
+function opaqueId(source: WorkspaceDeliverableSource, path: string): string {
+  return `workspace:${createHash("sha256").update(`${source.sessionId}:${source.workspaceId}:${path}`).digest("hex").slice(0, 32)}`;
 }
 
 function mediaExtension(mediaType: string): string {
@@ -78,22 +82,23 @@ export function createWorkspaceDeliverable(
   sizeBytes: number,
 ): WorkspaceDeliverable {
   if (!descriptor || typeof descriptor !== "object" || typeof source !== "object") throw new WorkspaceDeliverableError("Deliverable metadata is invalid");
-  assertText(source.path, "Source path", 4_096);
-  const path = normalizeWorkspacePath(source.path);
+  assertText(source.sessionId, "Source session", 256);
+  assertText(source.workspaceId, "Source workspace", 256);
+  const path = "path" in descriptor ? normalizeWorkspacePath(descriptor.path) : undefined;
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new WorkspaceDeliverableError("Deliverable size is invalid");
   const mediaType = previewMediaType(descriptor);
   const resourceId = descriptor.type === "binary" ? descriptor.resourceId : undefined;
-  const name = basename(path) || "workspace-file";
-  const id = resourceId ? `workspace:${resourceId}` : `workspace:${source.identity.sessionId}:${path}`;
+  const name = path ? basename(path) || "workspace-file" : "workspace-file";
+  const id = resourceId ? `workspace:${resourceId}` : opaqueId(source, path ?? name);
   return Object.freeze({
     id,
     name,
     mediaType,
     sizeBytes,
-    source: Object.freeze({ ...source, path }),
+    source: Object.freeze({ ...source }),
     preview: previewState(descriptor),
     ...(resourceId === undefined ? {} : { resourceId }),
-    downloadName: safeDownloadName(source.path, mediaType),
+    downloadName: safeDownloadName(path ?? name, mediaType),
     ...(mediaType.startsWith("image/") ? { altText: name } : {}),
   });
 }
