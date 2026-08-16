@@ -81,10 +81,19 @@ export function createWorkspaceDeliverable(
   source: WorkspaceDeliverableSource,
   sizeBytes: number,
 ): WorkspaceDeliverable {
-  if (!descriptor || typeof descriptor !== "object" || typeof source !== "object") throw new WorkspaceDeliverableError("Deliverable metadata is invalid");
+  if (!descriptor || typeof descriptor !== "object" || !source || typeof source !== "object") throw new WorkspaceDeliverableError("Deliverable metadata is invalid");
   assertText(source.sessionId, "Source session", 256);
   assertText(source.workspaceId, "Source workspace", 256);
-  const path = "path" in descriptor ? normalizeWorkspacePath(descriptor.path) : undefined;
+  if (source.kind !== "artifact" && source.kind !== "file") throw new WorkspaceDeliverableError("Source kind is invalid");
+  let path: WorkspacePath | undefined;
+  if ("path" in descriptor) {
+    assertText(descriptor.path, "Descriptor path", 4_096);
+    try {
+      path = normalizeWorkspacePath(descriptor.path);
+    } catch {
+      throw new WorkspaceDeliverableError("Descriptor path is invalid");
+    }
+  }
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new WorkspaceDeliverableError("Deliverable size is invalid");
   const mediaType = previewMediaType(descriptor);
   const resourceId = descriptor.type === "binary" ? descriptor.resourceId : undefined;
