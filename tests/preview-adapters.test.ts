@@ -57,7 +57,7 @@ test("keeps CSV accessible and binary states explicit", () => {
 
 test("sanitizes Markdown images without touching links", () => {
   assert.equal(
-    sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com) ![y][remote]\n[remote]: https://example.com/y.png\n![a [b]](https://evil.invalid/x.png)\n![shortcut]\n[shortcut]: <https://evil.invalid/shortcut.png>"),
-    "x [link](https://example.com) y\n\na [b]\nshortcut\n",
+    sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com) ![y][remote]\n[remote]: https://example.com/y.png\n![a [b]](https://evil.invalid/x.png)\n![shortcut]\n[shortcut]: <https://evil.invalid/shortcut.png>\n![foo\\]bar]\n[foo\\]bar]: <https://evil.invalid/escaped.png>"),
+    "x [link](https://example.com) y\n\na [b]\nshortcut\n\nfoo\\]bar\n",
   );
 });

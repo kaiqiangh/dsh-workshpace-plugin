@@ -18,11 +18,7 @@ export interface WorkspacePreviewRenderOptions {
 
 /** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
 export function sanitizeWorkspaceMarkdown(text: string): string {
-  const remoteDefinitions = new Set<string>();
-  const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[([^\]]+)\]:\s*<?https?:\/\/[^>\s]+>?[^\r\n]*$/gimu, (_match, label: string) => {
-    remoteDefinitions.add(label.trim().toUpperCase());
-    return "";
-  });
+  const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[((?:\\.|[^\]])+)\]:\s*<?https?:\/\/[^>\s]+>?[^\r\n]*$/gimu, "");
   const readDelimited = (start: number, open: string, close: string): number => {
     let depth = 0;
     for (let index = start; index < withoutRemoteDefinitions.length; index += 1) {
@@ -44,7 +40,8 @@ export function sanitizeWorkspaceMarkdown(text: string): string {
             ? readDelimited(destinationStart, "[", "]")
             : -1;
         const alt = withoutRemoteDefinitions.slice(index + 2, altEnd);
-        if (destinationEnd !== -1 || remoteDefinitions.has(alt.trim().toUpperCase())) {
+        const hasExplicitDestination = withoutRemoteDefinitions[destinationStart] === "(" || withoutRemoteDefinitions[destinationStart] === "[";
+        if (!hasExplicitDestination || destinationEnd !== -1) {
           sanitized += alt;
           index = destinationEnd === -1 ? altEnd + 1 : destinationEnd + 1;
           continue;
