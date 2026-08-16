@@ -39,3 +39,24 @@ test("renders a degraded notice instead of nothing without an active session", (
   const texts = tree.root.findAllByType("p").map((node) => node.children.join(""));
   assert.ok(texts.includes("Workspace Memory requires an active Harness session."));
 });
+
+test("keeps a single governance Pin control (no UI-only Pin for review)", async () => {
+  const remote = {
+    memoryOpen: async () => ({ ok: true, value: { scope: "project", scopeKey: "root:one", records: [], warnings: [], readOnly: false } }),
+    memoryList: async () => ({ ok: true, value: [] }),
+    memorySearch: async () => ({ ok: true, value: [] }),
+    memoryUpsert: async () => ({ ok: true, value: {} }),
+    memoryArchive: async () => ({ ok: true, value: {} }),
+    memoryForget: async () => ({ ok: true, value: {} }),
+    memoryGovern: async () => ({ ok: true, value: {} }),
+    memoryExport: async () => ({ ok: true, value: "{}" }),
+    memoryImport: async () => ({ ok: true, value: [] }),
+  };
+  const render = createWorkspaceMemorySurfaceComponent({ remote });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  const buttons = tree.root.findAllByType("button").map((node) => node.children.join(""));
+  assert.ok(buttons.includes("Create Memory"));
+  assert.equal(buttons.includes("Pin for review"), false);
+  assert.equal(buttons.includes("Pinned for review"), false);
+});

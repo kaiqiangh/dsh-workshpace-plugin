@@ -44,7 +44,7 @@ export {
   type MemoryType,
   type MemoryContentHash,
 } from "./domain/memory-store.ts";
-export { WorkspaceMemoryDomain, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
+export { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
 export {
   assertMemoryRevision,
   conflictGroupFor,
@@ -58,6 +58,7 @@ export {
 } from "./domain/memory-governance.ts";
 
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
+export { MEMORY_TYPES } from "./types.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export {
   PreviewPanelError,
@@ -106,7 +107,6 @@ export {
   registerMemoryPropose,
   MEMORY_PROPOSE_SECTION,
   MEMORY_PROPOSE_TOOL_NAME,
-  type MemoryProposeAgent,
   type MemoryProposeArgs,
 } from "./host/workspace-memory-propose.ts";
 
@@ -159,17 +159,22 @@ function validateSnapshot(snapshot: PinnedContextRemoteSnapshot): PinnedContextR
   });
 }
 
+export interface WorkspaceServiceConfig {
+  readonly memoryDomain?: WorkspaceMemoryDomain;
+}
+
 export class WorkspaceService extends TypertRemoteService {
   static inject = ["agents"] as const;
   private snapshot: PinnedContextRemoteSnapshot = emptySnapshot;
-  private readonly memoryDomain = new WorkspaceMemoryDomain();
+  private readonly memoryDomain: WorkspaceMemoryDomain;
   private readonly memoryWorkspaceSnapshots = new Map<string, WorkspaceSnapshot>();
   private artifactCarrier?: WorkspaceArtifactCarrier;
   private artifactAgentId?: string;
   private artifactRouteDispose?: () => void | Promise<void>;
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: WorkspaceServiceConfig = {}) {
     super(ctx, "workspace");
+    this.memoryDomain = config.memoryDomain ?? new WorkspaceMemoryDomain();
     ctx.effect(() => () => {
       void this.memoryDomain.dispose();
       this.artifactRouteDispose?.();
@@ -345,6 +350,7 @@ export const name = "dsh-workspace-plugin";
 export const inject = ["tools", "systemPrompt"] as const;
 
 export function apply(ctx: Context): void {
-  ctx.plugin(WorkspaceService);
-  ctx.effect(() => registerMemoryPropose(ctx), "dsh-workspace memory propose tool");
+  const memoryDomain = new WorkspaceMemoryDomain();
+  ctx.plugin(WorkspaceService, { memoryDomain });
+  ctx.effect(() => registerMemoryPropose(ctx, memoryDomain), "dsh-workspace memory propose tool");
 }

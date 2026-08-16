@@ -16,7 +16,7 @@ import {
   type MemoryStoreOptions,
 } from "./memory-store.ts";
 import { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, memoryGovernance, memoryRetentionForScope, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
-import type { WorkspaceIdentity } from "./workspace.ts";
+import { resolveWorkspaceRoot, startWorkspace, type WorkspaceIdentity, type WorkspaceSnapshot } from "./workspace.ts";
 
 export interface MemoryScopeRequest {
   readonly scope: MemoryScope;
@@ -31,6 +31,31 @@ export interface MemoryScopeRequest {
 export interface MemoryWorkspaceContext {
   readonly identity: WorkspaceIdentity;
   readonly root?: string;
+}
+
+/** Agent handle as observed by the Host (session header carries the cwd). */
+export interface MemoryHostAgent {
+  readonly id: string;
+  readonly session?: { readonly header?: { readonly cwd?: string } };
+}
+
+/**
+ * Resolve the canonical Workspace identity and Root for one agent/session.
+ * Shared by the Host RPC service and the memory-propose tool so both write
+ * through the same identity semantics.
+ */
+export function workspaceMemoryContextFor(agent: MemoryHostAgent): { readonly identity: WorkspaceIdentity; readonly root: string; readonly snapshot: WorkspaceSnapshot } {
+  const cwd = agent.session?.header?.cwd;
+  if (typeof agent.id !== "string" || !agent.id.trim() || !cwd) {
+    throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Workspace Session is unavailable");
+  }
+  let snapshot: WorkspaceSnapshot;
+  try {
+    snapshot = startWorkspace({ sessionId: agent.id, processCwd: cwd });
+  } catch (error) {
+    throw new MemoryStoreError("PROJECT_UNAVAILABLE", error instanceof Error ? error.message : "Workspace Root is unavailable");
+  }
+  return { identity: snapshot.identity, root: resolveWorkspaceRoot(cwd, "."), snapshot };
 }
 
 interface MemoryLocation {

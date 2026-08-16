@@ -1,23 +1,27 @@
 import { TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
 import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
-import { type MemoryScopeRequest } from "./domain/memory.ts";
+import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
 export { MEMORY_MAX_CONTENT_BYTES, MEMORY_MAX_FILE_BYTES, MEMORY_MAX_QUERY_BYTES, MEMORY_MAX_RESULTS, MEMORY_MAX_TAGS, MEMORY_MAX_TAG_BYTES, MEMORY_MAX_TITLE_BYTES, MEMORY_SCHEMA_VERSION, memoryStorePath, MemoryStore, MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryMigration, type MemoryConfidence, type MemoryGovernance, type MemoryOrigin, type MemoryRetention, type MemorySourceRef, type MemoryVerification, type MemoryProvenance, type MemoryReadState, type MemoryRecord, type MemoryScope, type MemorySearchOptions, type MemoryStatus, type MemoryStoreErrorCode, type MemoryStoreLocationOptions, type MemoryStoreOptions, type MemoryStoreWarning, type MemoryType, type MemoryContentHash, } from "./domain/memory-store.ts";
-export { WorkspaceMemoryDomain, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
+export { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
 export { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, memoryGovernance, memoryGovernanceEligible, MemoryGovernanceError, sourceRef, transitionMemoryGovernance, } from "./domain/memory-governance.ts";
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
+export { MEMORY_TYPES } from "./types.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export { PreviewPanelError, PreviewService, type BinaryPreviewDescriptor, type BoundedTextRead, type CsvPreviewDescriptor, type JsonPreviewDescriptor, type MarkdownPreviewDescriptor, type OpenedResource, type PreviewDescriptor, type PreviewErrorCode, type PreviewErrorDescriptor, type PreviewLimits, type ResourceRequest, type TextPreviewDescriptor, type UnsupportedPreviewDescriptor, } from "./domain/preview.ts";
 export { createWorkspaceDeliverable, deliverableResourceId, safeDownloadName, WorkspaceDeliverableError, type WorkspaceDeliverable, type WorkspaceDeliverableOptions, type WorkspaceDeliverablePreview, type WorkspaceDeliverableSource, } from "./domain/deliverable.ts";
 export { installWorkspaceResourceRoute, registerWorkspaceResourceRoute, type WebRouteRegistrar, type WorkspaceEffectRegistrar, type WorkspaceResourceRouteOptions, } from "./host/workspace-resource.ts";
 export { WorkspaceArtifactCarrier, sessionToolRecords, type WorkspaceArtifactCarrierOptions, type WorkspaceArtifactPreview, type SessionEventLike, } from "./host/workspace-artifacts.ts";
-export { createMemoryProposeTool, proposeMemory, registerMemoryPropose, MEMORY_PROPOSE_SECTION, MEMORY_PROPOSE_TOOL_NAME, type MemoryProposeAgent, type MemoryProposeArgs, } from "./host/workspace-memory-propose.ts";
+export { createMemoryProposeTool, proposeMemory, registerMemoryPropose, MEMORY_PROPOSE_SECTION, MEMORY_PROPOSE_TOOL_NAME, type MemoryProposeArgs, } from "./host/workspace-memory-propose.ts";
 declare module "@deepseek-ai/dsh-typert-protocol" {
     interface TypertContextMap {
         agent: TypertContext<AgentId>;
     }
+}
+export interface WorkspaceServiceConfig {
+    readonly memoryDomain?: WorkspaceMemoryDomain;
 }
 export declare class WorkspaceService extends TypertRemoteService {
     static inject: readonly ["agents"];
@@ -27,7 +31,7 @@ export declare class WorkspaceService extends TypertRemoteService {
     private artifactCarrier?;
     private artifactAgentId?;
     private artifactRouteDispose?;
-    constructor(ctx: Context);
+    constructor(ctx: Context, config?: WorkspaceServiceConfig);
     summary(agent: AgentId): {
         readonly ready: boolean;
         readonly agent: AgentId;

@@ -12,6 +12,7 @@ import type {
   MemoryStatus,
   MemoryType,
 } from "../types.ts";
+import { MEMORY_TYPES } from "../types.ts";
 import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 
 export const WORKSPACE_MEMORY_OVERLAY_SLOT = "shell.overlay" as const;
@@ -36,7 +37,7 @@ export interface WorkspaceMemorySurfaceOptions {
   readonly remote?: WorkspaceMemoryRemote;
 }
 
-export const workspaceMemoryTypes: readonly MemoryType[] = ["decision", "preference", "convention", "fact"];
+export const workspaceMemoryTypes: readonly MemoryType[] = MEMORY_TYPES;
 
 export function workspaceMemoryRequest(scope: MemoryScopeRequest["scope"], userId: string, sharedProject = false): MemoryScopeRequest {
   if (scope === "user") return { scope, userId: userId.trim() || "default" };

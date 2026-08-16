@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open as openFile, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 
+import { MEMORY_TYPES } from "../types.ts";
+
 export const MEMORY_SCHEMA_VERSION = 1 as const;
 export const MEMORY_MAX_TITLE_BYTES = 256;
 export const MEMORY_MAX_CONTENT_BYTES = 64 * 1024;
@@ -156,7 +158,7 @@ export class MemoryStoreError extends Error {
 }
 
 const scopes: readonly MemoryScope[] = ["session", "project", "user", "shared-project"];
-const types: readonly MemoryType[] = ["decision", "preference", "convention", "fact"];
+const types: readonly MemoryType[] = MEMORY_TYPES;
 const statuses: readonly MemoryStatus[] = ["active", "archived", "forgotten"];
 const provenanceKinds: readonly MemoryProvenanceKind[] = ["user", "agent", "tool", "import"];
 

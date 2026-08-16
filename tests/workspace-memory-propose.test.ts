@@ -46,7 +46,7 @@ test("proposeMemory writes a model-suggested unverified record with a session so
     title: "Use JSONL for records",
     content: "Keep project memory inspectable with ordinary tools.",
     tags: ["storage"],
-  });
+  }, "tool-call-1");
 
   const records = await memoryDomain.list(context, request);
   assert.equal(saved.scope, "project");
@@ -58,6 +58,8 @@ test("proposeMemory writes a model-suggested unverified record with a session so
   assert.equal(record?.governance?.verification, "unverified");
   assert.equal(record?.governance?.sourceRefs[0]?.kind, "session");
   assert.equal(record?.governance?.sourceRefs[0]?.id, "session-1");
+  assert.equal(record?.governance?.sourceRefs[1]?.kind, "event");
+  assert.equal(record?.governance?.sourceRefs[1]?.id, "tool-call-1");
   assert.equal(record?.governance?.retention, "project-delete");
   await memoryDomain.dispose();
 });

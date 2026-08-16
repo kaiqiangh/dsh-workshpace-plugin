@@ -1,4 +1,6 @@
 import type { SessionId } from "@deepseek-ai/dsh-session";
+import type { MemoryType } from "./domain/memory-store.ts";
+export type { MemoryType };
 
 export type {
   WorkspaceArtifactPreview,
@@ -37,7 +39,6 @@ export type {
   MemoryStoreLocationOptions,
   MemoryStoreOptions,
   MemoryStoreWarning,
-  MemoryType,
 } from "./domain/memory-store.ts";
 export type { MemoryScopeRequest, MemoryWorkspaceContext } from "./domain/memory.ts";
 export type {
@@ -46,6 +47,12 @@ export type {
   MemoryExportBundle,
   MemoryRevisionConflict,
 } from "./domain/memory-governance.ts";
+
+/**
+ * Canonical record types, defined here (not in the node-bound store module)
+ * so client bundles can reference the values without pulling in node:crypto.
+ */
+export const MEMORY_TYPES: readonly MemoryType[] = ["decision", "preference", "convention", "fact"];
 
 export type AgentId = SessionId;
 
