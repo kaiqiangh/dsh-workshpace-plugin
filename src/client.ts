@@ -107,8 +107,8 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
       const registerWorkspaceSurfaces = (scope: ClientContributionContext): (() => void) => {
         const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
-          const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote>();
-          const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote | undefined => {
+        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote>();
+        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote | undefined => {
           if (!sessionId || !workspace) return undefined;
           const cached = remotes.get(sessionId);
           if (cached) return cached;
@@ -132,8 +132,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
           };
           remotes.set(sessionId, adapted);
           return adapted;
-        };
-        const disposeStyles = installWorkspaceStyles();
+        };        const disposeStyles = installWorkspaceStyles();
         const disposers: (() => void)[] = [disposeStyles];
         const artifacts = createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
           resolveRemote,
