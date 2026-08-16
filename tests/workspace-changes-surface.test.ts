@@ -27,7 +27,7 @@ test("renders status badges and a count for git changes", async () => {
   const render = createWorkspaceChangesSurfaceComponent(remoteFor([
     { path: "example.md", status: "added", staged: true },
     { path: "notes.txt", status: "modified", staged: false },
-  ]), {});
+  ]), { refreshMs: 0 });
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
   await act(async () => {});
@@ -42,7 +42,7 @@ test("renders status badges and a count for git changes", async () => {
 });
 
 test("renders an empty state when the working tree is clean", async () => {
-  const render = createWorkspaceChangesSurfaceComponent(remoteFor([]), {});
+  const render = createWorkspaceChangesSurfaceComponent(remoteFor([]), { refreshMs: 0 });
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
   await act(async () => {});
