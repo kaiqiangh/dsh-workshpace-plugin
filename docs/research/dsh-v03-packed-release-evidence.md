@@ -16,7 +16,8 @@ for the pinned DeepSeek Harness baseline.
 - Profile lockfile (v3) SHA-256:
   `7db66e8384a3abab222525769c97fddf6bd30bbb18a76dd42d4d2c8e41feea2c`
 - Packed-consumer lockfile (v3) SHA-256:
-  `3d5774438a62d54601bda44e7d429c15d4632fa8196091acca99bf9604b899ad`
+  `342b360ce7d123246f7918a519dd0779203c838f9f2075ad0875374ca5e7de0f`
+  (run-specific; the disposable lock embeds its temporary tarball path)
 - Runtime: Node `v22.23.2`, npm `10.9.8`, pnpm `11.21.0`
 - Exact resolved package versions: the `PACKAGE_VERSIONS` map in
   [`scripts/dsh-compat-smoke.mjs`](../../scripts/dsh-compat-smoke.mjs).
