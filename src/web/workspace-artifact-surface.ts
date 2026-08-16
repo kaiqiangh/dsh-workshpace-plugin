@@ -114,17 +114,21 @@ export function createWorkspaceArtifactSurfaceComponent(
           if (!active || token !== refreshRequest.current) return;
           const currentId = selectedIdRef.current;
           const nextId = currentId && items.some((item) => item.id === currentId) ? currentId : items[0]?.id;
-          const nextIdentity = artifactIdentity(items.find((item) => item.id === nextId));
+          const nextArtifact = items.find((item) => item.id === nextId);
+          const nextIdentity = artifactIdentity(nextArtifact);
           const selectedArtifactChanged = selectedIdentityRef.current !== nextIdentity;
+          const refreshTextPreview = nextArtifact !== undefined && nextArtifact.resourceId === undefined;
           selectedIdRef.current = nextId;
           selectedIdentityRef.current = nextIdentity;
           setArtifacts(items);
           setSelectedId(nextId);
-          if (selectedArtifactChanged) {
+          if (selectedArtifactChanged || refreshTextPreview) {
             request.current += 1;
             detailArtifact.current = undefined;
             setDetail(undefined);
             setDetailStatus("idle");
+          }
+          if (selectedArtifactChanged) {
             downloadRequest.current += 1;
             downloadController.current?.cancel();
             setDownload({});
