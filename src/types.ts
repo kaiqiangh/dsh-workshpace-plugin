@@ -16,6 +16,21 @@ export type {
   WorkspaceDeliverablePreview,
   WorkspaceDeliverableSource,
 } from "./domain/deliverable.ts";
+export type {
+  MemoryDraft,
+  MemoryListOptions,
+  MemoryProvenance,
+  MemoryReadState,
+  MemoryRecord,
+  MemoryScope,
+  MemorySearchOptions,
+  MemoryStatus,
+  MemoryStoreErrorCode,
+  MemoryStoreLocationOptions,
+  MemoryStoreOptions,
+  MemoryStoreWarning,
+  MemoryType,
+} from "./domain/memory-store.ts";
 
 export type AgentId = SessionId;
 

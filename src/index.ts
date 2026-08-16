@@ -5,6 +5,32 @@ import { resolveWorkspaceRoot, startWorkspace } from "./domain/workspace.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
 import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
+export {
+  MEMORY_MAX_CONTENT_BYTES,
+  MEMORY_MAX_QUERY_BYTES,
+  MEMORY_MAX_RESULTS,
+  MEMORY_MAX_TAGS,
+  MEMORY_MAX_TAG_BYTES,
+  MEMORY_MAX_TITLE_BYTES,
+  MEMORY_SCHEMA_VERSION,
+  memoryStorePath,
+  MemoryStore,
+  MemoryStoreError,
+  type MemoryDraft,
+  type MemoryListOptions,
+  type MemoryProvenance,
+  type MemoryReadState,
+  type MemoryRecord,
+  type MemoryScope,
+  type MemorySearchOptions,
+  type MemoryStatus,
+  type MemoryStoreErrorCode,
+  type MemoryStoreLocationOptions,
+  type MemoryStoreOptions,
+  type MemoryStoreWarning,
+  type MemoryType,
+} from "./domain/memory-store.ts";
+
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export {
