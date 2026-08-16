@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { pathToFileURL } from 'node:url'
+import { runInNewContext } from 'node:vm'
 
 const exec = promisify(execFile)
 const SOURCE_REVISION = '47f943859bef60e4160492346772ded9b24f765a'
@@ -14,12 +15,22 @@ const SOURCE_BASELINE_NOTE = 'ADR-0003 pinned baseline declaration'
 const PACKAGE_VERSIONS = {
   '@deepseek-ai/cordis': '4.0.1',
   '@deepseek-ai/dsh-api-gateway': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-api-remotes': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
   '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-token-meter': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-generator': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-protocol': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-registry': '0.1.0-rc.6',
+  '@types/react': '18.3.12',
+  '@types/node': '26.2.0',
+  '@tsdown/css': '0.22.14',
+  react: '18.3.1',
   tsdown: '0.22.14',
   typescript: '6.0.3',
   zod: '4.4.3',
@@ -39,6 +50,31 @@ async function writeJson(file, value) {
 async function writeText(file, value) {
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, value)
+}
+
+async function wrapWebClient(file) {
+  const source = (await readFile(file, 'utf8')).replace(/[ \t]+$/gm, '')
+  const match = source.match(/export \{ ([^}]+) \};\n?$/)
+  if (!match) throw new Error('client bundle must end with named exports')
+  let body = source.slice(0, match.index)
+  body = body.replace(/^import \{ ([^}]+) \} from ["']([^"']+)["'];?$/gm, (_, names, id) => `const { ${names} } = require("${id}");`)
+  body = body.replace(/^import \* as ([A-Za-z_$][\w$]*) from ["']([^"']+)["'];?$/gm, (_, name, id) => `const ${name} = require("${id}");`)
+  body = body.replace(/^import ([A-Za-z_$][\w$]*) from ["']([^"']+)["'];?$/gm, (_, name, id) => `const ${name} = require("${id}").default ?? require("${id}");`)
+  body = body.replace(/^import ["']([^"']+)["'];?$/gm, (_, id) => `require("${id}");`)
+  const esmLine = body.split('\n').find(line => /^\s*(?:import|export)\b/.test(line))
+  if (esmLine) throw new Error(`client bundle must be self-contained: ${esmLine}`)
+  await writeText(file, `window.__ModuleLoader__.load({
+  id: "dsh-workspace-plugin",
+  factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
+    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+${body}
+    Object.assign(exports, { ${match[1]} });
+    return module.exports;
+  }
+});
+`)
 }
 
 async function packageJson(root, name) {
@@ -69,11 +105,7 @@ async function installProfile(root) {
 async function createFixture(root) {
   const protocolRoot = join(root, 'packages/protocol')
   const pluginRoot = join(root, 'packages/plugin')
-  await mkdir(join(pluginRoot, 'src/web'), { recursive: true })
-  await mkdir(join(pluginRoot, 'src/domain'), { recursive: true })
-  await cp(join(process.cwd(), 'src/web/workspace-conversation.ts'), join(pluginRoot, 'src/web/workspace-conversation.ts'))
-  await cp(join(process.cwd(), 'src/web/workspace-drawer.ts'), join(pluginRoot, 'src/web/workspace-drawer.ts'))
-  await cp(join(process.cwd(), 'src/domain/path.ts'), join(pluginRoot, 'src/domain/path.ts'))
+  await mkdir(pluginRoot, { recursive: true })
   await cp(
     join(root, 'node_modules/@deepseek-ai/dsh-typert-protocol/lib'),
     join(protocolRoot, 'lib'),
@@ -89,11 +121,14 @@ async function createFixture(root) {
       noEmit: true,
       allowImportingTsExtensions: true,
       skipLibCheck: true,
+      types: ['node'],
       paths: {
         '@deepseek-ai/dsh-typert-protocol': ['./packages/protocol/lib/types/index.d.ts'],
         '@deepseek-ai/dsh-typert-protocol/types': ['./packages/protocol/lib/types/types.d.ts'],
-        '@fixture/plugin': ['./packages/plugin/src/index.ts'],
-        '@fixture/plugin/*': ['./packages/plugin/src/*'],
+        'dsh-workspace-plugin': ['./packages/plugin/src/index.ts'],
+        'dsh-workspace-plugin/client': ['./packages/plugin/src/client.ts'],
+        'dsh-workspace-plugin/types': ['./packages/plugin/src/types.ts'],
+        'dsh-workspace-plugin/*': ['./packages/plugin/src/*'],
       },
     },
   })
@@ -112,11 +147,18 @@ async function createFixture(root) {
       target: 'ES2024',
       module: 'ESNext',
       moduleResolution: 'Bundler',
-      strict: true,
+    strict: true,
       allowImportingTsExtensions: true,
       skipLibCheck: true,
+      types: ['node'],
     },
   })
+  await cp(join(process.cwd(), 'src'), join(pluginRoot, 'src'), { recursive: true })
+  await writeText(join(pluginRoot, 'src/typert.remote-client.js'), "export const TYPERT_REMOTE = { package: 'dsh-workspace-plugin', descriptors: [] }\n")
+  await writeText(join(pluginRoot, 'src/typert.remote-client.d.ts'), "export declare const TYPERT_REMOTE: import('@deepseek-ai/dsh-typert-protocol').TypertRemoteContribution\n")
+  await cp(join(process.cwd(), 'package.json'), join(pluginRoot, 'package.json'))
+  await cp(join(process.cwd(), 'package-lock.json'), join(pluginRoot, 'package-lock.json'))
+  await cp(join(process.cwd(), 'cordis.patch.yml'), join(pluginRoot, 'cordis.patch.yml'))
   await writeJson(join(protocolRoot, 'package.json'), {
     name: '@deepseek-ai/dsh-typert-protocol',
     private: true,
@@ -131,117 +173,11 @@ async function createFixture(root) {
     compilerOptions: { rootDir: 'lib', outDir: 'lib/types', noEmit: true },
     files: ['lib/types/index.d.ts', 'lib/types/types.d.ts'],
   })
-  await writeJson(join(pluginRoot, 'package.json'), {
-    name: '@fixture/plugin',
-    version: '0.0.0-smoke',
-    private: true,
-    type: 'module',
-    dsh: { client: { inject: [], platform: 'web', immediately: true } },
-    exports: {
-      '.': { types: './lib/types/index.d.ts', default: './lib/index.js' },
-      './types': { types: './lib/types/types.d.ts', default: './lib/types/types.js' },
-      './client': { types: './lib/types/client.d.ts', default: './lib/client.js' },
-      './client/typert': { types: './lib/typert.client.d.ts', default: './lib/typert.client.js' },
-      './typert': { types: './lib/typert.host.d.ts', default: './lib/typert.host.js' },
-      './remote': { types: './lib/typert.remote-client.d.ts', default: './lib/typert.remote-client.js' },
-      './package.json': './package.json',
-    },
-    files: [
-      'lib/index.js', 'lib/client.js',
-      'lib/typert.host.js', 'lib/typert.host.d.ts',
-      'lib/typert.client.js', 'lib/typert.client.d.ts',
-      'lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts',
-    ],
-  })
   await writeJson(join(pluginRoot, 'tsconfig.json'), {
     extends: '../../tsconfig.base.json',
     compilerOptions: { rootDir: 'src', outDir: 'lib/types', noEmit: true },
     include: ['src'],
   })
-  await writeText(join(pluginRoot, 'src/types.ts'), 'export type AgentId = string\n')
-  await writeText(join(pluginRoot, 'src/index.ts'), `
-import { Remote, RemoteScope, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { Context, } from '@deepseek-ai/cordis'
-import type { TypertContext } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentId } from './types.ts'
-
-declare module '@deepseek-ai/dsh-typert-protocol' {
-  interface TypertContextMap { agent: TypertContext<AgentId> }
-}
-
-export class WorkspaceService extends TypertRemoteService {
-  constructor(ctx: Context) { super(ctx, 'workspace') }
-
-  @Remote
-  summary(agent: AgentId): { readonly ready: boolean; readonly agent: AgentId } {
-    return { ready: true, agent }
-  }
-
-  @RemoteScope('agent')
-  focus(): { readonly focused: boolean } {
-    return { focused: true }
-  }
-}
-
-export type { AgentId } from './types.ts'
-`)
-  await writeText(join(pluginRoot, 'src/client.ts'), `
-import { Service, type Context } from '@deepseek-ai/cordis'
-import { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceConversationDefinition as workspaceContributionDefinition, workspaceConversationView as workspaceContributionView } from './web/workspace-conversation.ts'
-
-export const workspaceClient = { ready: true }
-
-export const fixtureConversationDefinition = {
-  kind: 'workspace-summary', target: 'chat',
-  match: (event: any) => event.type === 'workspace/summary' ? { id: String(event.data.id), role: 'start' } : null,
-  start: (_context: any, match: any) => ({ summary: match.event.data.summary }),
-  update: (context: any) => context.state,
-  buildViewNode: (context: any) => ({ key: context.key, kind: context.kind, id: context.id, target: 'chat', data: context.state }),
-}
-
-export const fixtureConversationView = {
-  target: 'chat',
-  create() {
-    let snapshot: any = { order: [], nodes: new Map() }
-    return {
-      empty: snapshot,
-      replace: ({ nodes }: any) => { snapshot = { order: nodes.map((node: any) => node.key), nodes: new Map(nodes.map((node: any) => [node.key, node])) }; return snapshot },
-      apply: ({ upserts }: any) => { const nodes = new Map(snapshot.nodes); const order = [...snapshot.order]; for (const node of upserts as any[]) { if (!nodes.has(node.key)) order.push(node.key); nodes.set(node.key, node) }; snapshot = { order, nodes }; return snapshot },
-    }
-  },
-}
-
-export class ClientBridge extends Service {
-  constructor(ctx: Context) { super(ctx, 'clientBridge') }
-  reflect(value: string): string { return value }
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    workspaceClient: typeof workspaceClient
-    clientBridge: ClientBridge
-  }
-}
-
-type ConversationContributionContext = Context & {
-  conversationEvents?: { register(definition: typeof fixtureConversationDefinition): () => void }
-  conversationViews?: { register(definition: typeof fixtureConversationView): () => void }
-}
-
-export function apply(ctx: ConversationContributionContext): void {
-  ctx.provide('workspaceClient', workspaceClient)
-  if (ctx.conversationEvents === undefined || ctx.conversationViews === undefined || typeof ctx.effect !== 'function') return
-  const events = ctx.conversationEvents
-  const views = ctx.conversationViews
-  ctx.effect(() => {
-    const disposeEvent = events.register(fixtureConversationDefinition)
-    const disposeView = views.register(fixtureConversationView)
-    return () => { disposeView(); disposeEvent() }
-  }, 'workspace conversation contribution')
-}
-
-export { applyWorkspaceConversationContribution, createWorkspaceDrawerController, workspaceContributionDefinition as workspaceConversationDefinition, workspaceContributionView as workspaceConversationView }
-`)
   await writeText(join(root, 'tsdown.host.config.mjs'), `
 import { defineConfig } from 'tsdown'
 import { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
@@ -257,30 +193,52 @@ import { defineConfig } from 'tsdown'
 export default defineConfig({
   entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib',
   format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false,
-  dts: false, clean: false, external: ['@deepseek-ai/cordis'],
-})
+  dts: false, clean: false, outputOptions: { codeSplitting: false },
+  external: ['@deepseek-ai/cordis', /^@deepseek-ai\\/(?!dsh-client-ui-primitives(?:\\/|$))/], deps: { alwaysBundle: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'zod', '@deepseek-ai/dsh-client-ui-primitives'] },
+  })
 `)
   return { pluginRoot }
 }
 
 async function buildFixture(root) {
+  const pluginRoot = join(root, 'packages/plugin')
   const tsc = join(root, 'node_modules/typescript/bin/tsc')
   const tsdown = join(root, 'node_modules/tsdown/dist/run.mjs')
-  await exec(process.execPath, [tsc, '-b', 'tsconfig.host.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
   await exec(process.execPath, [tsdown, '--config', 'tsdown.host.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
+  await cp(join(pluginRoot, 'lib/typert.remote-client.js'), join(pluginRoot, 'src/typert.remote-client.js'))
   await exec(process.execPath, [tsdown, '--config', 'tsdown.client.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
+  await wrapWebClient(join(pluginRoot, 'lib/client.js'))
+  await writeJson(join(root, 'tsconfig.declarations.json'), {
+    extends: './tsconfig.base.json',
+    compilerOptions: {
+      rootDir: 'packages/plugin/src',
+      outDir: 'packages/plugin/lib/types',
+      declaration: true,
+      emitDeclarationOnly: true,
+      noEmit: false,
+    },
+    include: ['packages/plugin/src'],
+  })
+  await exec(process.execPath, [tsc, '-p', 'tsconfig.declarations.json', '--pretty', 'false'], { cwd: root, stdio: 'inherit' })
 }
 
 async function installPackedBundle(root, pluginRoot) {
   const packDir = join(root, 'pack')
   await mkdir(packDir, { recursive: true })
   const packed = JSON.parse((await exec('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: pluginRoot })).stdout)
+  const packedFiles = new Set(packed[0].files.map(file => file.path))
+  for (const file of [
+    'lib/index.js', 'lib/client.js', 'lib/types/index.d.ts', 'lib/types/types.d.ts',
+    'lib/typert.host.js', 'lib/typert.client.js', 'lib/typert.remote-client.js', 'cordis.patch.yml',
+  ]) assert.ok(packedFiles.has(file), `packed bundle must include ${file}`)
+  assert.equal([...packedFiles].some(file => file.startsWith('src/')), false, 'packed bundle must not fall back to source files')
   const tarball = join(packDir, packed[0].filename)
+  const tarballSha256 = createHash('sha256').update(await readFile(tarball)).digest('hex')
   const consumer = join(root, 'consumer')
   await writeJson(join(consumer, 'package.json'), { name: 'dsh-compat-consumer', private: true, type: 'module' })
   await exec('npm', [
     'install', '--ignore-scripts', '--no-fund', '--no-audit',
-    tarball, ...npmSpecifiers,
+    tarball, ...npmSpecifiers.filter(specifier => !specifier.startsWith('zod@')),
   ], { cwd: consumer, stdio: 'inherit' })
   const lockText = await readFile(join(consumer, 'package-lock.json'), 'utf8')
   const lock = JSON.parse(lockText)
@@ -290,44 +248,147 @@ async function installPackedBundle(root, pluginRoot) {
     assert.equal(entry?.version, expected, `${name} must be pinned in consumer package-lock.json`)
   }
   await writeText(join(consumer, 'runtime.mjs'), `
-const manifest = (await import('@fixture/plugin/package.json', { with: { type: 'json' } })).default
-const host = await import('@fixture/plugin')
-const client = await import('@fixture/plugin/client')
-const hostTypert = await import('@fixture/plugin/typert')
-const clientTypert = await import('@fixture/plugin/client/typert')
-const remote = await import('@fixture/plugin/remote')
+import { readFile } from 'node:fs/promises'
+import { runInNewContext } from 'node:vm'
+const manifest = (await import('dsh-workspace-plugin/package.json', { with: { type: 'json' } })).default
+const host = await import('dsh-workspace-plugin')
+const hostTypert = await import('dsh-workspace-plugin/typert')
+const clientTypert = await import('dsh-workspace-plugin/client/typert')
+const remote = await import('dsh-workspace-plugin/remote')
+let publicClientFactory
+globalThis.window = { __ModuleLoader__: { load(value) { if (value.id === 'dsh-workspace-plugin') publicClientFactory = value.factory } } }
+await import('dsh-workspace-plugin/client')
+if (typeof publicClientFactory !== 'function') throw new Error('packed public ./client export did not register with the module loader')
+globalThis.document = { createElement() { return { innerHTML: '', textContent: '' } } }
+const publicReact = await import('react')
+const publicJsxRuntime = await import('react/jsx-runtime')
+const publicPrimitives = { CodeBlock: () => null, JsonTree: () => null, MarkdownText: () => null }
+const publicClient = publicClientFactory((id) => {
+  if (id === 'react') return publicReact
+  if (id === 'react/jsx-runtime') return publicJsxRuntime
+  if (id === '@deepseek-ai/dsh-client-ui-primitives') return publicPrimitives
+  throw new Error('packed public ./client requested an unexpected dependency: ' + id)
+})
+delete globalThis.document
+delete globalThis.window
+const clientSource = await readFile(new URL('./node_modules/dsh-workspace-plugin/lib/client.js', import.meta.url), 'utf8')
+let handoff
+const sandbox = { console, Symbol, URL, AbortController, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
+sandbox.globalThis = sandbox
+sandbox.window = { __ModuleLoader__: { load(value) { handoff = value } } }
+runInNewContext(clientSource, sandbox)
+if (handoff?.id !== 'dsh-workspace-plugin' || typeof handoff.factory !== 'function') throw new Error('packed client did not register with the public module loader')
+const react = await import('react')
+const jsxRuntime = await import('react/jsx-runtime')
+const primitives = { CodeBlock: () => null, JsonTree: () => null, MarkdownText: () => null }
+const client = handoff.factory((id) => {
+  if (id === 'react') return react
+  if (id === 'react/jsx-runtime') return jsxRuntime
+  if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitives
+  throw new Error('packed client requested an unexpected dependency: ' + id)
+})
+if (JSON.stringify(Object.keys(publicClient).sort()) !== JSON.stringify(Object.keys(client).sort())) throw new Error('packed public ./client export keys differ from the browser bundle')
 export { manifest, host, client, hostTypert, clientTypert, remote }
 `)
   await writeText(join(consumer, 'check.mjs'), `
 const { manifest, host, client, hostTypert, clientTypert, remote } = await import('./runtime.mjs')
-if (manifest.dsh?.client?.platform !== 'web') throw new Error('missing web dsh.client metadata')
+  if (manifest.dsh?.bundle?.patch !== './cordis.patch.yml') throw new Error('missing dsh.bundle patch metadata')
+  if (manifest.dsh?.client?.platform !== 'web') throw new Error('missing web dsh.client metadata')
+  if (manifest.dsh?.client?.immediately !== true) throw new Error('web client must be immediate')
+  if (manifest.name !== 'dsh-workspace-plugin') throw new Error('packed consumer did not load the repository package')
 if (typeof manifest.exports?.['./client'] !== 'object') throw new Error('missing public ./client export')
 if (typeof manifest.exports?.['./typert'] !== 'object') throw new Error('missing public ./typert export')
 if (typeof manifest.exports?.['./client/typert'] !== 'object') throw new Error('missing public ./client/typert export')
 if (typeof host.WorkspaceService !== 'function' || typeof client.apply !== 'function') throw new Error('public bundle entries did not load')
+if (typeof client.renderWorkspacePreview !== 'function') throw new Error('packed client preview renderer did not load')
+if (typeof client.createWorkspaceArtifactView !== 'function' || typeof client.createWorkspaceDownloadController !== 'function') throw new Error('packed client artifact surface did not load')
+const artifact = { id: 'workspace:smoke', name: 'smoke.md', mediaType: 'text/markdown', sizeBytes: 7, source: { sessionId: 'session-1', workspaceId: 'root-1', kind: 'artifact' }, preview: 'available', resourceId: 'resource-smoke', downloadName: 'smoke.md' }
+if (client.createWorkspaceArtifactView([artifact], artifact.id).selected?.id !== artifact.id) throw new Error('packed client artifact view did not select')
+if (client.buildWorkspaceResourceUrl(artifact) !== '/workspace/resource?id=resource-smoke&type=text%2Fmarkdown&download=1') throw new Error('packed client artifact resource URL did not build')
+if (!client.renderWorkspacePreview({ type: 'text', path: 'smoke.txt', renderer: 'ui-primitives', content: 'bounded', language: 'text', truncated: false })) throw new Error('packed client preview renderer did not render')
+let downloadSignal
+const downloadController = client.createWorkspaceDownloadController({
+  fetch: async (_url, { signal }) => {
+    downloadSignal = signal
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true }))
+    throw new Error('download should have been cancelled')
+  },
+  createObjectURL: () => 'blob:smoke',
+  revokeObjectURL: () => {},
+})
+const pendingDownload = downloadController.start(artifact)
+downloadController.cancel()
+const downloadResult = await pendingDownload
+if (!downloadSignal?.aborted || downloadResult.status !== 'cancelled') throw new Error('packed client download cancellation did not settle: ' + JSON.stringify(downloadResult))
 if (hostTypert.TYPERT.face !== 'host' || clientTypert.TYPERT.face !== 'client') throw new Error('generated face mismatch')
-if (remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
+if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.package !== 'dsh-workspace-plugin') throw new Error('generated package identity mismatch')
+if (remote.TYPERT_REMOTE.package !== 'dsh-workspace-plugin' || remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
+if (!remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'artifactMetadata')) throw new Error('missing artifact metadata descriptor')
+if (!remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'previewArtifact')) throw new Error('missing artifact preview descriptor')
+const surfaceRegistrations = []
+const surfaceDisposers = []
+const contribution = {
+  conversationEvents: { register: () => { surfaceRegistrations.push('conversation'); return () => surfaceRegistrations.push('conversation-dispose') } },
+  slots: {
+    inject: (key, callback) => { surfaceRegistrations.push('inject:' + key); const dispose = callback(); return () => { dispose(); surfaceRegistrations.push('inject-dispose:' + key) } },
+    register: (options) => { const id = options.id ?? options.key; surfaceRegistrations.push('register:' + id); return () => surfaceRegistrations.push('register-dispose:' + id) },
+  },
+  effect: (factory) => { surfaceDisposers.push(factory()) },
+  remote: {
+    $mount: async () => async () => {},
+    workspace: {
+      artifactMetadata: async () => ({ ok: true, value: [] }),
+      previewArtifact: async () => ({ ok: false, error: { code: 'missing', message: 'missing', details: {} } }),
+    },
+  },
+  emit: () => {},
+}
+const disposeSurface = await client.apply(contribution)
+if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
+if (surfaceRegistrations.filter((value) => value === 'register:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not register the artifact surface exactly once')
+await disposeSurface()
+if (surfaceRegistrations.filter((value) => value === 'register-dispose:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not dispose the artifact surface exactly once')
 console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
   assert.match(check.stdout, /installed-bundle-ok/)
   return {
     consumer,
-    lockfileSha256: createHash('sha256').update(lockText).digest('hex'),
+    // The npm lock embeds the disposable fixture root in the local tarball URL.
+    // Normalize that one transient path before recording the reproducible digest.
+    lockfileSha256: createHash('sha256').update(lockText.replaceAll(root, '<fixture-root>')).digest('hex'),
+    tarballSha256,
   }
 }
 
 async function publicBundleSmoke(consumer) {
   const { manifest, host, client, hostTypert, clientTypert, remote } = await import(pathToFileURL(join(consumer, 'runtime.mjs')).href)
+  assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh.client.platform, 'web')
+  assert.equal(manifest.dsh.client.immediately, true)
+  assert.equal(manifest.name, 'dsh-workspace-plugin')
   assert.equal(typeof manifest.exports['./client'], 'object')
   assert.equal(typeof manifest.exports['./typert'], 'object')
   assert.equal(typeof manifest.exports['./client/typert'], 'object')
   assert.equal(typeof host.WorkspaceService, 'function')
   assert.equal(typeof client.apply, 'function')
+  assert.equal(typeof client.renderWorkspacePreview, 'function')
+  assert.equal(typeof client.createWorkspaceArtifactView, 'function')
+  assert.equal(typeof client.createWorkspaceDownloadController, 'function')
+  const artifact = { id: 'workspace:smoke', name: 'smoke.md', mediaType: 'text/markdown', sizeBytes: 7, source: { sessionId: 'session-1', workspaceId: 'root-1', kind: 'artifact' }, preview: 'available', resourceId: 'resource-smoke', downloadName: 'smoke.md' }
+  assert.equal(client.createWorkspaceArtifactView([artifact], artifact.id).selected.id, artifact.id)
+  assert.equal(client.buildWorkspaceResourceUrl(artifact), '/workspace/resource?id=resource-smoke&type=text%2Fmarkdown&download=1')
+  assert.ok(client.renderWorkspacePreview({ type: 'text', path: 'smoke.txt', renderer: 'ui-primitives', content: 'bounded', language: 'text', truncated: false }))
   assert.equal(hostTypert.TYPERT.face, 'host')
+  assert.equal(hostTypert.TYPERT.package, 'dsh-workspace-plugin')
   assert.equal(clientTypert.TYPERT.face, 'client')
-  assert.ok(remote.TYPERT_REMOTE.descriptors.length > 0)
+  assert.equal(clientTypert.TYPERT.package, 'dsh-workspace-plugin')
+  assert.equal(remote.TYPERT_REMOTE.package, 'dsh-workspace-plugin')
+  assert.ok(remote.TYPERT_REMOTE.descriptors.every(descriptor => descriptor.id.startsWith('dsh-workspace-plugin#')))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'artifactMetadata'))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'previewArtifact'))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'memoryOpen'))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'memoryGovern'))
   const strictJson = JSON.stringify(hostTypert.TYPERT)
   assert.equal(strictJson.includes('src-json'), false, 'compatibility smoke must not downgrade to SRC JSON')
   return { host, client, hostTypert, profileRoot: consumer }
@@ -337,72 +398,476 @@ async function gatewaySmoke(root, host, hostTypert) {
   const { Context } = await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/cordis/lib/index.js')).href)
   const TypertRegistry = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-typert-registry/lib/index.js')).href)).default
   const TypertGatewayService = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js')).href)).default
+  const dshHome = join(root, 'dsh-home')
+  process.env.DSH_HOME = dshHome
   const ctx = new Context()
+  let agentWakeups = 0
+  let modelRequests = 0
+  let contextInjections = 0
+  const agent = { id: 'agent-1', session: { header: { cwd: root }, events: [] }, followup() { agentWakeups += 1 }, model: { request() { modelRequests += 1 } }, ctx: { systemPrompt: { context() { contextInjections += 1; return () => {} } } } }
+  const otherRoot = join(root, 'other-workspace')
+  await mkdir(otherRoot, { recursive: true })
+  const otherAgent = { id: 'agent-2', session: { header: { cwd: otherRoot }, events: [] }, followup() { agentWakeups += 1 }, model: { request() { modelRequests += 1 } } }
+  const agents = new Map([[agent.id, agent], [otherAgent.id, otherAgent]])
+  const disposeAgent = ctx.provide('agent', agent)
+  const disposeAgents = ctx.provide('agents', { get: id => agents.get(id) })
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(host.WorkspaceService)
   const scoped = ctx.extend({ fixtureScope: 'agent-1' })
   ctx.typert.contexts.registerHost('agent', {
     wire: 'agentId',
-    wireTypeSymbol: '@fixture/plugin/types#AgentId',
-    resolve: id => id === 'agent-1' ? scoped : undefined,
+    wireTypeSymbol: 'dsh-workspace-plugin/types#AgentId',
+    resolve: id => id === 'agent-1' ? scoped : id === 'agent-2' ? ctx.extend({ fixtureScope: 'agent-2' }) : undefined,
   })
   ctx.typert.register(hostTypert.TYPERT)
   const result = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'focus', args: { agentId: 'agent-1' },
   })
   assert.deepEqual(result, { focused: true })
-  assert.equal(ctx.typert.local.list().length, 2)
-  return { ctx, registry: ctx.typert }
+  const artifacts = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'artifactMetadata', args: { agentId: 'agent-1' },
+  })
+  assert.deepEqual(artifacts, [])
+  const unavailableArtifactPreview = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'previewArtifact', args: { agentId: 'agent-1', id: 'workspace:missing' },
+  })
+  assert.equal(unavailableArtifactPreview.type, 'error')
+  const memoryRequest = { scope: 'project' }
+  const sessionRequest = { scope: 'session' }
+  const userRequest = { scope: 'user', userId: 'profile-alpha' }
+  const sharedRequest = { scope: 'shared-project', sharedProject: true, sharedWriteAcknowledged: true }
+  const memoryState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.equal(memoryState.scope, 'project')
+  const memoryRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed memory', content: 'compatibility', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.equal(memoryRecord.title, 'Packed memory')
+  const duplicateMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed memory', content: 'compatibility', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.equal(duplicateMemory.id, memoryRecord.id, 'exact Memory duplicates must be idempotent')
+  const mergedDuplicate = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: {
+        scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed memory', content: 'compatibility', tags: [], provenance: { kind: 'user' },
+        governance: { origin: 'user-authored', sourceRefs: [{ kind: 'session', id: 'provenance-session-2' }], verification: 'unverified', revision: 1, retention: 'project-delete' },
+      },
+    },
+  })
+  assert.equal(mergedDuplicate.id, memoryRecord.id)
+  assert.ok(mergedDuplicate.governance?.sourceRefs.some(source => source.kind === 'session' && source.id === 'provenance-session-2'), 'exact duplicates must merge distinct provenance references')
+  let staleRevisionError
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({
+      namespace: 'workspace', method: 'memoryUpsert', args: {
+        agentId: 'agent-1', request: memoryRequest,
+        draft: { scope: 'project', scopeKey: memoryState.scopeKey, id: memoryRecord.id, type: 'fact', title: 'Packed memory', content: 'changed without current revision', tags: [], provenance: { kind: 'user' }, expectedRevision: 99, expectedHash: memoryRecord.contentHash },
+      },
+    }),
+    error => { staleRevisionError = error; return error?.code === 'CONFLICT' },
+    'stale revisions must fail closed',
+  )
+  const usedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryMarkUsed', args: { agentId: 'agent-1', request: memoryRequest, id: memoryRecord.id },
+  })
+  assert.equal(usedMemory.useCount, memoryRecord.useCount + 1)
+  const govern = async (record, action) => ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryGovern', args: {
+      agentId: 'agent-1', request: memoryRequest, id: record.id, action,
+      expectedRevision: record.governance?.revision ?? 1, expectedHash: record.contentHash,
+    },
+  })
+  const governanceRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'decision', title: 'Governed release memory', content: 'explicit review', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  let governedRecord = await govern(governanceRecord, 'verify')
+  assert.equal(governedRecord.governance?.verification, 'verified')
+  governedRecord = await govern(governedRecord, 'pin')
+  assert.equal(governedRecord.governance?.pinnedBy, 'user')
+  governedRecord = await govern(governedRecord, 'unpin')
+  assert.equal(governedRecord.governance?.pinnedAt, undefined)
+  governedRecord = await govern(governedRecord, 'stale')
+  assert.equal(governedRecord.governance?.verification, 'stale')
+  governedRecord = await govern(governedRecord, 'reverify')
+  assert.equal(governedRecord.governance?.verification, 'verified')
+  governedRecord = await govern(governedRecord, 'archive')
+  assert.equal(governedRecord.status, 'archived')
+  governedRecord = await govern(governedRecord, 'restore')
+  assert.equal(governedRecord.status, 'active')
+  governedRecord = await govern(governedRecord, 'archive')
+  governedRecord = await govern(governedRecord, 'forget')
+  assert.equal(governedRecord.status, 'forgotten')
+  const forgottenSearch = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Governed release', options: { limit: 10 } },
+  })
+  assert.equal(forgottenSearch.some(record => record.id === governedRecord.id), false)
+  const forgottenList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.equal(forgottenList.some(record => record.id === governedRecord.id), false)
+  const forgottenState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.equal(forgottenState.records.find(record => record.id === governedRecord.id)?.status, 'forgotten')
+  const conflictFirst = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Conflict release memory', content: 'first version', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const conflictSecond = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Conflict release memory', content: 'second version', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.ok(conflictSecond.governance?.conflictGroup)
+  const rejectedConflict = await govern(conflictSecond, 'reject')
+  assert.equal(rejectedConflict.governance?.verification, 'rejected')
+  const conflictVersions = (await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: memoryRequest },
+  })).filter(record => record.id === conflictFirst.id || record.id === conflictSecond.id)
+  assert.equal(conflictVersions.length, 2, 'same-title conflicts must preserve both versions')
+  assert.ok(conflictVersions.every(record => record.governance?.conflictGroup === conflictSecond.governance?.conflictGroup), 'conflict versions must share one auditable conflict group')
+  assert.equal(conflictVersions.find(record => record.id === conflictSecond.id)?.governance?.verification, 'rejected')
+  const sharedReadRequest = { scope: 'shared-project', sharedProject: true }
+  await ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sharedReadRequest } })
+  let sharedWriteError
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({
+      namespace: 'workspace', method: 'memoryUpsert', args: {
+        agentId: 'agent-1', request: sharedReadRequest,
+        draft: { scope: 'shared-project', scopeKey: 'root:shared', type: 'fact', title: 'Unauthorized shared write', content: 'blocked', tags: [], provenance: { kind: 'user' } },
+      },
+    }),
+    error => { sharedWriteError = error; return error?.code === 'UNAUTHORIZED' },
+    'Shared Project writes require explicit acknowledgement',
+  )
+  const assertSharedUnauthorized = (method, methodArgs) => assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method, args: { agentId: 'agent-1', request: sharedReadRequest, ...methodArgs } }),
+    error => error?.code === 'UNAUTHORIZED',
+    `Shared Project ${method} requires explicit acknowledgement`,
+  )
+  await assertSharedUnauthorized('memoryGovern', { id: 'missing', action: 'archive', expectedRevision: 1, expectedHash: memoryRecord.contentHash })
+  await assertSharedUnauthorized('memoryMarkUsed', { id: 'missing' })
+  await assertSharedUnauthorized('memoryArchive', { id: 'missing', expectedRevision: 1, expectedHash: memoryRecord.contentHash })
+  await assertSharedUnauthorized('memoryForget', { id: 'missing', expectedRevision: 1, expectedHash: memoryRecord.contentHash })
+  const sessionState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sessionRequest },
+  })
+  const sessionRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: sessionRequest,
+      draft: { scope: 'session', scopeKey: sessionState.scopeKey, type: 'fact', title: 'Session memory', content: 'session-only', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const userState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: userRequest },
+  })
+  const userRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: userRequest,
+      draft: { scope: 'user', scopeKey: userState.scopeKey, type: 'preference', title: 'User memory', content: 'user-only', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const sharedState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sharedRequest },
+  })
+  const sharedRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: sharedRequest,
+      draft: { scope: 'shared-project', scopeKey: sharedState.scopeKey, type: 'decision', title: 'Shared memory', content: 'shared-only', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.equal(sessionRecord.scope, 'session')
+  assert.equal(userRecord.scope, 'user')
+  assert.equal(sharedRecord.scope, 'shared-project')
+  assert.equal(memoryRecord.governance?.retention, 'project-delete')
+  assert.equal(sessionRecord.governance?.retention, 'session-end')
+  assert.equal(userRecord.governance?.retention, 'user-managed')
+  assert.equal(sharedRecord.governance?.retention, 'project-delete')
+  const projectSearch = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Packed', options: { limit: 1 } },
+  })
+  assert.equal(projectSearch.length, 1)
+  assert.equal(projectSearch[0].provenance.kind, 'user')
+  const sessionList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: sessionRequest },
+  })
+  const userList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: userRequest },
+  })
+  const sharedList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: sharedRequest },
+  })
+  assert.ok(sessionList.some(record => record.id === sessionRecord.id))
+  assert.equal(sessionList.some(record => record.id === userRecord.id), false)
+  assert.ok(userList.some(record => record.id === userRecord.id))
+  assert.equal(userList.some(record => record.id === sessionRecord.id), false)
+  assert.ok(sharedList.some(record => record.id === sharedRecord.id))
+  const otherProject = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-2', request: memoryRequest },
+  })
+  assert.equal(otherProject.length, 0, 'a different Workspace Root must not read this Project Memory')
+  const originalCwd = agent.session.header.cwd
+  agent.session.header.cwd = otherRoot
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest } }),
+    error => error?.code === 'PROJECT_UNAVAILABLE',
+    'a Session rebound to another Workspace Root must fail closed',
+  )
+  agent.session.header.cwd = originalCwd
+  const governedMemory = await govern(mergedDuplicate, 'archive')
+  assert.equal(governedMemory.status, 'archived')
+  const legacyRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed archive memory', content: 'compatibility archive', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const archivedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryArchive', args: {
+      agentId: 'agent-1', request: memoryRequest, id: legacyRecord.id, expectedRevision: legacyRecord.governance?.revision ?? 1, expectedHash: legacyRecord.contentHash,
+    },
+  })
+  assert.equal(archivedMemory.status, 'archived')
+  const forgottenMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryForget', args: {
+      agentId: 'agent-1', request: memoryRequest, id: archivedMemory.id, expectedRevision: archivedMemory.governance?.revision ?? 1, expectedHash: archivedMemory.contentHash,
+    },
+  })
+  assert.equal(forgottenMemory.status, 'forgotten')
+  const memoryExport = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryExport', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.match(memoryExport, /Packed memory/u)
+  const exportedBundle = JSON.parse(memoryExport)
+  const exportedIds = new Set(exportedBundle.records.map(record => record.id))
+  const exportedHashes = new Map(exportedBundle.records.map(record => [record.contentHash, record.id]))
+  assert.equal(exportedBundle.schemaVersion, 1)
+  assert.equal(exportedIds.has(forgottenMemory.id), false, 'forgotten Memory must remain a local tombstone and stay out of exports')
+  assert.ok(exportedBundle.records.every(record => record.scope && record.contentHash && record.governance?.retention && record.governance?.sourceRefs), 'exports must retain governance, scope, hash, and retention metadata')
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: 'not-json' } }),
+    error => error?.code === 'INVALID_SOURCE',
+    'invalid imports must fail closed',
+  )
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: 'x'.repeat(8 * 1024 * 1024 + 1) } }),
+    error => error?.code === 'INVALID_SOURCE',
+    'oversized imports must fail closed',
+  )
+  const importedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: memoryExport },
+  })
+  assert.ok(importedMemory.length > 0)
+  assert.ok(importedMemory.every(record => record.provenance.kind === 'import'))
+  assert.ok(importedMemory.every(record => record.governance?.origin === 'imported' && record.governance?.verification === 'unverified' && record.status === 'active' && !exportedIds.has(record.id) && exportedHashes.has(record.contentHash) && record.governance.sourceRefs.some(source => source.kind === 'import' && source.contentHash === record.contentHash)), 'imports must remap ids and remain active, unverified, source-linked quarantine records')
+  await assertSharedUnauthorized('memoryImport', { serialized: memoryExport })
+
+  const expiringRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Expiring release memory', content: 'expired verification', tags: [], provenance: { kind: 'user' }, governance: { origin: 'user-authored', sourceRefs: [], verification: 'unverified', revision: 1, expiresAt: Date.now() - 1, retention: 'project-delete' } },
+    },
+  })
+  const expiredVerified = await govern(expiringRecord, 'verify')
+  const expiredList = await ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: memoryRequest } })
+  const expiredCurrent = expiredList.find(record => record.id === expiredVerified.id)
+  assert.equal(expiredCurrent?.governance?.verification, 'stale')
+  let expiryPinError
+  await assert.rejects(() => govern(expiredCurrent, 'pin'), error => { expiryPinError = error; return error?.code === 'INELIGIBLE' })
+
+  const packedEnvelope = JSON.stringify({ memoryState, memoryRecord, sessionRecord, userRecord, sharedRecord, memoryExport, importedMemory })
+  assert.equal(/(?:^|["'\s])\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*(?=["'\s]|$)|(?:^|["'\s])[A-Za-z]:[\\/][^\s"']*|(?:^|["'\s])\\\\[A-Za-z0-9]/u.test(packedEnvelope), false, 'packed Memory envelopes must not expose absolute host filesystem paths')
+  for (const fixturePath of [root, dshHome, otherRoot]) assert.equal(packedEnvelope.includes(fixturePath), false, 'packed Memory envelopes must not expose disposable fixture paths')
+  await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryClose', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  const reopenedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.ok(reopenedMemory.records.some(record => record.id === memoryRecord.id), 'Project Memory must survive close/reopen')
+  await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryClose', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  const restartCtx = new Context()
+  const restartAgents = new Map([[agent.id, agent]])
+  const disposeRestartAgents = restartCtx.provide('agents', { get: id => restartAgents.get(id) })
+  await restartCtx.plugin(TypertRegistry)
+  await restartCtx.plugin(TypertGatewayService)
+  await restartCtx.plugin(host.WorkspaceService)
+  const restartScoped = restartCtx.extend({ fixtureScope: 'agent-1-restart' })
+  restartCtx.typert.contexts.registerHost('agent', {
+    wire: 'agentId',
+    wireTypeSymbol: 'dsh-workspace-plugin/types#AgentId',
+    resolve: id => id === 'agent-1' ? restartScoped : undefined,
+  })
+  restartCtx.typert.register(hostTypert.TYPERT)
+  const restartedMemory = await restartCtx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.ok(restartedMemory.records.some(record => record.id === memoryRecord.id), 'Project Memory must survive a fresh packed service lifecycle')
+  const restartedSearch = await restartCtx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Packed', options: { limit: 1, status: 'archived' } },
+  })
+  assert.equal(restartedSearch.length, 1)
+  assert.equal(restartedSearch[0].provenance.kind, 'user')
+  await restartCtx.fiber.dispose()
+  disposeRestartAgents()
+  assert.equal(agentWakeups, 0)
+  assert.equal(modelRequests, 0)
+  assert.equal(contextInjections, 0)
+  const corruptionRoot = join(root, 'corruption-fixture')
+  const corruptionFile = join(corruptionRoot, '.dsh', 'workspace-memory', 'records.jsonl')
+  const corruptionStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:corruption', projectRoot: corruptionRoot, filePath: corruptionFile, idFactory: () => 'memory:corrupt', now: () => 10 })
+  await mkdir(corruptionRoot, { recursive: true })
+  await corruptionStore.open()
+  const corruptionRecord = await corruptionStore.upsert({ scope: 'project', scopeKey: 'root:corruption', type: 'fact', title: 'Valid', content: 'kept', tags: [], provenance: { kind: 'user' } })
+  await corruptionStore.close()
+  const badHash = { ...corruptionRecord, contentHash: `sha256:${'0'.repeat(64)}` }
+  await writeFile(corruptionFile, `${JSON.stringify(corruptionRecord)}\n${JSON.stringify(badHash)}\nnot-json\n`, 'utf8')
+  const recoveredStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:corruption', projectRoot: corruptionRoot, filePath: corruptionFile })
+  const recoveredState = await recoveredStore.open()
+  assert.equal(recoveredState.records.length, 1)
+  assert.deepEqual(recoveredState.warnings.map(warning => warning.code).sort(), ['BAD_HASH', 'CORRUPT_RECORD'])
+  assert.match(await readFile(`${corruptionFile}.corrupt`, 'utf8'), /not-json/u)
+  const migratedRoot = join(root, 'migration-fixture')
+  const migratedFile = join(migratedRoot, '.dsh', 'workspace-memory', 'records.jsonl')
+  const migrationSource = new host.MemoryStore({ scope: 'project', scopeKey: 'root:migration', projectRoot: migratedRoot, filePath: migratedFile, idFactory: () => 'memory:migrate', now: () => 10 })
+  await mkdir(migratedRoot, { recursive: true })
+  await migrationSource.open()
+  const migrationRecord = await migrationSource.upsert({ scope: 'project', scopeKey: 'root:migration', type: 'fact', title: 'Migrated', content: 'kept', tags: [], provenance: { kind: 'import' } })
+  await migrationSource.close()
+  await writeFile(migratedFile, `${JSON.stringify({ ...migrationRecord, schemaVersion: 0 })}\n`, 'utf8')
+  const migratedStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:migration', projectRoot: migratedRoot, filePath: migratedFile, migrations: [{ from: 0, to: host.MEMORY_SCHEMA_VERSION, migrate: value => ({ ...value, schemaVersion: host.MEMORY_SCHEMA_VERSION }) }] })
+  const migratedState = await migratedStore.open()
+  assert.equal(migratedState.records[0].title, 'Migrated')
+  await readFile(`${migratedFile}.bak`, 'utf8')
+  const unavailableStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:missing', projectRoot: join(root, 'missing-project') })
+  await assert.rejects(() => unavailableStore.open(), error => error?.code === 'PROJECT_UNAVAILABLE')
+  const unknownSchemaFile = join(root, 'unknown-schema.jsonl')
+  await writeFile(unknownSchemaFile, `${JSON.stringify({ schemaVersion: 99, id: 'future' })}\n`, 'utf8')
+  const unknownSchemaStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:unknown', projectRoot: root, filePath: unknownSchemaFile })
+  const unknownSchemaState = await unknownSchemaStore.open()
+  assert.equal(unknownSchemaState.readOnly, true)
+  const oversizedRoot = join(root, 'oversized-fixture')
+  const oversizedFile = join(oversizedRoot, '.dsh', 'workspace-memory', 'records.jsonl')
+  await mkdir(dirname(oversizedFile), { recursive: true })
+  await writeFile(oversizedFile, Buffer.alloc(host.MEMORY_MAX_FILE_BYTES + 1, 0x20))
+  const oversizedStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:oversized', projectRoot: oversizedRoot, filePath: oversizedFile })
+  const oversizedState = await oversizedStore.open()
+  assert.equal(oversizedState.readOnly, true)
+  assert.equal(oversizedState.warnings[0].code, 'STORE_TOO_LARGE')
+  const initialContext = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
+  })
+  assert.equal(initialContext.status, 'omitted')
+  assert.equal(initialContext.capacityTokens, 0)
+  const replacedContext = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'replaceContext',
+    args: {
+      agentId: 'agent-1',
+      snapshot: {
+        version: 1,
+        contentHash: `sha256:${'c'.repeat(64)}`,
+        estimatedTokens: 12,
+        capacityTokens: 512,
+        admittedTokens: 12,
+        availableBudgetTokens: 480,
+        remainingTokens: 468,
+        status: 'ready',
+        omissionReason: '',
+      },
+    },
+  })
+  assert.equal(replacedContext.version, 1)
+  assert.equal(replacedContext.remainingTokens, 468)
+  assert.equal(typeof host.registerPinnedContextCarrier, 'function')
+  assert.equal(typeof host.createPinnedContext, 'function')
+  const registrations = []
+  const carrierAgent = {
+    id: 'agent-1',
+    ctx: {
+      systemPrompt: {
+        context(registration) {
+          registrations.push(registration)
+          return () => registrations.splice(registrations.indexOf(registration), 1)
+        },
+      },
+    },
+  }
+  let contextState = host.createPinnedContext({ sessionId: 'agent-1', rootId: 'root-1' }, { maxItemBytes: 64, reservedOutputTokens: 4 })
+  contextState = host.setContextCapacity(contextState, 256)
+  contextState = host.pinContextPath(contextState, 'src/auth.py')
+  const readyState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'alpha', loadedAt: 1 })
+  const omittedState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'x'.repeat(80), loadedAt: 2 })
+  assert.equal(omittedState.entries[0].status, 'over-budget')
+  const carrier = host.registerPinnedContextCarrier(carrierAgent, readyState)
+  const firstText = registrations[0].text()
+  const changedState = host.updateContextPath(readyState, { path: 'src/auth.py', status: 'ready', content: 'beta', loadedAt: 3 })
+  carrier.update(changedState)
+  assert.notEqual(registrations[0].text(), firstText)
+  carrier.dispose()
+  assert.equal(registrations.length, 0)
+  assert.ok(ctx.typert.local.list().length > 0)
+  disposeAgent()
+  disposeAgents()
+  return { ctx, registry: ctx.typert, host, memoryRelease: { dshHome: 'disposable-profile', scopes: [sessionRecord.scope, memoryRecord.scope, userRecord.scope, sharedRecord.scope], restartRecord: memoryRecord.id, corruptionWarnings: recoveredState.warnings.map(warning => warning.code), migrationSchema: host.MEMORY_SCHEMA_VERSION, unavailableProject: 'PROJECT_UNAVAILABLE', unknownSchemaReadOnly: unknownSchemaState.readOnly, oversizedReadOnly: oversizedState.readOnly, agentWakeups, modelRequests, contextInjections }, governanceRelease: { duplicateIdempotent: duplicateMemory.id === memoryRecord.id, provenanceMerged: mergedDuplicate.governance?.sourceRefs.some(source => source.id === 'provenance-session-2'), staleRevisionError: staleRevisionError?.code, lastUsedCount: usedMemory.useCount, transitions: ['verify', 'pin', 'unpin', 'stale', 'reverify', 'archive', 'restore', 'archive', 'forget'], conflictRejected: rejectedConflict.governance?.verification, sharedWriteError: sharedWriteError?.code, invalidImport: 'INVALID_SOURCE', importQuarantine: importedMemory.every(record => record.status === 'active' && record.governance?.origin === 'imported' && record.governance?.verification === 'unverified'), expiryVerification: expiredCurrent?.governance?.verification, expiryPinError: expiryPinError?.code, exportSchemaVersion: exportedBundle.schemaVersion } }
 }
 
-async function webSmoke(root, ctx) {
+async function webSmoke(root, host, ctx) {
   const WebServer = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js')).href)).default
   const webFiber = ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
   await webFiber
-  const resource = {
-    id: 'opaque-session-bound', session: 'session-1', root: 'root-1',
-    body: Buffer.from('bounded-resource'), type: 'application/octet-stream',
-  }
+  const session = { sessionId: 'session-1', rootId: 'root-1' }
+  const file = join(root, 'workspace-smoke.png')
+  await writeFile(file, Buffer.from([98, 111, 117, 110, 100, 101, 100]))
+  const preview = new host.PreviewService(root, session)
+  const descriptor = await preview.preview('workspace-smoke.png')
+  assert.equal(descriptor.type, 'binary')
+  assert.equal(typeof host.registerWorkspaceResourceRoute, 'function')
+  const resourceId = descriptor.resourceId
+  const deliverable = host.createWorkspaceDeliverable(descriptor, {
+    sessionId: session.sessionId, workspaceId: session.rootId, kind: 'artifact',
+  }, 7)
+  assert.equal(deliverable.resourceId, resourceId)
+  assert.equal(deliverable.id.includes('workspace-smoke'), false)
   const endpoint = `http://127.0.0.1:${ctx.webServer.port}/workspace/resource`
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'exact', path: '/workspace/resource',
-    handler: async (req, res) => {
-      const url = new URL(req.url ?? '/', 'http://localhost')
-      const requestedType = url.searchParams.get('type')
-      if (url.searchParams.get('id') !== resource.id
-        || requestedType !== resource.type
-        || req.headers['x-dsh-session'] !== resource.session
-        || req.headers['x-dsh-root'] !== resource.root
-        || resource.body.byteLength > 1024) {
-        res.writeHead(404); res.end(); return
-      }
-      res.writeHead(200, { 'content-type': resource.type, 'content-length': resource.body.byteLength })
-      res.end(resource.body.subarray(0, 1024))
-    },
-  }), 'workspace opaque resource route')
-  const authorized = await fetch(`${endpoint}?id=${resource.id}&type=${encodeURIComponent(resource.type)}`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': resource.root },
+  host.installWorkspaceResourceRoute(ctx, ctx.webServer, { preview })
+  const authorized = await fetch(`${endpoint}?id=${resourceId}&type=image%2Fpng&download=1`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
   assert.equal(authorized.status, 200)
-  assert.equal(authorized.headers.get('content-type'), resource.type)
-  assert.ok(Number(authorized.headers.get('content-length')) <= 1024)
-  assert.equal(await authorized.text(), 'bounded-resource')
-  const tampered = await fetch(`${endpoint}?id=tampered&type=${encodeURIComponent(resource.type)}`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': resource.root },
+  assert.equal(authorized.headers.get('content-type'), 'image/png')
+  assert.equal(authorized.headers.get('content-disposition'), 'attachment; filename="workspace-smoke.png"')
+  assert.equal(await authorized.text(), 'bounded')
+  const tampered = await fetch(`${endpoint}?id=tampered&type=image%2Fpng`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
   assert.equal(tampered.status, 404)
-  const wrongType = await fetch(`${endpoint}?id=${resource.id}&type=text/plain`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': resource.root },
+  const wrongType = await fetch(`${endpoint}?id=${resourceId}&type=text%2Fplain`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
   assert.equal(wrongType.status, 404)
-  const replaced = resource.root
-  resource.root = 'root-replaced'
-  const staleIdentity = await fetch(`${endpoint}?id=${resource.id}&type=${encodeURIComponent(resource.type)}`, {
-    headers: { 'x-dsh-session': resource.session, 'x-dsh-root': replaced },
+  const staleIdentity = await fetch(`${endpoint}?id=${resourceId}&type=image%2Fpng`, {
+    headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': 'root-replaced' },
   })
   assert.equal(staleIdentity.status, 404)
-  return { endpoint }
+  return { endpoint, preview }
 }
 
 async function conversationSmoke(root, client, ctx) {
@@ -420,17 +885,79 @@ async function conversationSmoke(root, client, ctx) {
   })
   const definitions = []
   const views = []
+  const clientSlots = []
+  const overlaySlots = []
+  let clientCleanup
+  let clientRemoteMounted = 0
+  let clientRemoteDisposed = false
+  let clientOpened = 0
   const contribution = ctx.extend({
     conversationEvents: { register(definition) { definitions.push(definition); return () => definitions.splice(definitions.indexOf(definition), 1) } },
     conversationViews: { register(view) { views.push(view); return () => views.splice(views.indexOf(view), 1) } },
+    slots: {
+      inject(key, callback) {
+        assert.ok(key === 'conversation.chat.node' || key === 'shell.overlay')
+        const dispose = callback()
+        return () => { dispose(); (key === 'conversation.chat.node' ? clientSlots : overlaySlots).splice(0) }
+      },
+      register(options, component) {
+        if (options.name === 'conversation.chat.node') {
+          assert.equal(options.key, 'dsh-workspace-summary')
+          clientSlots.push(component)
+          return () => clientSlots.splice(0)
+        }
+        assert.equal(options.name, 'shell.overlay')
+        assert.ok(options.id === 'dsh-workspace-artifacts' || options.id === 'dsh-workspace-memory')
+        overlaySlots.push(component)
+        return () => overlaySlots.splice(0)
+      },
+    },
+    effect(factory) { clientCleanup = factory() },
+    remote: {
+      async $mount(remoteContribution) {
+        assert.equal(remoteContribution.package, 'dsh-workspace-plugin')
+        clientRemoteMounted += 1
+        return async () => { clientRemoteMounted -= 1; clientRemoteDisposed = true }
+      },
+      workspace: {
+        artifactMetadata: async () => ({ ok: true, value: [] }),
+        previewArtifact: async () => ({ ok: false, error: { code: 'missing', message: 'missing', details: {} } }),
+      },
+    },
+    emit(event) { if (event === 'workspace/open') clientOpened += 1 },
   })
-  client.apply(contribution)
+  const clientDispose = await client.apply(contribution)
   assert.equal(definitions.length, 1)
-  assert.equal(views.length, 1)
+  assert.equal(views.length, 0)
+  assert.equal(clientSlots.length, 1)
+  assert.equal(overlaySlots.length, 2)
+  assert.equal(clientRemoteMounted, 1)
+  await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
+  const clientNode = clientSlots[0]({ node: {
+    key: 'dsh-workspace-summary:client', kind: 'dsh-workspace-summary', id: 'client', target: 'chat',
+    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client' }, anchorSeq: 1,
+    location: { kind: 'session' }, visibility: 'visible',
+  } })
+  assert.equal(clientNode.type, 'section')
+  assert.equal(clientNode.props['data-dsh-workspace'], 'summary')
+  assert.equal(clientNode.props.children[2].type, 'button')
+  clientNode.props.children[2].props.onClick()
+  assert.equal(clientOpened, 1)
+  const workspace = client
+  assert.equal(typeof workspace.workspaceConversationView, 'object')
   const events = { entries: () => definitions, fallbackEntry: () => undefined }
-  const viewDefinitions = { entries: () => views }
+  const viewDefinitions = { entries: () => [workspace.workspaceConversationView] }
   const assembler = new ConversationNodeAssembler(events, viewDefinitions)
-  const input = { event: { seq: 1, time: 1, type: 'workspace/summary', data: { id: 'summary-1', summary: 'ready' }, ignorable: true }, view: undefined }
+  const input = {
+    event: {
+      seq: 1,
+      time: 1,
+      type: 'workspace/summary',
+      data: { id: 'summary-1', phase: 'start', summary: { filesTouched: 1, changes: 0, artifacts: 0, workspaceName: 'compat' } },
+      ignorable: true,
+    },
+    view: undefined,
+  }
   assembler.replaceWindow([input], false)
   assembler.flush()
   const first = assembler.snapshot('chat')
@@ -440,7 +967,6 @@ async function conversationSmoke(root, client, ctx) {
   assert.deepEqual([...first.nodes.keys()], [...replayed.nodes.keys()])
   assert.deepEqual([...first.nodes.values()].map(node => node.data), [...replayed.nodes.values()].map(node => node.data))
 
-  const workspace = client
   assert.equal(typeof workspace.applyWorkspaceConversationContribution, 'function', 'packed Client must export the Workspace Web contribution')
   assert.equal(typeof workspace.createWorkspaceDrawerController, 'function', 'packed Client must export typed Workspace operations')
   const workspaceDefinitions = []
@@ -450,6 +976,7 @@ async function conversationSmoke(root, client, ctx) {
   let opened = false
   let previewCalls = 0
   let sendCalls = 0
+  let contextCalls = 0
   let rendered
   const workspaceContext = {
     conversationEvents: { register(definition) { workspaceDefinitions.push(definition); return () => workspaceDefinitions.splice(workspaceDefinitions.indexOf(definition), 1) } },
@@ -461,7 +988,8 @@ async function conversationSmoke(root, client, ctx) {
         return () => { dispose(); workspaceSlots.splice(0) }
       },
       register(options, component) {
-        assert.deepEqual(options, { name: 'conversation.chat.node', key: 'dsh-workspace-summary' })
+        assert.equal(options.name, 'conversation.chat.node')
+        assert.equal(options.key, 'dsh-workspace-summary')
         workspaceSlots.push(component)
         return () => workspaceSlots.splice(0)
       },
@@ -478,7 +1006,8 @@ async function conversationSmoke(root, client, ctx) {
   const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat' }
   const summaryEvent = { type: 'workspace/summary', seq: 2, data: { id: 'compat-session', phase: 'start', summary } }
   const summaryMatch = workspace.workspaceConversationDefinition.match(summaryEvent)
-  assert.deepEqual(summaryMatch, { id: 'compat-session', role: 'start' })
+  assert.equal(summaryMatch.id, 'compat-session')
+  assert.equal(summaryMatch.role, 'start')
   const summaryNode = workspace.workspaceConversationDefinition.buildViewNode({
     key: 'dsh-workspace-summary:compat-session', kind: 'dsh-workspace-summary', id: 'compat-session',
     start: { event: summaryEvent, role: 'start', id: 'compat-session', summary }, state: summary,
@@ -500,17 +1029,48 @@ async function conversationSmoke(root, client, ctx) {
     async unpinWorkingSet() {},
     async clearWorkingSet() {},
     async sendWorkingSet() { sendCalls += 1 },
+    async pinnedContext() {
+      contextCalls += 1
+      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
+    },
+    async pinContext(path) {
+      contextCalls += 1
+      return {
+        count: 1, capacity: 'available', capacityTokens: 500, admittedTokens: 12, availableBudgetTokens: 488, remainingTokens: 488,
+        entries: [{ path, order: 0, sourceStatus: 'ready', status: 'ready', contentHash: `sha256:${'b'.repeat(64)}`, bytes: 48, estimatedTokens: 12, loadedAt: 1 }],
+      }
+    },
+    async unpinContext() {
+      contextCalls += 1
+      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
+    },
+    async clearContext() {
+      contextCalls += 1
+      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
+    },
   }
   const controller = workspace.createWorkspaceDrawerController(typedClient)
   await controller.dispatch({ type: 'select-file', path: 'src/auth.py' })
   await controller.dispatch({ type: 'send-working-set' })
+  await controller.dispatch({ type: 'inspect-pinned-context' })
+  await controller.dispatch({ type: 'pin-context', path: 'src/auth.py' })
+  assert.equal(controller.getState().pinnedContext.count, 1)
+  assert.equal('content' in controller.getState().pinnedContext.entries[0], false)
+  await controller.dispatch({ type: 'clear-context' })
   assert.equal(previewCalls, 1)
   assert.equal(sendCalls, 1)
+  assert.equal(contextCalls, 3)
+  assert.equal(controller.getState().pinnedContext.count, 0)
+  await clientDispose()
+  assert.equal(clientRemoteMounted, 0)
+  assert.equal(clientRemoteDisposed, true)
+  assert.equal(clientSlots.length, 0)
+  assert.equal(overlaySlots.length, 0)
   workspaceCleanup?.()
   assert.equal(workspaceDefinitions.length, 0)
   assert.equal(workspaceViews.length, 0)
   assert.equal(workspaceSlots.length, 0)
-  return { definitions, views, workspaceDefinitions, workspaceViews, workspaceSlots }
+  return { definitions, views, workspaceDefinitions, workspaceViews, workspaceSlots, clientSlots }
 }
 
 async function main() {
@@ -520,13 +1080,14 @@ async function main() {
     const lockfileSha256 = await installProfile(root)
     const { pluginRoot } = await createFixture(root)
     await buildFixture(root)
-    const { consumer, lockfileSha256: consumerLockfileSha256 } = await installPackedBundle(root, pluginRoot)
+    const { consumer, lockfileSha256: consumerLockfileSha256, tarballSha256 } = await installPackedBundle(root, pluginRoot)
     const { host, client, hostTypert, profileRoot } = await publicBundleSmoke(consumer)
-    const { ctx, registry } = await gatewaySmoke(profileRoot, host, hostTypert)
+    const { ctx, registry, memoryRelease, governanceRelease } = await gatewaySmoke(profileRoot, host, hostTypert)
     let endpoint
+    let preview
     let conversation
     try {
-      ({ endpoint } = await webSmoke(profileRoot, ctx))
+      ({ endpoint, preview } = await webSmoke(profileRoot, host, ctx))
       conversation = await conversationSmoke(profileRoot, client, ctx)
     } finally {
       await ctx.fiber.dispose()
@@ -536,6 +1097,7 @@ async function main() {
       assert.equal(conversation?.workspaceDefinitions.length ?? 0, 0)
       assert.equal(conversation?.workspaceViews.length ?? 0, 0)
       assert.equal(conversation?.workspaceSlots.length ?? 0, 0)
+      assert.equal(conversation?.clientSlots.length ?? 0, 0)
       if (endpoint !== undefined) await assert.rejects(() => fetch(endpoint))
     }
     console.log(JSON.stringify({
@@ -546,6 +1108,9 @@ async function main() {
       sourceBaseline: SOURCE_BASELINE_NOTE,
       profileLockfileSha256: lockfileSha256,
       consumerLockfileSha256,
+      packedTarballSha256: tarballSha256,
+      memoryRelease,
+      governanceRelease,
       packages: PACKAGE_VERSIONS,
     }))
   } finally {

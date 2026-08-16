@@ -5,6 +5,7 @@ import {
   type DrawerAction,
   type DrawerEffect,
   type DrawerState,
+  type PinnedContextSummary,
   type WorkingSetSummary,
 } from "./workspace-drawer.ts";
 
@@ -43,7 +44,6 @@ export interface WorkspaceConversationMatch {
   readonly event: WorkspaceSummaryEvent;
   readonly role: "start" | "update";
   readonly id: string;
-  readonly summary: WorkspaceChatData;
 }
 
 export interface WorkspaceConversationContext {
@@ -142,6 +142,8 @@ export interface WorkspaceWorkingSet {
   readonly summary: WorkingSetSummary;
 }
 
+export type WorkspacePinnedContext = PinnedContextSummary;
+
 export interface WorkspaceHostClient {
   readonly listDirectory: (path: WorkspacePath) => Promise<readonly WorkspaceDirectoryEntry[]>;
   readonly stat: (path: WorkspacePath) => Promise<WorkspaceFileStat>;
@@ -155,6 +157,10 @@ export interface WorkspaceHostClient {
   readonly unpinWorkingSet: (path: WorkspacePath) => Promise<void>;
   readonly clearWorkingSet: () => Promise<void>;
   readonly sendWorkingSet: () => Promise<void>;
+  readonly pinnedContext: () => Promise<WorkspacePinnedContext>;
+  readonly pinContext: (path: WorkspacePath) => Promise<WorkspacePinnedContext>;
+  readonly unpinContext: (path: WorkspacePath) => Promise<WorkspacePinnedContext>;
+  readonly clearContext: () => Promise<WorkspacePinnedContext>;
 }
 
 export interface WorkspaceWebError {
@@ -184,12 +190,13 @@ export interface WorkspaceDrawerController {
   readonly sessionFiles: WorkspaceHostClient["sessionFiles"];
   readonly gitStatus: WorkspaceHostClient["gitStatus"];
   readonly workingSet: WorkspaceHostClient["workingSet"];
+  readonly pinnedContext: WorkspaceHostClient["pinnedContext"];
 }
 
 export interface WorkspaceDrawerDispatchResult {
   readonly state: DrawerState;
   readonly effect?: DrawerEffect;
-  readonly data?: WorkspacePreviewDescriptor | string;
+  readonly data?: WorkspacePreviewDescriptor | WorkspacePinnedContext | string;
   readonly error?: WorkspaceWebError;
 }
 
@@ -205,11 +212,16 @@ export const workspaceKeyboardControls = [
   "Files",
   "Session",
   "Changes",
+  "Context",
   "preview",
   "pin-working-set",
   "unpin-working-set",
   "clear-working-set",
   "send-working-set",
+  "inspect-pinned-context",
+  "pin-context",
+  "unpin-context",
+  "clear-context",
 ] as const;
 
 function validCount(value: unknown): value is number {
@@ -246,10 +258,10 @@ export const workspaceConversationDefinition: WorkspaceConversationDefinition = 
     return data ? { id: data.id, role: data.phase } : null;
   },
   start(_context, match) {
-    return match.summary;
+    return match.event.data.summary;
   },
   update(_context, match) {
-    return match.summary;
+    return match.event.data.summary;
   },
   buildViewNode(context) {
     if (!context.state) return null;
@@ -306,11 +318,15 @@ export function createWorkspaceDrawerController(
   initialState: DrawerState = createDrawerState(),
 ): WorkspaceDrawerController {
   let state = initialState;
-  const dispatchEffect = async (effect: DrawerEffect): Promise<void> => {
+  const dispatchEffect = async (effect: DrawerEffect): Promise<WorkspacePinnedContext | void> => {
     if (effect === "send-working-set") return client.sendWorkingSet();
     if (effect === "clear-working-set") return client.clearWorkingSet();
+    if (effect === "inspect-pinned-context") return client.pinnedContext();
+    if (effect === "clear-context") return client.clearContext();
     if (effect.type === "pin-working-set") return client.pinWorkingSet(effect.path);
-    return client.unpinWorkingSet(effect.path);
+    if (effect.type === "unpin-working-set") return client.unpinWorkingSet(effect.path);
+    if (effect.type === "pin-context") return client.pinContext(effect.path);
+    return client.unpinContext(effect.path);
   };
   const controller: WorkspaceDrawerController = {
     getState: () => state,
@@ -321,6 +337,7 @@ export function createWorkspaceDrawerController(
     sessionFiles: client.sessionFiles,
     gitStatus: client.gitStatus,
     workingSet: client.workingSet,
+    pinnedContext: client.pinnedContext,
     async dispatch(action) {
       const reduced = reduceDrawer(state, action);
       state = reduced.state;
@@ -352,13 +369,23 @@ export function createWorkspaceDrawerController(
       }
       if (!reduced.effect) return reduced;
       try {
-        await dispatchEffect(reduced.effect);
+        const result = await dispatchEffect(reduced.effect);
+        if (result !== undefined) {
+          state = reduceDrawer(state, { type: "set-pinned-context", summary: result }).state;
+          return { ...reduced, state, data: result };
+        }
         return reduced;
       } catch {
+        const contextEffect = reduced.effect === "inspect-pinned-context"
+          || reduced.effect === "clear-context"
+          || (typeof reduced.effect !== "string" && (reduced.effect.type === "pin-context" || reduced.effect.type === "unpin-context"));
+        if (contextEffect) {
+          state = reduceDrawer(state, { type: "set-panel", tab: "Context", panel: { status: "error", message: "Pinned Context is unavailable" } }).state;
+        }
         return {
           state,
           effect: reduced.effect,
-          error: { code: "LOCAL_OPERATION_FAILED", operation: reduced.effect === "send-working-set" || reduced.effect === "clear-working-set" ? reduced.effect : reduced.effect.type, message: "Workspace action could not be completed" },
+          error: { code: "LOCAL_OPERATION_FAILED", operation: typeof reduced.effect === "string" ? reduced.effect : reduced.effect.type, message: "Workspace action could not be completed" },
         };
       }
     },

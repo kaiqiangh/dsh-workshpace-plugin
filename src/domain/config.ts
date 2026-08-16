@@ -96,7 +96,7 @@ function bool(value: unknown, fallback: boolean, field: string, warnings: string
 
 function boundedInt(value: unknown, fallback: number, ceiling: number, field: string, warnings: string[], warn = true): number {
   if (value === undefined) return fallback;
-  if (Number.isSafeInteger(value) && value > 0 && value <= ceiling) return value;
+  if (Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= ceiling) return value as number;
   if (warn) warnings.push(`${field}: defaulted`);
   return fallback;
 }
@@ -163,7 +163,7 @@ function layeredExcludes(fileValue: unknown, hostValue: unknown, fallback: reado
 export function resolveWorkspaceConfig(file?: WorkspaceConfigInput, hostOverride?: WorkspaceConfigInput): ConfigResolution {
   const warnings: string[] = [];
   for (const input of [file, hostOverride]) {
-    const parseWarnings = validObject(input) ? input[parseWarningsKey] : undefined;
+    const parseWarnings = validObject(input) ? input[parseWarningsKey as unknown as keyof typeof input] : undefined;
     if (Array.isArray(parseWarnings)) warnings.push(...parseWarnings);
   }
   warnUnknownFields(file, ["enabled", "root", "files", "preview", "git", "activity", "workingSet"], "config", warnings);

@@ -44,6 +44,8 @@ test("bounds text, Markdown, JSON, and CSV descriptors", async () => {
     await writeFile(join(root, "bad.json"), "{bad");
     await writeFile(join(root, "data.csv"), "name,value\na,1\nb,2\nc,3\n");
     await writeFile(join(root, "bad.csv"), 'name,"unclosed\n');
+    await writeFile(join(root, "quote-inside.csv"), 'name,va"lue\n');
+    await writeFile(join(root, "quote-tail.csv"), 'name,"value"tail\n');
     const service = new PreviewService(root, identity, {
       limits: { maxTextBytes: 5, maxJsonBytes: 100, maxCsvBytes: 100, maxCsvRows: 2 },
     });
@@ -63,6 +65,12 @@ test("bounds text, Markdown, JSON, and CSV descriptors", async () => {
     assert.ok(csv.type === "csv" && csv.rows.length === 2 && csv.truncated);
     const invalidCsv = await service.preview("bad.csv");
     assert.deepEqual(invalidCsv, { type: "error", code: "INVALID_CSV", message: "CSV contains an unclosed quote" });
+    const quoteInside = await service.preview("quote-inside.csv");
+    assert.equal(quoteInside.type, "error");
+    assert.equal(quoteInside.type === "error" && quoteInside.code, "INVALID_CSV");
+    const quoteTail = await service.preview("quote-tail.csv");
+    assert.equal(quoteTail.type, "error");
+    assert.equal(quoteTail.type === "error" && quoteTail.code, "INVALID_CSV");
     service.dispose();
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -142,5 +150,27 @@ test("revalidates resource version, type, expiry, and replacement containment", 
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("does not complete an opaque read after service disposal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-preview-dispose-"));
+  try {
+    await writeFile(join(root, "image.png"), Buffer.alloc(4 * 1024 * 1024, 7));
+    const service = new PreviewService(root, identity);
+    const descriptor = await service.preview("image.png");
+    assert.equal(descriptor.type, "binary");
+    if (descriptor.type !== "binary") return;
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await assert.rejects(
+      () => service.openResource(descriptor.resourceId, { identity, signal: cancelled.signal }),
+      (error) => error instanceof PreviewPanelError && error.code === "RESOURCE_EXPIRED",
+    );
+    const pending = service.openResource(descriptor.resourceId, { identity, mediaType: "image/png" });
+    service.dispose();
+    await assert.rejects(pending, (error) => error instanceof PreviewPanelError && error.code === "RESOURCE_EXPIRED");
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

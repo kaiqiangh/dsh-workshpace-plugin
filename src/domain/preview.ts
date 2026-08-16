@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { open, realpath, stat, type FileHandle } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 
 import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspacePath } from "./workspace.ts";
 
@@ -58,7 +58,7 @@ export type PreviewErrorCode =
 export class PreviewPanelError extends Error {
   readonly code: PreviewErrorCode;
 
-  constructor(code: PreviewErrorCode, message = code) {
+  constructor(code: PreviewErrorCode, message: string = code) {
     super(message);
     this.name = "PreviewPanelError";
     this.code = code;
@@ -138,12 +138,22 @@ export type PreviewDescriptor =
 export interface ResourceRequest {
   readonly identity: WorkspaceIdentity;
   readonly mediaType?: string;
+  readonly signal?: AbortSignal;
 }
 
 export interface OpenedResource {
   readonly mediaType: string;
   readonly version: string;
+  readonly downloadName: string;
   readonly bytes: Uint8Array;
+}
+
+export interface BoundedTextRead {
+  readonly path: WorkspacePath;
+  readonly content: string;
+  readonly bytes: number;
+  readonly version: string;
+  readonly loadedAt: number;
 }
 
 interface ResourceRecord {
@@ -152,6 +162,7 @@ interface ResourceRecord {
   readonly mediaType: string;
   readonly version: string;
   readonly expiresAt: number;
+  readonly downloadName: string;
 }
 
 interface ResolvedPath {
@@ -213,6 +224,12 @@ function mediaTypeFor(path: WorkspacePath): string | undefined {
   return "text/plain";
 }
 
+function resourceName(path: WorkspacePath, mediaType: string): string {
+  const raw = basename(path).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/gu, "_").replace(/[^\x20-\x7e]/gu, "_").trim().replace(/^[. ]+|[. ]+$/gu, "");
+  if (raw) return raw.slice(0, 180);
+  return mediaType === "application/pdf" ? "workspace-download.pdf" : "workspace-download.bin";
+}
+
 function versionFor(info: { readonly size: number; readonly mtimeMs: number; readonly ctimeMs: number; readonly ino?: number }): string {
   return `${info.size}:${info.mtimeMs}:${info.ctimeMs}:${info.ino ?? 0}`;
 }
@@ -236,24 +253,44 @@ function resolveResourceTtl(value: unknown): number {
   return Number.isSafeInteger(value) && (value as number) > 0 ? value as number : defaultResourceTtlMs;
 }
 
-async function readHandle(handle: FileHandle, maxBytes: number, expectedVersion?: string): Promise<FileRead> {
+function assertNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource request was cancelled");
+}
+
+async function readHandle(handle: FileHandle, maxBytes: number, expectedVersion?: string, signal?: AbortSignal): Promise<FileRead> {
+  assertNotAborted(signal);
   const info = await handle.stat();
   if (!info.isFile()) throw new PreviewPanelError("PROVIDER_UNAVAILABLE", "Preview target is not a file");
   const initialVersion = versionFor(info);
   if (expectedVersion !== undefined && initialVersion !== expectedVersion) throw new PreviewPanelError("RESOURCE_STALE", "Resource is stale");
   const bytes = Buffer.alloc(Math.min(info.size, maxBytes + 1));
-  const result = await handle.read(bytes, 0, bytes.length, 0);
+  let bytesRead = 0;
+  while (bytesRead < bytes.length) {
+    assertNotAborted(signal);
+    const result = await handle.read(bytes, bytesRead, Math.min(1024 * 1024, bytes.length - bytesRead), bytesRead);
+    bytesRead += result.bytesRead;
+    if (result.bytesRead === 0) break;
+  }
+  assertNotAborted(signal);
   const after = await handle.stat();
   if (versionFor(after) !== initialVersion) throw new PreviewPanelError("RESOURCE_STALE", "Preview changed during read");
-  return { bytes: bytes.subarray(0, result.bytesRead), size: after.size, version: initialVersion };
+  return { bytes: bytes.subarray(0, bytesRead), size: after.size, version: initialVersion };
 }
 
-async function readBounded(path: string, maxBytes: number, expectedCanonicalPath: string, expectedVersion?: string): Promise<FileRead> {
+async function readBounded(path: string, maxBytes: number, expectedCanonicalPath: string, expectedVersion?: string, signal?: AbortSignal): Promise<FileRead> {
   let handle: FileHandle | undefined;
   try {
+    assertNotAborted(signal);
     handle = await open(path, "r");
     if (await realpath(path) !== expectedCanonicalPath) throw new PreviewPanelError("SYMLINK_ESCAPE", "Workspace Path escapes its root");
-    return await readHandle(handle, maxBytes, expectedVersion);
+    const read = await readHandle(handle, maxBytes, expectedVersion, signal);
+    try {
+      if (await realpath(path) !== expectedCanonicalPath) throw new PreviewPanelError("SYMLINK_ESCAPE", "Workspace Path escapes its root");
+    } catch (error) {
+      if (error instanceof PreviewPanelError) throw error;
+      throw new PreviewPanelError("RESOURCE_STALE", "Workspace Path changed during read");
+    }
+    return read;
   } finally {
     await handle?.close();
   }
@@ -278,6 +315,7 @@ function parseCsv(text: string, maxRows: number): { columns: string[]; rows: str
   let row: string[] = [];
   let cell = "";
   let quoted = false;
+  let closedQuote = false;
   let truncated = false;
   const pushRow = () => {
     if (row.length > 256 || cell.length > mib) throw new PreviewPanelError("INVALID_CSV", "CSV structure exceeds its safety limit");
@@ -291,9 +329,17 @@ function parseCsv(text: string, maxRows: number): { columns: string[]; rows: str
     const character = text[index];
     if (quoted) {
       if (character === '"' && text[index + 1] === '"') index += 1;
-      else if (character === '"') quoted = false;
+      else if (character === '"') { quoted = false; closedQuote = true; }
       else cell += character;
+    } else if (closedQuote) {
+      if (character === ",") {
+        if (row.length >= 256) throw new PreviewPanelError("INVALID_CSV", "CSV structure exceeds its safety limit");
+        row.push(cell); cell = ""; closedQuote = false;
+      } else if (character === "\n") { pushRow(); closedQuote = false; }
+      else if (character === "\r" && text[index + 1] === "\n") continue;
+      else if (character !== "\r") throw new PreviewPanelError("INVALID_CSV", "CSV contains trailing characters after a quote");
     } else if (character === '"' && cell.length === 0) quoted = true;
+    else if (character === '"') throw new PreviewPanelError("INVALID_CSV", "CSV contains a quote inside an unquoted field");
     else if (character === ",") {
       if (row.length >= 256) throw new PreviewPanelError("INVALID_CSV", "CSV structure exceeds its safety limit");
       row.push(cell); cell = "";
@@ -358,7 +404,27 @@ export class PreviewService {
     }
   }
 
+  /** Read one bounded text file with canonical containment and before/after version checks. */
+  async readText(pathInput: string, maxBytes: number, signal?: AbortSignal): Promise<BoundedTextRead> {
+    if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new PreviewPanelError("FILE_TOO_LARGE", "Read limit is invalid");
+    assertNotAborted(signal);
+    const resolved = await this.resolve(pathInput);
+    assertNotAborted(signal);
+    const read = await readBounded(resolved.canonicalPath, maxBytes, resolved.canonicalPath, undefined, signal);
+    assertNotAborted(signal);
+    if (read.size > maxBytes) throw new PreviewPanelError("FILE_TOO_LARGE", "Context item exceeds its safety limit");
+    return {
+      path: resolved.path,
+      content: textFrom(read.bytes),
+      bytes: read.size,
+      version: read.version,
+      loadedAt: this.now(),
+    };
+  }
+
   async openResource(resourceId: string, request: ResourceRequest): Promise<OpenedResource> {
+    assertNotAborted(request.signal);
     if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
     const resource = this.resources.get(resourceId);
     if (!resource) throw new PreviewPanelError("RESOURCE_INVALID", "Resource is invalid");
@@ -375,9 +441,14 @@ export class PreviewService {
       if (mediaTypeFor(resolved.path) !== resource.mediaType) throw new PreviewPanelError("RESOURCE_STALE", "Resource type is stale");
       const limit = resource.mediaType === "application/pdf" ? this.limits.maxPdfBytes : this.limits.maxImageBytes;
       if (info.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
-      const read = await readBounded(resolved.canonicalPath, limit, resolved.canonicalPath, resource.version);
+      const read = await readBounded(resolved.canonicalPath, limit, resolved.canonicalPath, resource.version, request.signal);
+      assertNotAborted(request.signal);
       if (read.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
-      return { mediaType: resource.mediaType, version: resource.version, bytes: read.bytes };
+      if (this.disposed || this.resources.get(resourceId) !== resource || this.now() >= resource.expiresAt) {
+        this.resources.delete(resourceId);
+        throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+      }
+      return { mediaType: resource.mediaType, version: resource.version, downloadName: resource.downloadName, bytes: read.bytes };
     } catch (error) {
       throw safeError(error);
     }
@@ -413,10 +484,20 @@ export class PreviewService {
     const limit = mediaType === "application/pdf" ? this.limits.maxPdfBytes : this.limits.maxImageBytes;
     if (info.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
     if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+    const version = versionFor(info);
+    for (const [resourceId, resource] of this.resources) {
+      if (this.now() >= resource.expiresAt) {
+        this.resources.delete(resourceId);
+        continue;
+      }
+      if (sameIdentity(resource.identity, this.identity) && resource.path === resolved.path && resource.mediaType === mediaType && resource.version === version) {
+        return { type: "binary", path: resolved.path, mediaType, resourceId, version, expiresAt: resource.expiresAt };
+      }
+    }
     const resourceId = randomBytes(18).toString("base64url");
     const expiresAt = this.now() + this.resourceTtlMs;
-    this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version: versionFor(info), expiresAt });
-    return { type: "binary", path: resolved.path, mediaType, resourceId, version: versionFor(info), expiresAt };
+    this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version, expiresAt, downloadName: resourceName(resolved.path, mediaType) });
+    return { type: "binary", path: resolved.path, mediaType, resourceId, version, expiresAt };
   }
 
   private async json(resolved: ResolvedPath): Promise<JsonPreviewDescriptor> {

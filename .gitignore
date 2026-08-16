@@ -15,6 +15,9 @@ coverage/
 .env.*
 !.env.example
 
+# Project Memory is local by default; Shared Project Memory remains reviewable.
+.dsh/workspace-memory/records.jsonl*
+
 # Logs and package artifacts
 *.log
 *.tgz
@@ -27,3 +30,6 @@ pnpm-debug.log*
 .vscode/
 .idea/
 .DS_Store
+
+# fixture workspace
+packages/

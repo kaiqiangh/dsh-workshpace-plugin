@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createDrawerState, DrawerStateError, reduceDrawer } from "../src/web/workspace-drawer.ts";
+import { createDrawerState, DrawerStateError, reduceDrawer, type PinnedContextSummary } from "../src/web/workspace-drawer.ts";
 import { createLocalMetrics } from "../src/domain/metrics.ts";
 
 test("opens the drawer and selects a tab", () => {
@@ -133,4 +133,34 @@ test("rejects invalid drawer inputs at the public seam", () => {
     () => reduceDrawer(createDrawerState(), null as never),
     (error) => error instanceof DrawerStateError && error.code === "INVALID_ACTION",
   );
+});
+
+test("keeps Pinned Context metadata browser-safe and exposes explicit keyboard effects", () => {
+  const summary: PinnedContextSummary = {
+    count: 1,
+    capacity: "available",
+    capacityTokens: 500,
+    admittedTokens: 20,
+    availableBudgetTokens: 400,
+    remainingTokens: 380,
+    entries: [{
+      path: "src/auth.ts",
+      order: 0,
+      sourceStatus: "ready",
+      status: "ready",
+      contentHash: `sha256:${"a".repeat(64)}`,
+      bytes: 40,
+      estimatedTokens: 20,
+      loadedAt: 100,
+    }],
+  };
+  let state = reduceDrawer(createDrawerState(), { type: "set-pinned-context", summary }).state;
+  assert.deepEqual(state.pinnedContext, summary);
+  assert.deepEqual(reduceDrawer(state, { type: "pin-context", path: "src\\token.ts" }).effect, { type: "pin-context", path: "src/token.ts" });
+  assert.deepEqual(reduceDrawer(state, { type: "unpin-context", path: "src/auth.ts" }).effect, { type: "unpin-context", path: "src/auth.ts" });
+  assert.equal(reduceDrawer(state, { type: "clear-context" }).effect, "clear-context");
+  assert.equal(reduceDrawer(state, { type: "inspect-pinned-context" }).effect, "inspect-pinned-context");
+  const withContent = reduceDrawer(state, { type: "set-pinned-context", summary: { ...summary, entries: [{ ...summary.entries[0], content: "secret" }] } as never }).state;
+  assert.equal("content" in withContent.pinnedContext.entries[0], false);
+  assert.throws(() => reduceDrawer(state, { type: "set-pinned-context", summary: { ...summary, entries: [{ ...summary.entries[0], path: "/Users/kai/secret" }] } }), (error) => error instanceof DrawerStateError && error.code === "INVALID_PINNED_CONTEXT");
 });

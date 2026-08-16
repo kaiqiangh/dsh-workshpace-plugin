@@ -4,8 +4,43 @@ export interface DrawerMetricRecorder {
   readonly record: (name: string) => void;
 }
 
-export type WorkspaceTab = "Files" | "Session" | "Changes";
+export type WorkspaceTab = "Files" | "Session" | "Changes" | "Context";
 export type PanelStatus = "idle" | "loading" | "ready" | "empty" | "unsupported" | "error";
+
+export type PinnedContextSourceStatus = "pending" | "ready" | "stale" | "unreadable" | "unsupported" | "oversized";
+export type PinnedContextItemStatus = PinnedContextSourceStatus | "over-budget" | "capacity-unavailable";
+export type PinnedContextOmissionReason =
+  | "per-item-bytes"
+  | "context-budget"
+  | "model-capacity"
+  | "capacity-unavailable"
+  | "unreadable"
+  | "stale"
+  | "unsupported"
+  | "oversized";
+
+export interface PinnedContextItemMetadata {
+  readonly path: WorkspacePath;
+  readonly order: number;
+  readonly sourceStatus: PinnedContextSourceStatus;
+  readonly status: PinnedContextItemStatus;
+  readonly contentHash?: string;
+  readonly bytes?: number;
+  readonly estimatedTokens?: number;
+  readonly loadedAt?: number;
+  readonly omissionReason?: PinnedContextOmissionReason;
+  readonly reason?: string;
+}
+
+export interface PinnedContextSummary {
+  readonly count: number;
+  readonly capacity: "available" | "unavailable";
+  readonly capacityTokens?: number;
+  readonly admittedTokens: number;
+  readonly availableBudgetTokens: number;
+  readonly remainingTokens: number;
+  readonly entries: readonly PinnedContextItemMetadata[];
+}
 
 export interface PanelState {
   readonly status: PanelStatus;
@@ -36,6 +71,7 @@ export interface DrawerState {
   readonly selectedActivityId?: string;
   readonly selectedChangePath?: WorkspacePath;
   readonly workingSet: WorkingSetSummary;
+  readonly pinnedContext: PinnedContextSummary;
   readonly panels: Readonly<Record<WorkspaceTab, PanelState>>;
   readonly preview: PreviewState;
   readonly focusReturn: "workspace-opener" | null;
@@ -53,35 +89,57 @@ export type DrawerAction =
   | { readonly type: "select-activity"; readonly id: string }
   | { readonly type: "select-change"; readonly path: string }
   | { readonly type: "set-working-set"; readonly summary: WorkingSetSummary }
+  | { readonly type: "set-pinned-context"; readonly summary: PinnedContextSummary }
   | { readonly type: "set-panel"; readonly tab: WorkspaceTab; readonly panel: PanelState }
   | { readonly type: "set-preview"; readonly panel: PanelState }
   | { readonly type: "pin-working-set"; readonly path: string }
   | { readonly type: "unpin-working-set"; readonly path: string }
   | { readonly type: "clear-working-set" }
+  | { readonly type: "pin-context"; readonly path: string }
+  | { readonly type: "unpin-context"; readonly path: string }
+  | { readonly type: "clear-context" }
+  | { readonly type: "inspect-pinned-context" }
   | { readonly type: "send-working-set" };
 
 export type DrawerEffect =
   | "send-working-set"
   | "clear-working-set"
+  | "clear-context"
+  | "inspect-pinned-context"
   | { readonly type: "pin-working-set"; readonly path: WorkspacePath }
-  | { readonly type: "unpin-working-set"; readonly path: WorkspacePath };
+  | { readonly type: "unpin-working-set"; readonly path: WorkspacePath }
+  | { readonly type: "pin-context"; readonly path: WorkspacePath }
+  | { readonly type: "unpin-context"; readonly path: WorkspacePath };
 
 export class DrawerStateError extends Error {
-  readonly code: "INVALID_TAB" | "INVALID_SELECTION" | "INVALID_WORKING_SET" | "INVALID_PANEL" | "INVALID_ACTION";
+  readonly code: "INVALID_TAB" | "INVALID_SELECTION" | "INVALID_WORKING_SET" | "INVALID_PINNED_CONTEXT" | "INVALID_PANEL" | "INVALID_ACTION";
 
-  constructor(code: "INVALID_TAB" | "INVALID_SELECTION" | "INVALID_WORKING_SET" | "INVALID_PANEL" | "INVALID_ACTION", message: string) {
+  constructor(code: DrawerStateError["code"], message: string) {
     super(message);
     this.name = "DrawerStateError";
     this.code = code;
   }
 }
 
-const tabs: readonly WorkspaceTab[] = ["Files", "Session", "Changes"];
+const tabs: readonly WorkspaceTab[] = ["Files", "Session", "Changes", "Context"];
 const panelStatuses: readonly PanelStatus[] = ["idle", "loading", "ready", "empty", "unsupported", "error"];
+const pinnedSourceStatuses: readonly PinnedContextSourceStatus[] = ["pending", "ready", "stale", "unreadable", "unsupported", "oversized"];
+const pinnedStatuses: readonly PinnedContextItemStatus[] = [...pinnedSourceStatuses, "over-budget", "capacity-unavailable"];
+const pinnedOmissionReasons: readonly PinnedContextOmissionReason[] = ["per-item-bytes", "context-budget", "model-capacity", "capacity-unavailable", "unreadable", "stale", "unsupported", "oversized"];
 const emptyPanels = (): Record<WorkspaceTab, PanelState> => ({
   Files: { status: "idle" },
   Session: { status: "idle" },
   Changes: { status: "idle" },
+  Context: { status: "idle" },
+});
+
+const emptyPinnedContext = (): PinnedContextSummary => ({
+  count: 0,
+  capacity: "unavailable",
+  admittedTokens: 0,
+  availableBudgetTokens: 0,
+  remainingTokens: 0,
+  entries: [],
 });
 
 export function createDrawerState(): DrawerState {
@@ -89,6 +147,7 @@ export function createDrawerState(): DrawerState {
     open: false,
     activeTab: "Files",
     workingSet: { count: 0, unresolvedCount: 0 },
+    pinnedContext: emptyPinnedContext(),
     panels: emptyPanels(),
     preview: { target: { type: "none" }, status: "idle" },
     focusReturn: null,
@@ -118,6 +177,61 @@ function assertWorkingSet(summary: WorkingSetSummary): void {
   if (!summary || typeof summary !== "object" || !Number.isInteger(summary.count) || summary.count < 0 || !Number.isInteger(summary.unresolvedCount) || summary.unresolvedCount < 0 || summary.unresolvedCount > summary.count) {
     throw new DrawerStateError("INVALID_WORKING_SET", "Working Set counts must be non-negative integers");
   }
+}
+
+function normalizePinnedContext(summary: PinnedContextSummary): PinnedContextSummary {
+  if (!summary || typeof summary !== "object" || !Number.isSafeInteger(summary.count) || summary.count < 0
+    || !Number.isSafeInteger(summary.admittedTokens) || summary.admittedTokens < 0
+    || !Number.isSafeInteger(summary.availableBudgetTokens) || summary.availableBudgetTokens < 0
+    || !Number.isSafeInteger(summary.remainingTokens) || summary.remainingTokens < 0
+    || (summary.capacity !== "available" && summary.capacity !== "unavailable")
+    || !Array.isArray(summary.entries) || summary.entries.length !== summary.count
+    || (summary.capacityTokens !== undefined && (!Number.isSafeInteger(summary.capacityTokens) || summary.capacityTokens <= 0))) {
+    throw new DrawerStateError("INVALID_PINNED_CONTEXT", "Pinned Context summary is invalid");
+  }
+  const entries = summary.entries.map((entry) => {
+    if (!entry || typeof entry !== "object" || !Number.isSafeInteger(entry.order) || entry.order < 0
+      || typeof entry.path !== "string" || !entry.path || !pinnedSourceStatuses.includes(entry.sourceStatus)
+      || !pinnedStatuses.includes(entry.status)
+      || (entry.contentHash !== undefined && !/^sha256:[0-9a-f]{64}$/u.test(entry.contentHash))
+      || (entry.bytes !== undefined && (!Number.isSafeInteger(entry.bytes) || entry.bytes < 0))
+      || (entry.estimatedTokens !== undefined && (!Number.isSafeInteger(entry.estimatedTokens) || entry.estimatedTokens < 0))
+      || (entry.loadedAt !== undefined && (!Number.isSafeInteger(entry.loadedAt) || entry.loadedAt < 0))
+      || (entry.omissionReason !== undefined && !pinnedOmissionReasons.includes(entry.omissionReason))
+      || (entry.reason !== undefined && (typeof entry.reason !== "string" || /[\u0000-\u001f\u007f]/u.test(entry.reason)))) {
+      throw new DrawerStateError("INVALID_PINNED_CONTEXT", "Pinned Context entry metadata is invalid");
+    }
+    let path: WorkspacePath;
+    try {
+      path = normalizeWorkspacePath(entry.path);
+    } catch {
+      throw new DrawerStateError("INVALID_PINNED_CONTEXT", "Pinned Context paths must be normalized and relative");
+    }
+    if (!path || path !== entry.path || /[\u0000-\u001f\u007f]/u.test(path)) {
+      throw new DrawerStateError("INVALID_PINNED_CONTEXT", "Pinned Context paths must be normalized and relative");
+    }
+    return Object.freeze({
+      path,
+      order: entry.order,
+      sourceStatus: entry.sourceStatus,
+      status: entry.status,
+      ...(entry.contentHash === undefined ? {} : { contentHash: entry.contentHash }),
+      ...(entry.bytes === undefined ? {} : { bytes: entry.bytes }),
+      ...(entry.estimatedTokens === undefined ? {} : { estimatedTokens: entry.estimatedTokens }),
+      ...(entry.loadedAt === undefined ? {} : { loadedAt: entry.loadedAt }),
+      ...(entry.omissionReason === undefined ? {} : { omissionReason: entry.omissionReason }),
+      ...(entry.reason === undefined ? {} : { reason: entry.reason }),
+    });
+  });
+  return Object.freeze({
+    count: summary.count,
+    capacity: summary.capacity,
+    ...(summary.capacityTokens === undefined ? {} : { capacityTokens: summary.capacityTokens }),
+    admittedTokens: summary.admittedTokens,
+    availableBudgetTokens: summary.availableBudgetTokens,
+    remainingTokens: summary.remainingTokens,
+    entries: Object.freeze(entries),
+  });
 }
 
 function assertPanel(panel: PanelState): void {
@@ -176,6 +290,8 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction, metrics?:
     case "set-working-set":
       assertWorkingSet(action.summary);
       return { state: { ...state, workingSet: { ...action.summary } } };
+    case "set-pinned-context":
+      return { state: { ...state, pinnedContext: normalizePinnedContext(action.summary) } };
     case "set-panel":
       assertTab(action.tab);
       assertPanel(action.panel);
@@ -191,6 +307,15 @@ export function reduceDrawer(state: DrawerState, action: DrawerAction, metrics?:
       return { state, effect: { type: "unpin-working-set", path: normalizedSelectionPath(action.path, "Working Set Path") } };
     case "clear-working-set":
       return { state, effect: "clear-working-set" };
+    case "pin-context":
+      return { state, effect: { type: "pin-context", path: normalizedSelectionPath(action.path, "Pinned Context Path") } };
+    case "unpin-context":
+      return { state, effect: { type: "unpin-context", path: normalizedSelectionPath(action.path, "Pinned Context Path") } };
+    case "clear-context":
+      return { state, effect: "clear-context" };
+    case "inspect-pinned-context":
+      recordMetric(metrics, "pinned-context-inspected");
+      return { state, effect: "inspect-pinned-context" };
     case "send-working-set":
       recordMetric(metrics, "working-set-sent");
       return { state, effect: "send-working-set" };
