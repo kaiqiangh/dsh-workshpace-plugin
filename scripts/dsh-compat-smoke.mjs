@@ -281,6 +281,28 @@ if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.
 if (remote.TYPERT_REMOTE.package !== 'dsh-workspace-plugin' || remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
 if (!remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'artifactMetadata')) throw new Error('missing artifact metadata descriptor')
 if (!remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'previewArtifact')) throw new Error('missing artifact preview descriptor')
+const surfaceRegistrations = []
+const surfaceDisposers = []
+const contribution = {
+  conversationEvents: { register: () => { surfaceRegistrations.push('conversation'); return () => surfaceRegistrations.push('conversation-dispose') } },
+  slots: {
+    inject: (key, callback) => { surfaceRegistrations.push('inject:' + key); const dispose = callback(); return () => { dispose(); surfaceRegistrations.push('inject-dispose:' + key) } },
+    register: (options) => { surfaceRegistrations.push('register:' + options.key); return () => surfaceRegistrations.push('register-dispose:' + options.key) },
+  },
+  effect: (factory) => { surfaceDisposers.push(factory()) },
+  remote: {
+    $mount: async () => async () => {},
+    workspace: {
+      artifactMetadata: async () => ({ ok: true, value: [] }),
+      previewArtifact: async () => ({ ok: false, error: { code: 'missing', message: 'missing', details: {} } }),
+    },
+  },
+  emit: () => {},
+}
+const disposeSurface = await client.apply(contribution)
+if (!surfaceRegistrations.includes('register:dsh-workspace-artifacts')) throw new Error('packed client did not register the artifact surface')
+await disposeSurface()
+if (!surfaceRegistrations.includes('register-dispose:dsh-workspace-artifacts')) throw new Error('packed client did not dispose the artifact surface')
 console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })

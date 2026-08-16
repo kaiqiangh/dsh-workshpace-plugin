@@ -14,6 +14,13 @@ import { TYPERT_REMOTE } from "./typert.remote-client.js";
 import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
 import { createWorkspacePreviewRenderer, type WorkspacePreviewRenderOptions } from "./web/workspace-preview-adapters.ts";
 import type { PreviewDescriptor } from "./domain/preview.ts";
+import {
+  createWorkspaceArtifactSurfaceComponent,
+  WORKSPACE_ARTIFACT_ENTRY_KEY,
+  WORKSPACE_ARTIFACT_OVERLAY_SLOT,
+  WORKSPACE_ARTIFACT_SLOT_NAME,
+  type WorkspaceArtifactRemote,
+} from "./web/workspace-artifact-surface.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -21,6 +28,11 @@ interface ClientContributionContext {
   readonly effect: (factory: () => void | (() => void), label?: string) => void;
   readonly remote: TypertClientRemote;
   readonly emit: (event: string, ...args: readonly unknown[]) => void;
+}
+
+interface WorkspaceOverlaySlotRegistry {
+  readonly inject: (key: string, callback: () => () => void) => () => void;
+  readonly register: (options: { readonly name: string; readonly key: string; readonly priority?: number }, component: (props: Record<string, unknown>) => unknown) => () => void;
 }
 
 declare module "@deepseek-ai/cordis" {
@@ -65,9 +77,21 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         ),
       ));
       let disposed = false;
+      let disposeOverlay = () => {};
+      const overlay = ctx.slots as unknown as WorkspaceOverlaySlotRegistry;
+      const artifactRemote = (ctx.remote as unknown as { readonly workspace?: WorkspaceArtifactRemote }).workspace;
+      try {
+        disposeOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
+          { name: WORKSPACE_ARTIFACT_SLOT_NAME, key: WORKSPACE_ARTIFACT_ENTRY_KEY },
+          createWorkspaceArtifactSurfaceComponent(artifactRemote, { MarkdownText, CodeBlock, JsonTree }),
+        ));
+      } catch {
+        // The optional overlay declaration is absent on older Harness profiles.
+      }
       disposeConversation = () => {
         if (disposed) return;
         disposed = true;
+        disposeOverlay();
         disposeSlot();
         disposeEvent();
       };
@@ -103,6 +127,14 @@ export {
   createWorkspaceDownloadController,
   normalizeWorkspaceArtifacts,
 } from "./web/workspace-deliverables.ts";
+export {
+  createWorkspaceArtifactSurfaceComponent,
+  workspaceArtifactPreviewDescriptor,
+  workspaceArtifactResourceUrl,
+  WORKSPACE_ARTIFACT_ENTRY_KEY,
+  WORKSPACE_ARTIFACT_OVERLAY_SLOT,
+  WORKSPACE_ARTIFACT_SLOT_NAME,
+} from "./web/workspace-artifact-surface.ts";
 export type {
   WorkspaceArtifactDetail,
   WorkspaceArtifactDetailStatus,
@@ -115,3 +147,4 @@ export type {
   WorkspaceDownloadStatus,
   WorkspaceFetchResponse,
 } from "./web/workspace-deliverables.ts";
+export type { WorkspaceArtifactRemote, WorkspaceArtifactSurfaceOptions } from "./web/workspace-artifact-surface.ts";

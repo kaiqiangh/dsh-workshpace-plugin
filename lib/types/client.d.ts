@@ -27,4 +27,6 @@ export type { WorkspaceConversationContributionOptions };
 export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
 export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";
 export { buildWorkspaceResourceUrl, createWorkspaceArtifactDetail, createWorkspaceArtifactView, createWorkspaceDownloadController, normalizeWorkspaceArtifacts, } from "./web/workspace-deliverables.ts";
+export { createWorkspaceArtifactSurfaceComponent, workspaceArtifactPreviewDescriptor, workspaceArtifactResourceUrl, WORKSPACE_ARTIFACT_ENTRY_KEY, WORKSPACE_ARTIFACT_OVERLAY_SLOT, WORKSPACE_ARTIFACT_SLOT_NAME, } from "./web/workspace-artifact-surface.ts";
 export type { WorkspaceArtifactDetail, WorkspaceArtifactDetailStatus, WorkspaceArtifactView, WorkspaceDeliverable, WorkspaceDeliverablePreview, WorkspaceDeliverableSource, WorkspaceDownloadResult, WorkspaceDownloadRuntime, WorkspaceDownloadStatus, WorkspaceFetchResponse, } from "./web/workspace-deliverables.ts";
+export type { WorkspaceArtifactRemote, WorkspaceArtifactSurfaceOptions } from "./web/workspace-artifact-surface.ts";
