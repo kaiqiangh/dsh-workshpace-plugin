@@ -1,15 +1,16 @@
 # DSH Workspace Plugin
 
-DSH Workspace adds a Workspace tab (plus a compact floating panel) to the local DeepSeek Harness Web UI. It lets you inspect what an agent touched, review session artifacts, preview bounded content, inspect Git changes, manage governed local Workspace Memory, and review Memory proposals the Agent creates — all without leaving the conversation.
+DSH Workspace adds a `Workspace` tab to the local DeepSeek Harness Web UI. It lets you inspect what an agent touched, review session artifacts, preview bounded content, inspect Git changes, manage governed local Workspace Memory, and review Memory proposals the Agent creates — all without leaving the conversation.
 
 ## What it is for
 
 Harness sessions can produce useful files and state while an agent is working, but that information should not take over the chat layout. This plugin keeps the Workspace experience compact and session-aware:
 
-- a `Workspace` tab beside `Trajectory` in the conversation view row (primary entry);
-- a floating panel pill (`shell.overlay`) kept as a fallback entry;
+- a `Workspace` tab beside `Trajectory` in the conversation view row (the only entry);
+- a per-session summary card in the chat that shows what the agent touched (files by kind, artifacts, memory/decision counts, active span);
 - tabbed surfaces: `Artifacts`, `Memory`, and `Changes`;
 - artifact previews, Memory governance controls, and Git diff inspection stay inside the surfaces;
+- Memory is auto-written per session as derived facts, so Export carries useful information;
 - the surfaces use scoped styles so they do not change the Harness shell globally.
 
 ## Install the plugin
@@ -42,13 +43,13 @@ Open [http://127.0.0.1:3080/](http://127.0.0.1:3080/) in a browser. Restart the 
 1. Open the Harness Web UI and select a model.
 2. Choose or create a Workspace-backed session.
 3. Start the conversation and let the agent create or inspect files.
-4. Open the `Workspace` conversation tab (or the lower-right `Workspace` pill).
+4. Open the `Workspace` conversation tab.
 5. Use the tabs:
    - `Artifacts` — inspect session-created deliverables (grouped by type) with bounded previews and download;
-   - `Memory` — review, create, verify, pin, archive, or forget project/session Memory records, and review Agent proposals (`model-suggested` items show as unverified until you Verify or Reject them);
+   - `Memory` — review, create, verify, pin, archive, or forget project/session Memory records, review Agent proposals (`model-suggested` items show as unverified until you Verify or Reject them), and see session facts the auto-writer derived from agent activity;
    - `Changes` — working-tree and staged Git changes with unified diffs.
 
-The panel opens as a desktop drawer and uses the full available width on a narrow screen. Select the close button or the browser disclosure control to return to the compact entry.
+The Workspace tab renders the three surfaces in a card-based layout with scoped styles; the chat summary card above the conversation tracks the same session facts.
 
 ## Develop and verify locally
 
@@ -63,11 +64,11 @@ npm run smoke:compat
 
 ## Troubleshooting
 
-- **The panel is missing:** rebuild the plugin, restart `dsh web`, and add the plugin again if the local profile was created before the build.
-- **The old overlapping layout is still visible:** an older Web process is serving a cached bundle; stop it and run `npx @deepseek-ai/dsh web` again.
+- **The Workspace tab is missing:** rebuild the plugin, restart `dsh web`, and add the plugin again if the local profile was created before the build.
+- **The old floating panel is still visible:** an older Web process is serving a cached bundle; stop it and run `npx @deepseek-ai/dsh web` again. The redundant lower-right pill was removed in v0.2 — the Workspace tab is the only entry.
 - **Artifacts or Memory are empty:** open Workspace from an active Harness session; the surfaces read session-scoped data rather than a global file list.
 - **Changes is empty:** the workspace root is not a Git repository (or has no working-tree/staged changes). Open Workspace from a session whose working directory is a Git checkout.
-- **Memory Export downloads an empty bundle (`"records":[]`):** that is expected when the store has no records. Memory is created manually in the UI or proposed by the Agent via the `workspace_memory_propose` tool; proposals are stored `unverified` until you Verify them. Create or verify a record first, then export again.
+- **Memory Export downloads an empty bundle (`"records":[]`):** that is expected only when the session had no Memory and no agent file activity. Since v0.2, a session auto-writer derives `fact` records from agent tool activity (files by kind + artifacts), so an active session exports useful facts even without manual records. Manual records are created in the UI or proposed by the Agent via `workspace_memory_propose`; proposals are stored `unverified` until you Verify them. Storage details: [`docs/MEMORY_STORAGE.md`](docs/MEMORY_STORAGE.md).
 - **The command cannot find the plugin:** run the add command from the Harness project and use the correct relative path to this repository.
 
 Project terms are defined in [`CONTEXT.md`](CONTEXT.md), and architecture decisions are recorded in [`docs/adr/`](docs/adr/). Product/architecture documents: [`docs/DSH_Workspace_PRD.md`](docs/DSH_Workspace_PRD.md) and [`docs/DSH_Workspace_ARD.md`](docs/DSH_Workspace_ARD.md).
