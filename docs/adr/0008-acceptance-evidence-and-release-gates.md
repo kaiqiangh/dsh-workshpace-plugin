@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for v0.1 planning.
+Accepted for the pinned v0.2–v0.5 release baseline (updated 2026-08-16).
 
 ## Context
 
@@ -80,9 +80,11 @@ host evidence must show that these ceilings are respected.
 Release claims become evidence-backed and reproducible. Optional services can
 degrade without hiding core inspection, while compatibility, security,
 privacy, attribution, replay, and read-only guarantees remain hard blockers.
-The compatibility smoke path remains intentionally blocked until the
-out-of-tree Typert client/build recipe is resolved (tracked by the existing
-compatibility issue).
+For the pinned baseline, `scripts/dsh-compat-smoke.mjs` now resolves the
+out-of-tree Typert build recipe in a disposable fixture, installs the packed
+bundle, and exercises the generated Host/Client/Remote faces. That smoke is
+necessary but not sufficient: each release still requires a real installed
+`dsh web` browser run and the supported-host evidence above.
 
 ## Out of scope
 

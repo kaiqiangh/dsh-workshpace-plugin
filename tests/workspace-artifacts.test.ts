@@ -112,6 +112,28 @@ test("fails closed when a replayed write result has no operation evidence", asyn
   carrier.dispose();
 });
 
+test("ignores create prose from non-write tools", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  await writeFile(join(root, "browser-artifact.md"), "# Browser artifact\n", "utf8");
+  const workspace = startWorkspace({ sessionId: "session-non-write-prose", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-shell", name: "bash", arguments: JSON.stringify({ command: "echo Created file" }) } },
+    {
+      seq: 1,
+      time: 1,
+      type: "tool/result",
+      data: {
+        message: { source: { kind: "tool", callId: "call-shell" }, content: [{ type: "tool-result", toolCallId: "call-shell", content: [{ type: "text", text: "Created file" }] }] },
+        meta: { diffs: [] },
+      },
+    },
+  ] as const;
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => sessionToolRecords(events) });
+  assert.equal((sessionToolRecords(events)[0]?.data?.result as { readonly operation?: string })?.operation, undefined);
+  assert.deepEqual(await carrier.metadata(), []);
+  carrier.dispose();
+});
+
 test("rejects unknown artifact ids without touching the filesystem", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
   const workspace = startWorkspace({ sessionId: "session-2", processCwd: root });
