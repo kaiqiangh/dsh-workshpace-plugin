@@ -27,6 +27,8 @@ export interface WorkspaceMemoryRemote {
   readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
   readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
+  readonly memoryMarkUsed?: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
+  readonly memoryClose?: (request: MemoryScopeRequest) => Promise<RemoteResult<void>>;
 }
 
 export interface WorkspaceMemorySurfaceOptions {
@@ -153,6 +155,35 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       setContent(selected.content);
       setType(selected.type);
     }, [selectedId]);
+
+    // Best-effort last-used update: viewing an existing record refreshes its
+    // useCount/lastUsedAt through the optional memoryMarkUsed seam. Failures
+    // (e.g. unacknowledged Shared Project writes) are silent; this is a stat.
+    const markedUsed = useRef<string | undefined>(undefined);
+    useEffect(() => {
+      if (!remote?.memoryMarkUsed || !selected || state?.readOnly) return;
+      if (markedUsed.current === selected.id) return;
+      markedUsed.current = selected.id;
+      void remote.memoryMarkUsed(request, selected.id).catch(() => { /* best-effort */ });
+    }, [remote, selectedId, state?.readOnly]);
+
+    // Release the session-scoped store when the session/remote changes and on
+    // unmount, so stores do not accumulate for dead sessions. The request is
+    // captured per remote, so switching sessions closes the previous one.
+    const closeRequest = useRef<{ readonly remote?: WorkspaceMemoryRemote; readonly request: MemoryScopeRequest } | undefined>(undefined);
+    useEffect(() => {
+      const previous = closeRequest.current;
+      closeRequest.current = { remote, request };
+      if (previous && previous.remote !== remote && previous.remote?.memoryClose) {
+        void previous.remote.memoryClose(previous.request).catch(() => { /* best-effort */ });
+      }
+      return () => {
+        if (remote?.memoryClose && closeRequest.current?.remote === remote) {
+          void remote.memoryClose(closeRequest.current.request).catch(() => { /* best-effort */ });
+          closeRequest.current = undefined;
+        }
+      };
+    }, [remote]);
 
     const save = async (): Promise<void> => {
       if (!remote || !state) return;

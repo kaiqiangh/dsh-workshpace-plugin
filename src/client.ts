@@ -115,6 +115,8 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             memoryGovern: (request: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[1], action: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[2], revision: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[3], hash: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[4]) => call("memoryGovern", request, id, action, revision, hash),
             memoryExport: (request: Parameters<WorkspaceMemoryRemote["memoryExport"]>[0]) => call("memoryExport", request),
             memoryImport: (request: Parameters<WorkspaceMemoryRemote["memoryImport"]>[0], serialized: Parameters<WorkspaceMemoryRemote["memoryImport"]>[1]) => call("memoryImport", request, serialized),
+            memoryMarkUsed: (request: Parameters<WorkspaceMemoryRemote["memoryMarkUsed"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryMarkUsed"]>[1]) => call("memoryMarkUsed", request, id),
+            memoryClose: (request: Parameters<WorkspaceMemoryRemote["memoryClose"]>[0]) => call("memoryClose", request),
           };
           remotes.set(sessionId, adapted);
           return adapted;
