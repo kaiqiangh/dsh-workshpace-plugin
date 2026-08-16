@@ -70,6 +70,7 @@ export type PreviewDescriptor = TextPreviewDescriptor | MarkdownPreviewDescripto
 export interface ResourceRequest {
     readonly identity: WorkspaceIdentity;
     readonly mediaType?: string;
+    readonly signal?: AbortSignal;
 }
 export interface OpenedResource {
     readonly mediaType: string;

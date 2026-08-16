@@ -90,6 +90,13 @@ test("serves opaque resources only through the authorized route and disposes it"
       });
     };
     const authorized = response();
+    const native = response();
+    await route!.handler({
+      url: `/workspace/resource?id=${encodeURIComponent(descriptor.resourceId)}&type=image%2Fpng`,
+      headers: {},
+    }, native);
+    assert.equal(native.status, 200);
+    assert.deepEqual([...native.body!], [7, 8, 9]);
     await route!.handler({
       url: `/workspace/resource?id=${encodeURIComponent(descriptor.resourceId)}&type=image%2Fpng&download=1`,
       headers: { "x-dsh-session": identity.sessionId, "x-dsh-root": identity.rootId },

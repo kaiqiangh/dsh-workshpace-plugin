@@ -35,7 +35,7 @@ function noStore(response: ServerResponse, status: number): void {
   response.end();
 }
 
-/** Register the public binary carrier; all authorization remains in PreviewService. */
+/** Register the opaque capability carrier; optional identity headers further bind a request when available. */
 export function registerWorkspaceResourceRoute(
   webServer: WebRouteRegistrar,
   options: WorkspaceResourceRouteOptions,
@@ -52,12 +52,18 @@ export function registerWorkspaceResourceRoute(
       const mediaType = url.searchParams.get("type");
       const sessionId = headerValue(request.headers["x-dsh-session"]);
       const rootId = headerValue(request.headers["x-dsh-root"]);
-      if (!resourceId || !mediaType || sessionId !== options.preview.identity.sessionId || rootId !== options.preview.identity.rootId) {
+      if (!resourceId || !mediaType || (sessionId !== undefined && sessionId !== options.preview.identity.sessionId) || (rootId !== undefined && rootId !== options.preview.identity.rootId)) {
         noStore(response, 404);
         return;
       }
+      const controller = new AbortController();
+      const abort = () => { if (!request.complete) controller.abort(); };
+      if (typeof request.once === "function") {
+        request.once("aborted", abort);
+        request.once("close", abort);
+      }
       try {
-        const opened = await options.preview.openResource(resourceId, { identity: options.preview.identity, mediaType });
+        const opened = await options.preview.openResource(resourceId, { identity: options.preview.identity, mediaType, signal: controller.signal });
         const headers: Record<string, string | number> = {
           "cache-control": "no-store",
           "content-type": opened.mediaType,
@@ -71,6 +77,9 @@ export function registerWorkspaceResourceRoute(
         response.end(Buffer.from(opened.bytes));
       } catch (error) {
         noStore(response, statusFor(error));
+      } finally {
+        request.off?.("aborted", abort);
+        request.off?.("close", abort);
       }
     },
   });

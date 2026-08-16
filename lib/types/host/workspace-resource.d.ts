@@ -14,7 +14,7 @@ export interface WorkspaceResourceRouteOptions {
     readonly preview: PreviewService;
     readonly path?: string;
 }
-/** Register the public binary carrier; all authorization remains in PreviewService. */
+/** Register the opaque capability carrier; optional identity headers further bind a request when available. */
 export declare function registerWorkspaceResourceRoute(webServer: WebRouteRegistrar, options: WorkspaceResourceRouteOptions): () => void;
 /** Tie the route and its opaque resource table to the owning Fiber. */
 export declare function installWorkspaceResourceRoute(ctx: WorkspaceEffectRegistrar, webServer: WebRouteRegistrar, options: WorkspaceResourceRouteOptions): void;
