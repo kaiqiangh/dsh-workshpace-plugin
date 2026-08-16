@@ -5,7 +5,7 @@ export { createPinnedContext, pinContextPath, setContextCapacity, updateContextP
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export { PreviewPanelError, PreviewService, type BinaryPreviewDescriptor, type BoundedTextRead, type CsvPreviewDescriptor, type JsonPreviewDescriptor, type MarkdownPreviewDescriptor, type OpenedResource, type PreviewDescriptor, type PreviewErrorCode, type PreviewErrorDescriptor, type PreviewLimits, type ResourceRequest, type TextPreviewDescriptor, type UnsupportedPreviewDescriptor, } from "./domain/preview.ts";
 export { createWorkspaceDeliverable, deliverableResourceId, safeDownloadName, WorkspaceDeliverableError, type WorkspaceDeliverable, type WorkspaceDeliverablePreview, type WorkspaceDeliverableSource, } from "./domain/deliverable.ts";
-export { registerWorkspaceResourceRoute, type WebRouteRegistrar, type WorkspaceResourceRouteOptions, } from "./host/workspace-resource.ts";
+export { installWorkspaceResourceRoute, registerWorkspaceResourceRoute, type WebRouteRegistrar, type WorkspaceEffectRegistrar, type WorkspaceResourceRouteOptions, } from "./host/workspace-resource.ts";
 declare module "@deepseek-ai/dsh-typert-protocol" {
     interface TypertContextMap {
         agent: TypertContext<AgentId>;

@@ -389,7 +389,7 @@ async function webSmoke(root, host, ctx) {
   assert.equal(typeof host.registerWorkspaceResourceRoute, 'function')
   const resourceId = descriptor.resourceId
   const endpoint = `http://127.0.0.1:${ctx.webServer.port}/workspace/resource`
-  ctx.effect(() => host.registerWorkspaceResourceRoute(ctx.webServer, { preview }), 'workspace opaque resource route')
+  host.installWorkspaceResourceRoute(ctx, ctx.webServer, { preview })
   const authorized = await fetch(`${endpoint}?id=${resourceId}&type=image%2Fpng&download=1`, {
     headers: { 'x-dsh-session': session.sessionId, 'x-dsh-root': session.rootId },
   })
@@ -628,7 +628,6 @@ async function main() {
       assert.equal(conversation?.workspaceSlots.length ?? 0, 0)
       assert.equal(conversation?.clientSlots.length ?? 0, 0)
       if (endpoint !== undefined) await assert.rejects(() => fetch(endpoint))
-      preview?.dispose()
     }
     console.log(JSON.stringify({
       ok: true,

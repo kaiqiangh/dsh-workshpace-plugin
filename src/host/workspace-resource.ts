@@ -10,6 +10,10 @@ export interface WebRouteRegistrar {
   }): () => void;
 }
 
+export interface WorkspaceEffectRegistrar {
+  effect(factory: () => void | (() => void), label?: string): void;
+}
+
 export interface WorkspaceResourceRouteOptions {
   readonly preview: PreviewService;
   readonly path?: string;
@@ -70,4 +74,20 @@ export function registerWorkspaceResourceRoute(
       }
     },
   });
+}
+
+/** Tie the route and its opaque resource table to the owning Fiber. */
+export function installWorkspaceResourceRoute(
+  ctx: WorkspaceEffectRegistrar,
+  webServer: WebRouteRegistrar,
+  options: WorkspaceResourceRouteOptions,
+): void {
+  if (!ctx?.effect) throw new Error("Workspace resource route requires a Fiber effect registrar");
+  ctx.effect(() => {
+    const disposeRoute = registerWorkspaceResourceRoute(webServer, options);
+    return () => {
+      disposeRoute();
+      options.preview.dispose();
+    };
+  }, "workspace opaque resource route");
 }

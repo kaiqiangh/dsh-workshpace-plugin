@@ -17,6 +17,7 @@ export interface WorkspaceDeliverable {
   readonly name: string;
   readonly mediaType: string;
   readonly sizeBytes: number;
+  readonly version?: string;
   readonly source: WorkspaceDeliverableSource;
   readonly preview: WorkspaceDeliverablePreview;
   readonly resourceId?: string;
@@ -97,6 +98,7 @@ export function createWorkspaceDeliverable(
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new WorkspaceDeliverableError("Deliverable size is invalid");
   const mediaType = previewMediaType(descriptor);
   const resourceId = descriptor.type === "binary" ? descriptor.resourceId : undefined;
+  const version = descriptor.type === "binary" ? descriptor.version : undefined;
   const name = path ? basename(path) || "workspace-file" : "workspace-file";
   const id = resourceId ? `workspace:${resourceId}` : opaqueId(source, path ?? name);
   return Object.freeze({
@@ -104,6 +106,7 @@ export function createWorkspaceDeliverable(
     name,
     mediaType,
     sizeBytes,
+    ...(version === undefined ? {} : { version }),
     source: Object.freeze({ ...source }),
     preview: previewState(descriptor),
     ...(resourceId === undefined ? {} : { resourceId }),

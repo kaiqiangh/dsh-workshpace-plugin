@@ -10,6 +10,7 @@ export interface WorkspaceDeliverable {
     readonly name: string;
     readonly mediaType: string;
     readonly sizeBytes: number;
+    readonly version?: string;
     readonly source: WorkspaceDeliverableSource;
     readonly preview: WorkspaceDeliverablePreview;
     readonly resourceId?: string;

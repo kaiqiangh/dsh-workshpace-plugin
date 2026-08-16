@@ -31,8 +31,10 @@ export {
   type WorkspaceDeliverableSource,
 } from "./domain/deliverable.ts";
 export {
+  installWorkspaceResourceRoute,
   registerWorkspaceResourceRoute,
   type WebRouteRegistrar,
+  type WorkspaceEffectRegistrar,
   type WorkspaceResourceRouteOptions,
 } from "./host/workspace-resource.ts";
 
