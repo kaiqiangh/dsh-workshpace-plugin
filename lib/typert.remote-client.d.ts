@@ -4,13 +4,14 @@ import type {
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceDeliverable } from 'dsh-workspace-plugin/client'
-import type { AgentId, MemoryDraft, MemoryGovernanceAction, MemoryListOptions, MemoryReadState, MemoryRecord, MemoryScopeRequest, MemorySearchOptions, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview } from 'dsh-workspace-plugin/types'
+import type { AgentId, GitChange, GitDiffResult, MemoryDraft, MemoryGovernanceAction, MemoryListOptions, MemoryReadState, MemoryRecord, MemoryScopeRequest, MemorySearchOptions, WorkspaceArtifactPreview } from 'dsh-workspace-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$776f726b7370616365 {
     artifactMetadata: (agentId: AgentId) => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
-    contextSnapshot: (agentId: AgentId) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     focus: (agentId: AgentId) => Promise<RemoteResult<{ readonly focused: boolean; }>>
+    gitDiff: (agentId: AgentId, path?: string) => Promise<RemoteResult<GitDiffResult>>
+    gitStatus: (agentId: AgentId) => Promise<RemoteResult<readonly GitChange[]>>
     memoryArchive: (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     memoryClose: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<void>>
     memoryExport: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
@@ -23,13 +24,13 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     memorySearch: (agentId: AgentId, request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
     memoryUpsert: (agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
     previewArtifact: (agentId: AgentId, id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
-    replaceContext: (agentId: AgentId, snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     summary: (agent: AgentId) => Promise<RemoteResult<{ readonly ready: boolean; readonly agent: AgentId; }>>
   }
   interface TypertRemoteMap {
     'workspace/artifactMetadata': (agentId: AgentId) => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
-    'workspace/contextSnapshot': (agentId: AgentId) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     'workspace/focus': (agentId: AgentId) => Promise<RemoteResult<{ readonly focused: boolean; }>>
+    'workspace/gitDiff': (agentId: AgentId, path?: string) => Promise<RemoteResult<GitDiffResult>>
+    'workspace/gitStatus': (agentId: AgentId) => Promise<RemoteResult<readonly GitChange[]>>
     'workspace/memoryArchive': (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'workspace/memoryClose': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<void>>
     'workspace/memoryExport': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
@@ -42,7 +43,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace/memorySearch': (agentId: AgentId, request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
     'workspace/memoryUpsert': (agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
     'workspace/previewArtifact': (agentId: AgentId, id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
-    'workspace/replaceContext': (agentId: AgentId, snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     'workspace/summary': (agent: AgentId) => Promise<RemoteResult<{ readonly ready: boolean; readonly agent: AgentId; }>>
   }
   interface TypertRemoteNamespaceMap {

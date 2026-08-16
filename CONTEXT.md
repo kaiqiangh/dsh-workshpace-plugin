@@ -5,8 +5,12 @@ DSH Workspace is a read-only, session-aware inspection surface over the files an
 ## Language
 
 **Workspace**:
-The read-only inspection surface for one Harness Session and one Workspace Root. It exposes file state, session activity, changes, artifacts, previews, and a user-controlled Working Set.
+The read-only inspection surface for one Harness Session and one Workspace Root. It exposes session activity, changes, artifacts, previews, and governed local Memory.
 _Avoid_: file explorer, IDE, memory browser
+
+**Workspace Panel**:
+The compact Harness Web UI surface that presents Workspace Artifacts, Memory, and Changes in one responsive, user-opened panel; the Workspace conversation tab renders the same surfaces beside Trajectory. It is a presentation surface; it does not widen the Workspace Root or inject Memory into Agent context.
+_Avoid_: global overlay, second app shell, file explorer
 
 **Workspace Root**:
 The canonical filesystem directory that bounds a Workspace. The configured root is resolved from the Harness process working directory and is never widened by a browser or event path; client and durable identity use an opaque root identifier rather than the host path.
@@ -40,9 +44,13 @@ _Avoid_: Session Activity, agent change
 A previewable file created during the current Harness Session. Artifact listings are derived from Session Files and reflect current existence; activity history can still record deletion.
 _Avoid_: attachment, deliverable
 
-**Working Set**:
-An ordered, duplicate-free, session-scoped list of Workspace Paths chosen by the user as a scope hint for a subsequent agent continuation. It does not inject file contents automatically.
-_Avoid_: pinned context, model context
+**Memory Record**:
+A governed durable note (decision, preference, convention, or fact) scoped to a Session, Project, User, or Shared Project. Records carry provenance and governance (origin, verification, revision, retention); model-suggested proposals start `unverified` and are never injected into Agent context until the user verifies them.
+_Avoid_: pinned context, model context, knowledge base
+
+**Memory Proposal**:
+A `model-suggested`, `unverified` Memory Record created by the Agent via the `workspace_memory_propose` tool with session (+ tool-call event) source references. It is a review item until the user verifies or rejects it.
+_Avoid_: auto-injected memory, agent fact
 
 **Workspace Support Boundary**:
 The v0.1 set of Workspace capabilities guaranteed for a supported DeepSeek Harness Web host and its supported host operating systems. It does not imply support for remote workspaces, alternate client carriers, or a broader browser/OS matrix than Harness itself provides.
@@ -76,10 +84,10 @@ _Avoid_: file viewer, attachment policy
 A short-lived, session- and root-bound identifier that authorizes one bounded binary preview without exposing a host filesystem path to the browser.
 _Avoid_: file URL, attachment id
 
-**Continuation Action**:
-The single user-controlled operation that sends the current Working Set as a scope hint to the owning Harness Session without injecting file contents.
+**Verification Action**:
+The single user-controlled operation that promotes a Memory Record (including a model-suggested proposal) to `verified`, making it eligible for later use without ever injecting file contents or memory text automatically.
 _Avoid_: context injection, silent steer
 
 **Operational Budget**:
-A bounded, operator-tunable limit on Workspace work such as preview bytes, rows, activity events, refresh delay, or Working Set size. A budget cannot exceed its product safety ceiling.
+A bounded, operator-tunable limit on Workspace work such as preview bytes, rows, activity events, refresh delay, or Memory file size. A budget cannot exceed its product safety ceiling.
 _Avoid_: performance hint, unlimited setting

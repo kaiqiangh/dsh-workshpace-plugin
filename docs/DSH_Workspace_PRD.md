@@ -2,13 +2,30 @@
 
 **Product:** DSH Workspace  
 **Package / Repository:** `dsh-workspace-plugin`  
-**Status:** MVP Specification  
-**Target Release:** v0.1  
-**Last Updated:** 2026-08-15  
+**Status:** Delivered (v0.5 line) — this revision reflects the shipped reality  
+**Last Updated:** 2026-08-16  
+
+## 0. Delivered-Reality Revision (2026-08-16)
+
+This PRD originally specified a full read-only workspace browser plus a v0.1 Working Set and a v0.2 context-management roadmap. The shipped plugin (all tickets merged to `dev`, release pending a `dev → main` review) delivers a narrower, higher-value surface. Section-level deltas:
+
+| Spec section | Delivered reality |
+|---|---|
+| §7.1 File Explorer (P0) | **Not shipped.** Replaced by §7.5 agent-created Artifacts (the plugin surfaces session-created deliverables, not a general file tree). |
+| §7.2 Session Files (P0) | **Partially shipped as activity summary.** The Workspace summary card and the Artifacts list reflect session tool records; there is no full session-file tree. |
+| §7.3 File Preview (P0) | **Shipped** as bounded, opaque previews of agent-created artifacts (ADR-0005). |
+| §7.4 Changes View (P0) | **Shipped** (git status/diff via typed RPCs; Changes tab in panel and conversation view). |
+| §7.5 Agent-Created Artifacts (P0) | **Shipped**, including grouping, type badges, refresh, download, and rich empty state. |
+| §7.6 Working Set (P0) | **Retired** — ADR-0010 (the v0.2 Working Set scaffolding was removed; no working-set feature shipped). |
+| §7.7 Chat File Links (P1) | Not shipped; the conversation Workspace tab and summary card cover the primary entry points. |
+| Project Memory + governance | **Shipped beyond the original roadmap** (v0.4/v0.5): session/project/user/shared-project scopes, provenance-first governance (verify/reject/pin/stale/reverify/archive/forget), export/import, conflict handling, Agent-driven proposals (§ new: 7.8). |
+| Conversation integration | **Shipped beyond the original roadmap**: Workspace registers as a `conversation.view` tab beside Trajectory (id `dsh-workspace`), plus the floating panel pill as fallback, plus a live summary card (`workspace/summary` events). |
+
+**Entry points today:** (1) Workspace conversation tab (primary), (2) the `shell.overlay` panel pill (fallback), (3) the summary card's Open Workspace button.
 
 ## 1. Executive Summary
 
-DSH Workspace is a workspace companion for DeepSeek Harness that gives users direct visibility into the files an agent reads, creates, and modifies during a session. It provides a read-only workspace browser, rich file previews, Git change inspection, session-aware file activity, lightweight artifact discovery, and a user-controlled Working Set that can be sent back to the agent as task scope.
+DSH Workspace is a workspace companion for DeepSeek Harness that gives users direct visibility into the files an agent reads, creates, and modifies during a session. It provides agent-created artifact inspection with rich bounded previews, Git change inspection, session-aware activity summaries, governed project Memory, and — via the `workspace_memory_propose` tool — Agent-driven Memory proposals the user reviews before they become eligible for context.
 
 The product addresses a practical usability gap in coding-agent workflows: agents can manipulate files effectively, but users often have to rely on shell commands or ask the agent where files were written, what changed, and which outputs were created. DSH Workspace makes the agent's working environment inspectable without turning Harness into a full IDE.
 
@@ -478,7 +495,11 @@ No LLM-based artifact classification is required.
 
 ---
 
-### 7.6 Working Set — P0
+### 7.6 Working Set — P0 (RETIRED)
+
+> **Status: retired** — ADR-0010 (2026-08-16). The v0.2 Working Set scaffolding was removed from the tree before shipping; no working-set feature ships in the v0.5 line. Task-scope control is provided instead by the user's explicit verify/pin of Memory records and by normal conversation steering.
+
+The original (unshipped) spec:
 
 Users can pin files into a session-scoped Working Set.
 
@@ -515,7 +536,7 @@ Inspect these files as needed before continuing.
 
 This avoids forcing potentially large files into context while still giving the user deterministic control over task scope.
 
-#### Acceptance criteria
+#### Acceptance criteria (historic — not shipped)
 
 - Working Set is scoped to the current session.
 - Duplicate paths are not stored.
@@ -525,6 +546,14 @@ This avoids forcing potentially large files into context while still giving the 
 ---
 
 ### 7.7 Chat File Links — P1
+
+> **Status: not shipped.** The conversation Workspace tab (primary) and the summary card cover the primary entry points; clickable chat file links remain out of scope for the current release.
+
+---
+
+### 7.8 Agent-Driven Memory Proposals — P0 (shipped beyond original roadmap)
+
+The Agent can propose durable project decisions, preferences, conventions, or facts through the registered `workspace_memory_propose` tool. Proposals are stored as governed `model-suggested` / `unverified` records with session (+ tool-call event) source references and are **never injected into Agent/model context** until the user verifies them. A system-prompt section (tool-guidance band) tells the Agent when and how to propose. The Memory surface shows proposals as review items with Verify / Reject.
 
 When an assistant message contains a workspace-relative path such as:
 
@@ -714,7 +743,13 @@ Percentage of agent-touched files that are previewed by the user.
 
 Percentage of agent-created previewable artifacts that the user opens.
 
-### Working Set Usage
+### Memory Review Rate
+
+Percentage of model-suggested Memory proposals that the user reviews (verify or reject) — a direct signal of whether the proposal tool stays useful.
+
+### Working Set Usage (RETIRED)
+
+> **Status: retired** with §7.6 (ADR-0010). Replaced by the Memory Review Rate above.
 
 Percentage of sessions in which users pin one or more files and send a Working Set back to the agent.
 
@@ -804,6 +839,8 @@ Opening `output/report.md` renders the Markdown report.
 
 ### Step 7 — Control Agent Scope
 
+> **Status: retired** — the Working Set flow was removed (ADR-0010). The shipped equivalent for durable scope control is governed Memory: the user verifies/pins records, which makes them eligible for later use; task-level steering remains ordinary conversation.
+
 The user pins:
 
 ```text
@@ -821,45 +858,48 @@ If the complete scenario works safely and reproducibly, v0.1 is considered shipp
 
 ## 15. Roadmap
 
-### v0.1 — Workspace Visibility
+> **Delivery status added 2026-08-16.** The v0.5 line is delivered on `dev` (release pending review); the v0.1 Working Set and v0.2 context-management items were retired (ADR-0010).
 
-- Files
-- Session Files
-- Preview
-- Changes
-- Artifacts derived from session-created files
-- Working Set
+### v0.1 — Workspace Visibility (delivered, Working Set excepted)
 
-### v0.2 — True Context Management
+- Files — **not shipped** (replaced by agent-created Artifacts)
+- Session Files — **partial** (activity summaries via summary card / Artifacts list)
+- Preview — **shipped** (bounded opaque previews of agent-created artifacts)
+- Changes — **shipped**
+- Artifacts derived from session-created files — **shipped**
+- Working Set — **retired (ADR-0010)**
 
-- Pin to model context
-- Token estimation
-- Context budget
-- Content hash
-- Refresh-on-change
-- Context provenance
+### v0.2 — True Context Management (RETIRED — ADR-0010)
 
-### v0.3 — Rich Deliverables
+- ~~Pin to model context~~
+- ~~Token estimation~~
+- ~~Context budget~~
+- ~~Content hash~~
+- ~~Refresh-on-change~~
+- ~~Context provenance~~
 
-- Better artifact UX
-- Export/download
-- Additional preview types
-- Generic file attachment integration where supported
+### v0.3 — Rich Deliverables (delivered)
 
-### v0.4 — Project Memory
+- Better artifact UX — **shipped** (grouping, badges, refresh, download, empty states)
+- Export/download — **shipped** (bounded resource route)
+- Additional preview types — **shipped** (code/text, markdown, JSON, CSV, images, PDF, binary)
+- Generic file attachment integration — **not shipped** (out of scope)
 
-- Project decisions
-- Preferences
-- Conventions
-- Important persistent facts
+### v0.4 — Project Memory (delivered)
 
-### v0.5 — Memory Governance
+- Project decisions — **shipped**
+- Preferences — **shipped**
+- Conventions — **shipped**
+- Important persistent facts — **shipped**
 
-- Memory provenance
-- Session / Project / User scopes
-- Edit / Forget / Pin
-- Last-used information
-- Conflict handling
+### v0.5 — Memory Governance (delivered)
+
+- Memory provenance — **shipped**
+- Session / Project / User scopes — **shipped** (+ shared-project opt-in)
+- Edit / Forget / Pin — **shipped**
+- Last-used information — **shipped** (memoryMarkUsed on view)
+- Conflict handling — **shipped** (two-column comparison, verify/reject)
+- Agent-driven proposals — **shipped** (§7.8, `workspace_memory_propose` tool + system-prompt section)
 
 ---
 
@@ -877,3 +917,12 @@ The product should make it immediately obvious:
 - what it changed,
 - what it produced,
 - and what the user wants it to focus on next.
+
+---
+
+## v0.2 Change Notes (2026-08-16)
+
+- **Entry simplification:** the redundant lower-right floating panel (`shell.overlay`) was removed; the `Workspace` tab is the only entry.
+- **Overview density:** the per-session summary card (chat) now shows files by kind (created/modified/deleted), artifact count, active-scope memory/decision counts, and the active time span — all host-derived from durable tool records, no Agent involvement.
+- **Memory auto-write:** a session auto-writer (`attachWorkspaceMemoryAutoWriter`) observes `tools/result`, debounces per session, and writes `derived`/`unverified` `fact` records (stable id, idempotent merge, max 6 per session with oldest archived) so Memory and Export carry useful session facts. Storage details: `docs/MEMORY_STORAGE.md`.
+- **Surface redesign:** Artifacts / Memory / Changes use a shared scoped visual system (cards, status badges, empty/loading/error states) via `src/web/workspace-styles.ts`; remote contracts unchanged.

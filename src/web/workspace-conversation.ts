@@ -1,14 +1,3 @@
-import { normalizeWorkspacePath, type WorkspacePath } from "../domain/path.ts";
-import {
-  createDrawerState,
-  reduceDrawer,
-  type DrawerAction,
-  type DrawerEffect,
-  type DrawerState,
-  type PinnedContextSummary,
-  type WorkingSetSummary,
-} from "./workspace-drawer.ts";
-
 export const WORKSPACE_SUMMARY_EVENT = "workspace/summary" as const;
 export const WORKSPACE_CONVERSATION_KIND = "dsh-workspace-summary" as const;
 export const WORKSPACE_CONVERSATION_TARGET = "chat" as const;
@@ -19,13 +8,20 @@ export interface WorkspaceChatData {
   readonly changes: number;
   readonly artifacts: number;
   readonly workspaceName: string;
-}
-
-export interface WorkspacePreviewDescriptor {
-  readonly type: string;
-  readonly path?: WorkspacePath;
-  readonly message?: string;
-  readonly [key: string]: unknown;
+  /** Files whose last observed activity was a create. */
+  readonly filesCreated: number;
+  /** Files whose last observed activity was an edit. */
+  readonly filesModified: number;
+  /** Files whose last observed activity was a delete. */
+  readonly filesDeleted: number;
+  /** Earliest observed activity timestamp in the session (0 when none). */
+  readonly firstObservedAt: number;
+  /** Latest observed activity timestamp in the session (0 when none). */
+  readonly lastObservedAt: number;
+  /** Active-scope Memory records (session scope). */
+  readonly memoryCount: number;
+  /** Active-scope `decision` Memory records (session scope). */
+  readonly decisionCount: number;
 }
 
 export interface WorkspaceSummaryEventData {
@@ -98,7 +94,6 @@ export interface WorkspaceConversationViewDefinition {
 
 export interface WorkspaceSummaryCardModel {
   readonly summary: WorkspaceChatData;
-  readonly openWorkspace: { readonly label: "Open Workspace"; readonly action: () => void };
 }
 
 export type WorkspaceSummaryRenderer = (model: WorkspaceSummaryCardModel) => unknown;
@@ -108,60 +103,6 @@ export interface WorkspaceChatNodeProps {
 }
 
 export type WorkspaceChatNodeComponent = (props: WorkspaceChatNodeProps) => unknown;
-
-export interface WorkspaceDirectoryEntry {
-  readonly path: WorkspacePath;
-  readonly name: string;
-  readonly kind: "file" | "directory" | "symlink";
-  readonly size?: number;
-  readonly modifiedAt?: number;
-}
-
-export interface WorkspaceFileStat {
-  readonly path: WorkspacePath;
-  readonly kind: "file" | "directory" | "symlink";
-  readonly size?: number;
-  readonly modifiedAt?: number;
-}
-
-export interface WorkspaceChange {
-  readonly path: WorkspacePath;
-  readonly status: string;
-  readonly previousPath?: WorkspacePath;
-}
-
-export interface WorkspaceSessionFile {
-  readonly path: WorkspacePath;
-  readonly current: "present" | "deleted" | "unknown";
-  readonly observations: number;
-  readonly attribution: string;
-}
-
-export interface WorkspaceWorkingSet {
-  readonly entries: readonly { readonly path: WorkspacePath; readonly unresolved: boolean }[];
-  readonly summary: WorkingSetSummary;
-}
-
-export type WorkspacePinnedContext = PinnedContextSummary;
-
-export interface WorkspaceHostClient {
-  readonly listDirectory: (path: WorkspacePath) => Promise<readonly WorkspaceDirectoryEntry[]>;
-  readonly stat: (path: WorkspacePath) => Promise<WorkspaceFileStat>;
-  readonly preview: (path: WorkspacePath) => Promise<WorkspacePreviewDescriptor>;
-  readonly readResource: (resourceId: string) => Promise<Uint8Array>;
-  readonly gitStatus: () => Promise<readonly WorkspaceChange[]>;
-  readonly diff: (path?: WorkspacePath) => Promise<string>;
-  readonly sessionFiles: () => Promise<readonly WorkspaceSessionFile[]>;
-  readonly workingSet: () => Promise<WorkspaceWorkingSet>;
-  readonly pinWorkingSet: (path: WorkspacePath) => Promise<void>;
-  readonly unpinWorkingSet: (path: WorkspacePath) => Promise<void>;
-  readonly clearWorkingSet: () => Promise<void>;
-  readonly sendWorkingSet: () => Promise<void>;
-  readonly pinnedContext: () => Promise<WorkspacePinnedContext>;
-  readonly pinContext: (path: WorkspacePath) => Promise<WorkspacePinnedContext>;
-  readonly unpinContext: (path: WorkspacePath) => Promise<WorkspacePinnedContext>;
-  readonly clearContext: () => Promise<WorkspacePinnedContext>;
-}
 
 export interface WorkspaceWebError {
   readonly code: "INTEGRATION_UNAVAILABLE" | "LOCAL_OPERATION_FAILED";
@@ -179,51 +120,6 @@ export class WorkspaceWebIntegrationError extends Error {
   }
 }
 
-export interface WorkspaceDrawerController {
-  readonly getState: () => DrawerState;
-  readonly dispatch: (action: DrawerAction) => Promise<WorkspaceDrawerDispatchResult>;
-  readonly handleKey: (key: string) => Promise<WorkspaceDrawerDispatchResult>;
-  readonly listDirectory: WorkspaceHostClient["listDirectory"];
-  readonly preview: WorkspaceHostClient["preview"];
-  readonly readResource: WorkspaceHostClient["readResource"];
-  readonly diff: WorkspaceHostClient["diff"];
-  readonly sessionFiles: WorkspaceHostClient["sessionFiles"];
-  readonly gitStatus: WorkspaceHostClient["gitStatus"];
-  readonly workingSet: WorkspaceHostClient["workingSet"];
-  readonly pinnedContext: WorkspaceHostClient["pinnedContext"];
-}
-
-export interface WorkspaceDrawerDispatchResult {
-  readonly state: DrawerState;
-  readonly effect?: DrawerEffect;
-  readonly data?: WorkspacePreviewDescriptor | WorkspacePinnedContext | string;
-  readonly error?: WorkspaceWebError;
-}
-
-export type WorkspaceSurfaceLayout = {
-  readonly mode: "desktop" | "narrow";
-  readonly chatVisible: boolean;
-  readonly drawer: "right-side" | "full-width";
-};
-
-export const workspaceKeyboardControls = [
-  "open-workspace",
-  "close-workspace",
-  "Files",
-  "Session",
-  "Changes",
-  "Context",
-  "preview",
-  "pin-working-set",
-  "unpin-working-set",
-  "clear-working-set",
-  "send-working-set",
-  "inspect-pinned-context",
-  "pin-context",
-  "unpin-context",
-  "clear-context",
-] as const;
-
 function validCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
 }
@@ -235,7 +131,17 @@ function validWorkspaceName(value: unknown): value is string {
 function validSummary(value: unknown): value is WorkspaceChatData {
   if (!value || typeof value !== "object") return false;
   const summary = value as Partial<WorkspaceChatData>;
-  return validCount(summary.filesTouched) && validCount(summary.changes) && validCount(summary.artifacts) && validWorkspaceName(summary.workspaceName);
+  return validCount(summary.filesTouched)
+    && validCount(summary.changes)
+    && validCount(summary.artifacts)
+    && validCount(summary.filesCreated)
+    && validCount(summary.filesModified)
+    && validCount(summary.filesDeleted)
+    && validCount(summary.firstObservedAt)
+    && validCount(summary.lastObservedAt)
+    && validCount(summary.memoryCount)
+    && validCount(summary.decisionCount)
+    && validWorkspaceName(summary.workspaceName);
 }
 
 function eventData(value: unknown): WorkspaceSummaryEventData | undefined {
@@ -304,106 +210,13 @@ export const workspaceConversationView: WorkspaceConversationViewDefinition = {
   },
 };
 
-export function createWorkspaceSummaryCard(summary: WorkspaceChatData, openWorkspace: () => void): WorkspaceSummaryCardModel {
+export function createWorkspaceSummaryCard(summary: WorkspaceChatData): WorkspaceSummaryCardModel {
   if (!validSummary(summary)) throw new WorkspaceWebIntegrationError("LOCAL_OPERATION_FAILED", "Workspace summary is invalid");
-  return { summary, openWorkspace: { label: "Open Workspace", action: openWorkspace } };
+  return { summary };
 }
 
-export function createWorkspaceChatNodeComponent(render: WorkspaceSummaryRenderer, openWorkspace: () => void): WorkspaceChatNodeComponent {
-  return ({ node }) => render(createWorkspaceSummaryCard(node.data, openWorkspace));
-}
-
-export function createWorkspaceDrawerController(
-  client: WorkspaceHostClient,
-  initialState: DrawerState = createDrawerState(),
-): WorkspaceDrawerController {
-  let state = initialState;
-  const dispatchEffect = async (effect: DrawerEffect): Promise<WorkspacePinnedContext | void> => {
-    if (effect === "send-working-set") return client.sendWorkingSet();
-    if (effect === "clear-working-set") return client.clearWorkingSet();
-    if (effect === "inspect-pinned-context") return client.pinnedContext();
-    if (effect === "clear-context") return client.clearContext();
-    if (effect.type === "pin-working-set") return client.pinWorkingSet(effect.path);
-    if (effect.type === "unpin-working-set") return client.unpinWorkingSet(effect.path);
-    if (effect.type === "pin-context") return client.pinContext(effect.path);
-    return client.unpinContext(effect.path);
-  };
-  const controller: WorkspaceDrawerController = {
-    getState: () => state,
-    listDirectory: client.listDirectory,
-    preview: client.preview,
-    readResource: client.readResource,
-    diff: client.diff,
-    sessionFiles: client.sessionFiles,
-    gitStatus: client.gitStatus,
-    workingSet: client.workingSet,
-    pinnedContext: client.pinnedContext,
-    async dispatch(action) {
-      const reduced = reduceDrawer(state, action);
-      state = reduced.state;
-      if (action.type === "select-file" || action.type === "select-artifact") {
-        const target = state.preview.target;
-        if (target.type !== "file") return reduced;
-        try {
-          const data = await client.preview(target.path);
-          if (data.type === "error") {
-            const message = data.message ?? "Preview is unavailable";
-            state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message } }).state;
-            return { state, data, error: { code: "LOCAL_OPERATION_FAILED", operation: "preview", message } };
-          }
-          return { ...reduced, state, data };
-        } catch {
-          state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message: "Preview is unavailable" } }).state;
-          return { state, error: { code: "LOCAL_OPERATION_FAILED", operation: "preview", message: "Preview is unavailable" } };
-        }
-      }
-      if (action.type === "select-change") {
-        const target = state.preview.target;
-        if (target.type !== "change") return reduced;
-        try {
-          return { ...reduced, state, data: await client.diff(target.path) };
-        } catch {
-          state = reduceDrawer(state, { type: "set-preview", panel: { status: "error", message: "Change preview is unavailable" } }).state;
-          return { state, error: { code: "LOCAL_OPERATION_FAILED", operation: "diff", message: "Change preview is unavailable" } };
-        }
-      }
-      if (!reduced.effect) return reduced;
-      try {
-        const result = await dispatchEffect(reduced.effect);
-        if (result !== undefined) {
-          state = reduceDrawer(state, { type: "set-pinned-context", summary: result }).state;
-          return { ...reduced, state, data: result };
-        }
-        return reduced;
-      } catch {
-        const contextEffect = reduced.effect === "inspect-pinned-context"
-          || reduced.effect === "clear-context"
-          || (typeof reduced.effect !== "string" && (reduced.effect.type === "pin-context" || reduced.effect.type === "unpin-context"));
-        if (contextEffect) {
-          state = reduceDrawer(state, { type: "set-panel", tab: "Context", panel: { status: "error", message: "Pinned Context is unavailable" } }).state;
-        }
-        return {
-          state,
-          effect: reduced.effect,
-          error: { code: "LOCAL_OPERATION_FAILED", operation: typeof reduced.effect === "string" ? reduced.effect : reduced.effect.type, message: "Workspace action could not be completed" },
-        };
-      }
-    },
-    async handleKey(key) {
-      if (key !== "Escape") return { state };
-      return controller.dispatch({ type: "escape" });
-    },
-  };
-  return controller;
-}
-
-export function workspaceSurfaceLayout(viewportWidth: number, breakpoint = 760): WorkspaceSurfaceLayout {
-  if (!Number.isFinite(viewportWidth) || viewportWidth < 0 || !Number.isSafeInteger(breakpoint) || breakpoint < 1) {
-    throw new WorkspaceWebIntegrationError("LOCAL_OPERATION_FAILED", "Workspace viewport is invalid");
-  }
-  return viewportWidth <= breakpoint
-    ? { mode: "narrow", chatVisible: false, drawer: "full-width" }
-    : { mode: "desktop", chatVisible: true, drawer: "right-side" };
+export function createWorkspaceChatNodeComponent(render: WorkspaceSummaryRenderer): WorkspaceChatNodeComponent {
+  return ({ node }) => render(createWorkspaceSummaryCard(node.data));
 }
 
 export interface WorkspaceConversationEventRegistry {
@@ -428,7 +241,6 @@ export interface WorkspaceConversationContributionContext {
 
 export interface WorkspaceConversationContributionOptions {
   readonly renderSummary: WorkspaceSummaryRenderer;
-  readonly openWorkspace: () => void;
 }
 
 export function applyWorkspaceConversationContribution(
@@ -438,7 +250,7 @@ export function applyWorkspaceConversationContribution(
   if (!ctx?.conversationEvents || !ctx.conversationViews || !ctx.slots || typeof ctx.effect !== "function") {
     throw new WorkspaceWebIntegrationError("INTEGRATION_UNAVAILABLE", "Public DSH Web conversation seam is unavailable");
   }
-  if (typeof options?.renderSummary !== "function" || typeof options.openWorkspace !== "function") {
+  if (typeof options?.renderSummary !== "function") {
     throw new WorkspaceWebIntegrationError("INTEGRATION_UNAVAILABLE", "Workspace summary renderer is unavailable");
   }
   ctx.effect(() => {
@@ -446,7 +258,7 @@ export function applyWorkspaceConversationContribution(
     const disposeView = ctx.conversationViews.register(workspaceConversationView);
     const disposeSlot = ctx.slots.inject(WORKSPACE_CHAT_SLOT, () => ctx.slots.register(
       { name: WORKSPACE_CHAT_SLOT, key: WORKSPACE_CONVERSATION_KIND },
-      createWorkspaceChatNodeComponent(options.renderSummary, options.openWorkspace),
+      createWorkspaceChatNodeComponent(options.renderSummary),
     ));
     return () => {
       disposeSlot();
@@ -454,14 +266,4 @@ export function applyWorkspaceConversationContribution(
       disposeEvent();
     };
   }, "workspace conversation contribution");
-}
-
-export function normalizeWorkspaceOperationPath(path: string): WorkspacePath {
-  try {
-    const normalized = normalizeWorkspacePath(path);
-    if (!normalized || /[\u0000-\u001f\u007f]/u.test(normalized)) throw new Error("invalid path");
-    return normalized;
-  } catch {
-    throw new WorkspaceWebIntegrationError("LOCAL_OPERATION_FAILED", "Workspace Path is invalid");
-  }
 }

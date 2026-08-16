@@ -344,11 +344,9 @@ const contribution = {
   emit: () => {},
 }
 const disposeSurface = await client.apply(contribution)
-if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
-if (surfaceRegistrations.filter((value) => value === 'register:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not register the artifact surface exactly once')
-await disposeSurface()
-if (surfaceRegistrations.filter((value) => value === 'register-dispose:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not dispose the artifact surface exactly once')
-console.log('installed-bundle-ok')
+  if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
+  await disposeSurface()
+  console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
   assert.match(check.stdout, /installed-bundle-ok/)
@@ -772,57 +770,6 @@ async function gatewaySmoke(root, host, hostTypert) {
   const oversizedState = await oversizedStore.open()
   assert.equal(oversizedState.readOnly, true)
   assert.equal(oversizedState.warnings[0].code, 'STORE_TOO_LARGE')
-  const initialContext = await ctx.typertGateway.invoke({
-    namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
-  })
-  assert.equal(initialContext.status, 'omitted')
-  assert.equal(initialContext.capacityTokens, 0)
-  const replacedContext = await ctx.typertGateway.invoke({
-    namespace: 'workspace', method: 'replaceContext',
-    args: {
-      agentId: 'agent-1',
-      snapshot: {
-        version: 1,
-        contentHash: `sha256:${'c'.repeat(64)}`,
-        estimatedTokens: 12,
-        capacityTokens: 512,
-        admittedTokens: 12,
-        availableBudgetTokens: 480,
-        remainingTokens: 468,
-        status: 'ready',
-        omissionReason: '',
-      },
-    },
-  })
-  assert.equal(replacedContext.version, 1)
-  assert.equal(replacedContext.remainingTokens, 468)
-  assert.equal(typeof host.registerPinnedContextCarrier, 'function')
-  assert.equal(typeof host.createPinnedContext, 'function')
-  const registrations = []
-  const carrierAgent = {
-    id: 'agent-1',
-    ctx: {
-      systemPrompt: {
-        context(registration) {
-          registrations.push(registration)
-          return () => registrations.splice(registrations.indexOf(registration), 1)
-        },
-      },
-    },
-  }
-  let contextState = host.createPinnedContext({ sessionId: 'agent-1', rootId: 'root-1' }, { maxItemBytes: 64, reservedOutputTokens: 4 })
-  contextState = host.setContextCapacity(contextState, 256)
-  contextState = host.pinContextPath(contextState, 'src/auth.py')
-  const readyState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'alpha', loadedAt: 1 })
-  const omittedState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'x'.repeat(80), loadedAt: 2 })
-  assert.equal(omittedState.entries[0].status, 'over-budget')
-  const carrier = host.registerPinnedContextCarrier(carrierAgent, readyState)
-  const firstText = registrations[0].text()
-  const changedState = host.updateContextPath(readyState, { path: 'src/auth.py', status: 'ready', content: 'beta', loadedAt: 3 })
-  carrier.update(changedState)
-  assert.notEqual(registrations[0].text(), firstText)
-  carrier.dispose()
-  assert.equal(registrations.length, 0)
   assert.ok(ctx.typert.local.list().length > 0)
   disposeAgent()
   disposeAgents()
@@ -887,6 +834,7 @@ async function conversationSmoke(root, client, ctx) {
   const views = []
   const clientSlots = []
   const overlaySlots = []
+  const conversationViewSlots = []
   let clientCleanup
   let clientRemoteMounted = 0
   let clientRemoteDisposed = false
@@ -896,9 +844,9 @@ async function conversationSmoke(root, client, ctx) {
     conversationViews: { register(view) { views.push(view); return () => views.splice(views.indexOf(view), 1) } },
     slots: {
       inject(key, callback) {
-        assert.ok(key === 'conversation.chat.node' || key === 'shell.overlay')
+        assert.ok(key === 'conversation.chat.node' || key === 'shell.overlay' || key === 'conversation.view')
         const dispose = callback()
-        return () => { dispose(); (key === 'conversation.chat.node' ? clientSlots : overlaySlots).splice(0) }
+        return () => { dispose(); (key === 'conversation.chat.node' ? clientSlots : key === 'shell.overlay' ? overlaySlots : conversationViewSlots).splice(0) }
       },
       register(options, component) {
         if (options.name === 'conversation.chat.node') {
@@ -906,10 +854,13 @@ async function conversationSmoke(root, client, ctx) {
           clientSlots.push(component)
           return () => clientSlots.splice(0)
         }
-        assert.equal(options.name, 'shell.overlay')
-        assert.ok(options.id === 'dsh-workspace-artifacts' || options.id === 'dsh-workspace-memory')
-        overlaySlots.push(component)
-        return () => overlaySlots.splice(0)
+        if (options.name === 'conversation.view') {
+          assert.equal(options.id, 'dsh-workspace')
+          assert.equal(options.label, 'Workspace')
+          conversationViewSlots.push(component)
+          return () => conversationViewSlots.splice(0)
+        }
+        assert.fail(`unexpected conversation slot registration: ${options.name}`)
       },
     },
     effect(factory) { clientCleanup = factory() },
@@ -930,19 +881,17 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(definitions.length, 1)
   assert.equal(views.length, 0)
   assert.equal(clientSlots.length, 1)
-  assert.equal(overlaySlots.length, 2)
+  assert.equal(overlaySlots.length, 0)
+  assert.equal(conversationViewSlots.length, 1)
   assert.equal(clientRemoteMounted, 1)
   await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
   const clientNode = clientSlots[0]({ node: {
     key: 'dsh-workspace-summary:client', kind: 'dsh-workspace-summary', id: 'client', target: 'chat',
-    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client' }, anchorSeq: 1,
+    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client', filesCreated: 1, filesModified: 0, filesDeleted: 0, firstObservedAt: 1, lastObservedAt: 2, memoryCount: 0, decisionCount: 0 }, anchorSeq: 1,
     location: { kind: 'session' }, visibility: 'visible',
   } })
   assert.equal(clientNode.type, 'section')
   assert.equal(clientNode.props['data-dsh-workspace'], 'summary')
-  assert.equal(clientNode.props.children[2].type, 'button')
-  clientNode.props.children[2].props.onClick()
-  assert.equal(clientOpened, 1)
   const workspace = client
   assert.equal(typeof workspace.workspaceConversationView, 'object')
   const events = { entries: () => definitions, fallbackEntry: () => undefined }
@@ -953,7 +902,7 @@ async function conversationSmoke(root, client, ctx) {
       seq: 1,
       time: 1,
       type: 'workspace/summary',
-      data: { id: 'summary-1', phase: 'start', summary: { filesTouched: 1, changes: 0, artifacts: 0, workspaceName: 'compat' } },
+      data: { id: 'summary-1', phase: 'start', summary: { filesTouched: 1, changes: 0, artifacts: 0, workspaceName: 'compat', filesCreated: 1, filesModified: 0, filesDeleted: 0, firstObservedAt: 1, lastObservedAt: 1, memoryCount: 0, decisionCount: 0 } },
       ignorable: true,
     },
     view: undefined,
@@ -968,7 +917,6 @@ async function conversationSmoke(root, client, ctx) {
   assert.deepEqual([...first.nodes.values()].map(node => node.data), [...replayed.nodes.values()].map(node => node.data))
 
   assert.equal(typeof workspace.applyWorkspaceConversationContribution, 'function', 'packed Client must export the Workspace Web contribution')
-  assert.equal(typeof workspace.createWorkspaceDrawerController, 'function', 'packed Client must export typed Workspace operations')
   const workspaceDefinitions = []
   const workspaceViews = []
   const workspaceSlots = []
@@ -998,12 +946,11 @@ async function conversationSmoke(root, client, ctx) {
   }
   workspace.applyWorkspaceConversationContribution(workspaceContext, {
     renderSummary(model) { rendered = model; return model },
-    openWorkspace() { opened = true },
   })
   assert.equal(workspaceDefinitions.length, 1)
   assert.equal(workspaceViews.length, 1)
   assert.equal(workspaceSlots.length, 1)
-  const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat' }
+  const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat', filesCreated: 4, filesModified: 3, filesDeleted: 1, firstObservedAt: 1000, lastObservedAt: 5000, memoryCount: 2, decisionCount: 1 }
   const summaryEvent = { type: 'workspace/summary', seq: 2, data: { id: 'compat-session', phase: 'start', summary } }
   const summaryMatch = workspace.workspaceConversationDefinition.match(summaryEvent)
   assert.equal(summaryMatch.id, 'compat-session')
@@ -1014,58 +961,12 @@ async function conversationSmoke(root, client, ctx) {
   })
   rendered = workspaceSlots[0]({ node: summaryNode })
   assert.deepEqual(rendered.summary, summary)
-  rendered.openWorkspace.action()
-  assert.equal(opened, true)
-  const typedClient = {
-    async listDirectory() { return [] },
-    async stat() { return { path: 'src/auth.py', kind: 'file' } },
-    async preview() { previewCalls += 1; return { type: 'text', path: 'src/auth.py', renderer: 'ui-primitives', content: 'ok', truncated: false } },
-    async readResource() { return new Uint8Array() },
-    async gitStatus() { return [] },
-    async diff() { return '' },
-    async sessionFiles() { return [] },
-    async workingSet() { return { entries: [], summary: { count: 0, unresolvedCount: 0 } } },
-    async pinWorkingSet() {},
-    async unpinWorkingSet() {},
-    async clearWorkingSet() {},
-    async sendWorkingSet() { sendCalls += 1 },
-    async pinnedContext() {
-      contextCalls += 1
-      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
-    },
-    async pinContext(path) {
-      contextCalls += 1
-      return {
-        count: 1, capacity: 'available', capacityTokens: 500, admittedTokens: 12, availableBudgetTokens: 488, remainingTokens: 488,
-        entries: [{ path, order: 0, sourceStatus: 'ready', status: 'ready', contentHash: `sha256:${'b'.repeat(64)}`, bytes: 48, estimatedTokens: 12, loadedAt: 1 }],
-      }
-    },
-    async unpinContext() {
-      contextCalls += 1
-      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
-    },
-    async clearContext() {
-      contextCalls += 1
-      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
-    },
-  }
-  const controller = workspace.createWorkspaceDrawerController(typedClient)
-  await controller.dispatch({ type: 'select-file', path: 'src/auth.py' })
-  await controller.dispatch({ type: 'send-working-set' })
-  await controller.dispatch({ type: 'inspect-pinned-context' })
-  await controller.dispatch({ type: 'pin-context', path: 'src/auth.py' })
-  assert.equal(controller.getState().pinnedContext.count, 1)
-  assert.equal('content' in controller.getState().pinnedContext.entries[0], false)
-  await controller.dispatch({ type: 'clear-context' })
-  assert.equal(previewCalls, 1)
-  assert.equal(sendCalls, 1)
-  assert.equal(contextCalls, 3)
-  assert.equal(controller.getState().pinnedContext.count, 0)
   await clientDispose()
   assert.equal(clientRemoteMounted, 0)
   assert.equal(clientRemoteDisposed, true)
   assert.equal(clientSlots.length, 0)
   assert.equal(overlaySlots.length, 0)
+  assert.equal(conversationViewSlots.length, 0)
   workspaceCleanup?.()
   assert.equal(workspaceDefinitions.length, 0)
   assert.equal(workspaceViews.length, 0)

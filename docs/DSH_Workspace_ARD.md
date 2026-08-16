@@ -2,13 +2,30 @@
 
 **Product:** DSH Workspace  
 **Package / Repository:** `dsh-workspace-plugin`  
-**Status:** MVP Architecture Specification  
-**Target Release:** v0.1  
-**Last Updated:** 2026-08-15  
+**Status:** Delivered (v0.5 line) — this revision reflects the shipped architecture  
+**Last Updated:** 2026-08-16  
+
+## 0. Delivered-Reality Revision (2026-08-16)
+
+The shipped plugin (merged to `dev`, release pending review) implements: session-scoped workspace identity (ADR-0001); Artifacts + Memory + Git Changes surfaces; a conversation-view tab (`conversation.view`, id `dsh-workspace`) plus the `shell.overlay` panel pill fallback; a live summary card driven by `workspace/summary` events (Host observes final tool outcomes through the public `tools/result` seam); and an Agent-facing `workspace_memory_propose` tool (public `ctx.tools.register`/`defineTool`) + system-prompt section.
+
+Section-level deltas:
+
+| Spec section | Delivered reality |
+|---|---|
+| §4–§9 Filesystem/File model | **Reduced.** No general file tree; the Filesystem Service layer was not shipped (agent-created artifacts + previews only). |
+| §11 Directory Listing | **Not shipped** (no general directory browser). |
+| §16–§17 Git Service / refresh | **Shipped** (typed `gitStatus`/`gitDiff` RPCs, bounded unified diffs, args-not-shell). |
+| §18–§28 Preview architecture | **Shipped** as bounded opaque resource previews of agent-created artifacts (ADR-0005). |
+| §29–§30 Working Set Service / Send to Agent | **Retired — ADR-0010.** Not shipped. |
+| §31 Why Full Context Injection Is Deferred | **Superseded** by the zero-injection governance rule: Memory (incl. model-suggested proposals) is never injected into Agent/model context until the user verifies it. |
+| §32–§34 Web Client integration | **Shipped**, extended with the conversation view tab and `workspace/summary` events. |
+| §42 Phase 6 (Working Set) | **Retired — ADR-0010.** |
+| §46 Architecture DoD | Updated below: the shipped acceptance flow ends at Memory review, not Working Set. |
 
 ## 1. Architecture Summary
 
-DSH Workspace is implemented as a read-only, session-aware workspace layer for DeepSeek Harness. The plugin observes agent tool activity through public Harness extension points, provides secure filesystem and Git read services, derives session file activity, exposes preview data to a Web client contribution, and allows users to send a selected Working Set back to the agent.
+DSH Workspace is implemented as a read-only, session-aware workspace layer for DeepSeek Harness. The plugin observes agent tool activity through public Harness extension points, derives session-created artifacts, provides bounded artifact previews and Git read services, maintains governed project/session Memory with provenance-first governance, registers a conversation-view tab and a panel pill, emits `workspace/summary` events, and exposes an Agent-facing Memory-proposal tool. There is no full file-tree browser and no Working Set.
 
 The architecture must avoid modifying the Harness agent loop and must not depend on undocumented internal behavior when a public extension seam exists.
 
@@ -962,9 +979,11 @@ Artifact state should reuse Session Files rather than create a parallel tracking
 
 ---
 
-## 29. Working Set Service
+## 29. Working Set Service (RETIRED)
 
-Suggested model:
+> **Status: retired — ADR-0010 (2026-08-16).** The Working Set service was never shipped; the scaffolding was removed from the tree. The shipped scope-control equivalent is governed Memory (verify/pin makes records eligible for later use; proposals are never auto-injected) plus ordinary conversation steering.
+
+Suggested model (historic, unshipped):
 
 ```ts
 interface WorkingSet {
@@ -992,7 +1011,9 @@ It does not persist or inject full file contents automatically.
 
 ---
 
-## 30. Send Working Set to Agent
+## 30. Send Working Set to Agent (RETIRED)
+
+> **Status: retired with §29 (ADR-0010).**
 
 The client action should call a Host operation that uses the owning session Agent handle to send one deterministic scope message.
 
@@ -1014,7 +1035,9 @@ Avoid direct manipulation of internal queues.
 
 ---
 
-## 31. Why Full Context Injection Is Deferred
+## 31. Why Full Context Injection Is Deferred (SUPERSEDED)
+
+> **Status: superseded (2026-08-16).** The zero-injection governance rule is now absolute: Memory records — including model-suggested proposals — are never injected into Agent/model context until the user verifies them; verified/pinned records are simply eligible for later use. The original token-budget rationale below is retained for history.
 
 Example Working Set:
 
@@ -1497,7 +1520,9 @@ Implement:
 - Changes tab
 - Preview pane
 
-### Phase 6 — Working Set
+### Phase 6 — Working Set (RETIRED — ADR-0010)
+
+> **Status: retired.** Not implemented. The shipped roadmap replaces this phase with Memory governance + proposals.
 
 Implement:
 
@@ -1650,6 +1675,8 @@ This would allow local, sandbox, container, or remote execution environments wit
 
 ## 46. Architecture Definition of Done
 
+> **Updated 2026-08-16 for the delivered reality.** The Working Set leg of the original flow was retired (ADR-0010); the shipped acceptance flow ends at governed Memory review and conversation-view rendering.
+
 The architecture is considered validated when the following complete flow works without private agent-loop modifications:
 
 ```text
@@ -1663,15 +1690,11 @@ Agent edits src/auth.py
    ↓
 Git status refresh
    ↓
-Changes view shows M src/auth.py
+Changes tab shows M src/auth.py
    ↓
-User opens src/auth.py
+User opens the change
    ↓
-secure preview API returns bounded content
-   ↓
-User opens diff
-   ↓
-GitService returns unified diff
+GitService returns bounded unified diff
    ↓
 Agent creates output/report.md
    ↓
@@ -1681,22 +1704,33 @@ Artifact list exposes report.md
    ↓
 Markdown preview renders it
    ↓
-User pins auth.py + test file
+Agent proposes a Memory record via workspace_memory_propose
    ↓
-WorkingSetService stores paths
+proposal stored as model-suggested / unverified (session + event source refs)
    ↓
-Send to Agent
+Memory surface shows it as a review item
    ↓
-public Agent continuation API receives scope message
+User verifies (or rejects) — only then is the record eligible for later use
+   ↓
+Workspace renders in the conversation tab row beside Trajectory
 ```
 
 If this is achieved with:
 
 - strict workspace-root containment,
-- lazy filesystem access,
-- bounded previews,
+- bounded previews (opaque resource URLs, ADR-0005),
 - read-only project access from the UI,
-- public Harness extension points,
+- zero-injection governance for Memory (ADR-0003 spirit; proposals never auto-injected),
+- public Harness extension points only (slots, tools, systemPrompt, session.append),
 - and reproducible session activity,
 
-then the v0.1 architecture is ready for implementation and release.
+then the v0.5 architecture is delivered and the plugin is ready for release review.
+
+---
+
+## v0.2 Change Notes (2026-08-16)
+
+- **Entry simplification:** overlay slot removed (`workspace-panel.ts` deleted, `shell.overlay` registration gone); the `conversation.view` tab is the single entry. Dead overlay constants (`WORKSPACE_ARTIFACT_OVERLAY_SLOT`, `WORKSPACE_MEMORY_OVERLAY_SLOT`, `*_ENTRY_KEY`) removed from exports.
+- **Shared visual system:** styles extracted to `src/web/workspace-styles.ts` (`installWorkspaceStyles`, scoped under `[data-dsh-workspace=…]`); all three surfaces rebuilt on cards/badges/status chips/empty states with the same tokens.
+- **Overview data flow:** `WorkspaceSummaryData` extended with `filesCreated/filesModified/filesDeleted/firstObservedAt/lastObservedAt/memoryCount/decisionCount`; emitted `workspace/summary` events are validated client-side (`validSummary`) and rendered in the chat summary card; the emitter optionally augments counts from the Memory domain.
+- **Memory auto-write (ADR-compatible):** new `src/host/workspace-memory-auto-write.ts` — host-side derivation only, `origin=derived`, `verification=unverified`, `retention=session-end`, never injected into Agent context (respects the zero-injection governance boundary); idempotent stable-id upserts; per-session prune to 6.

@@ -82,6 +82,11 @@ export interface MemoryStoreOptions extends MemoryStoreLocationOptions {
     readonly idFactory?: () => string;
     readonly maxContentBytes?: number;
     readonly migrations?: readonly MemoryMigration[];
+    /**
+     * Age after which a `.lock` file is considered stale and reclaimed.
+     * Defaults to 60_000ms so long compactions are not falsely reported busy.
+     */
+    readonly lockStaleMs?: number;
 }
 export interface MemoryMigration {
     readonly from: number;
@@ -121,6 +126,7 @@ export declare class MemoryStore {
     private readonly now;
     private readonly idFactory;
     private readonly maxContentBytes;
+    private readonly lockStaleMs;
     private readonly projectRoot?;
     private readonly migrations;
     private records;

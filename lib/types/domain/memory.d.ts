@@ -1,6 +1,6 @@
 import { type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemoryScope, type MemorySearchOptions } from "./memory-store.ts";
 import { type MemoryGovernanceAction } from "./memory-governance.ts";
-import type { WorkspaceIdentity } from "./workspace.ts";
+import { type WorkspaceIdentity, type WorkspaceSnapshot } from "./workspace.ts";
 export interface MemoryScopeRequest {
     readonly scope: MemoryScope;
     /** Required for User scope; never interpreted as a filesystem path. */
@@ -14,6 +14,25 @@ export interface MemoryWorkspaceContext {
     readonly identity: WorkspaceIdentity;
     readonly root?: string;
 }
+/** Agent handle as observed by the Host (session header carries the cwd). */
+export interface MemoryHostAgent {
+    readonly id: string;
+    readonly session?: {
+        readonly header?: {
+            readonly cwd?: string;
+        };
+    };
+}
+/**
+ * Resolve the canonical Workspace identity and Root for one agent/session.
+ * Shared by the Host RPC service and the memory-propose tool so both write
+ * through the same identity semantics.
+ */
+export declare function workspaceMemoryContextFor(agent: MemoryHostAgent): {
+    readonly identity: WorkspaceIdentity;
+    readonly root: string;
+    readonly snapshot: WorkspaceSnapshot;
+};
 export declare class WorkspaceMemoryDomain {
     private readonly stores;
     private readonly dshHome;

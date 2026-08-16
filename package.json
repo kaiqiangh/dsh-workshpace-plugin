@@ -53,7 +53,10 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-api-remotes"],
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
       "platform": "web",
       "immediately": true
     }
@@ -63,6 +66,7 @@
     "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
     "zod": "4.4.3"
   },
@@ -80,13 +84,14 @@
     "@types/node": "26.2.0",
     "@types/react": "18.3.12",
     "react": "18.3.1",
+    "react-test-renderer": "^18.3.1",
     "tsdown": "0.22.14",
     "typescript": "6.0.3"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "node --experimental-strip-types --check src/client.ts && node --experimental-strip-types --check src/index.ts && node --experimental-strip-types --check src/types.ts && node --experimental-strip-types --check src/domain/activity.ts && node --experimental-strip-types --check src/domain/config.ts && node --experimental-strip-types --check src/domain/context.ts && node --experimental-strip-types --check src/domain/context-carrier.ts && node --experimental-strip-types --check src/domain/context-refresh.ts && node --experimental-strip-types --check src/domain/followup.ts && node --experimental-strip-types --check src/domain/memory-store.ts && node --experimental-strip-types --check src/domain/memory.ts && node --experimental-strip-types --check src/domain/memory-governance.ts && node --experimental-strip-types --check src/domain/metrics.ts && node --experimental-strip-types --check src/domain/observation.ts && node --experimental-strip-types --check src/domain/path.ts && node --experimental-strip-types --check src/domain/preview.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/domain/deliverable.ts && node --experimental-strip-types --check src/host/workspace-resource.ts && node --experimental-strip-types --check src/host/workspace-artifacts.ts && node --experimental-strip-types --check src/web/workspace-drawer.ts && node --experimental-strip-types --check src/web/workspace-conversation.ts && node --experimental-strip-types --check src/web/workspace-preview-adapters.ts && node --experimental-strip-types --check src/web/workspace-deliverables.ts && node --experimental-strip-types --check src/web/workspace-artifact-surface.ts && node --experimental-strip-types --check src/web/workspace-memory-surface.ts",
+    "check": "node --experimental-strip-types --check src/client.ts && node --experimental-strip-types --check src/index.ts && node --experimental-strip-types --check src/types.ts && node --experimental-strip-types --check src/domain/activity.ts && node --experimental-strip-types --check src/domain/config.ts && node --experimental-strip-types --check src/domain/memory-store.ts && node --experimental-strip-types --check src/domain/memory.ts && node --experimental-strip-types --check src/domain/memory-governance.ts && node --experimental-strip-types --check src/domain/observation.ts && node --experimental-strip-types --check src/domain/path.ts && node --experimental-strip-types --check src/domain/preview.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/domain/deliverable.ts && node --experimental-strip-types --check src/domain/git.ts && node --experimental-strip-types --check src/host/workspace-resource.ts && node --experimental-strip-types --check src/host/workspace-artifacts.ts && node --experimental-strip-types --check src/host/workspace-memory-propose.ts && node --experimental-strip-types --check src/host/workspace-memory-auto-write.ts && node --experimental-strip-types --check src/host/workspace-summary.ts && node --experimental-strip-types --check src/web/workspace-conversation.ts && node --experimental-strip-types --check src/web/workspace-preview-adapters.ts && node --experimental-strip-types --check src/web/workspace-deliverables.ts && node --experimental-strip-types --check src/web/workspace-artifact-surface.ts && node --experimental-strip-types --check src/web/workspace-memory-surface.ts && node --experimental-strip-types --check src/web/workspace-styles.ts && node --experimental-strip-types --check src/web/workspace-view.ts && node --experimental-strip-types --check src/web/workspace-changes-surface.ts",
     "smoke:compat": "node --experimental-strip-types scripts/dsh-compat-smoke.mjs"
   }
 }
