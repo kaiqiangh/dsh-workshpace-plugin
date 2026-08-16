@@ -76,6 +76,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
   }
   const remoteDispose: TypertDisposer = await ctx.remote.$mount(TYPERT_REMOTE as TypertRemoteContribution);
   let disposeConversation: (() => void) | undefined;
+  let openWorkspacePanel: (() => void) | undefined;
   try {
     ctx.effect(() => {
       const disposeEvent = ctx.conversationEvents.register(workspaceConversationDefinition);
@@ -89,7 +90,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             createElement("span", null, ` ${model.summary.filesTouched} files, ${model.summary.changes} changes`),
             createElement("button", { type: "button", onClick: model.openWorkspace.action }, model.openWorkspace.label),
           ),
-          () => ctx.emit("workspace/open"),
+          () => { ctx.emit("workspace/open"); openWorkspacePanel?.(); },
         ),
       ));
       let disposed = false;
@@ -142,7 +143,15 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             createWorkspaceConversationViewComponent({ artifacts, memory }),
           )));
         }
-        return () => { remotes.clear(); for (const dispose of disposers.reverse()) dispose(); };
+        openWorkspacePanel = () => {
+          const panel = typeof document === "object" ? document.querySelector?.('[data-dsh-workspace="panel"]') : undefined;
+          if (panel && typeof panel.setAttribute === "function") panel.setAttribute("open", "");
+        };
+        return () => {
+          remotes.clear();
+          openWorkspacePanel = undefined;
+          for (const dispose of disposers.reverse()) dispose();
+        };
       };
       let directWorkspace = false;
       try { directWorkspace = Boolean((ctx.remote as unknown as { readonly workspace?: unknown }).workspace); } catch {}
