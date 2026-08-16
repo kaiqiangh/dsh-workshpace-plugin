@@ -13,6 +13,7 @@ export { PreviewPanelError, PreviewService, type BinaryPreviewDescriptor, type B
 export { createWorkspaceDeliverable, deliverableResourceId, safeDownloadName, WorkspaceDeliverableError, type WorkspaceDeliverable, type WorkspaceDeliverableOptions, type WorkspaceDeliverablePreview, type WorkspaceDeliverableSource, } from "./domain/deliverable.ts";
 export { installWorkspaceResourceRoute, registerWorkspaceResourceRoute, type WebRouteRegistrar, type WorkspaceEffectRegistrar, type WorkspaceResourceRouteOptions, } from "./host/workspace-resource.ts";
 export { WorkspaceArtifactCarrier, sessionToolRecords, type WorkspaceArtifactCarrierOptions, type WorkspaceArtifactPreview, type SessionEventLike, } from "./host/workspace-artifacts.ts";
+export { createMemoryProposeTool, proposeMemory, registerMemoryPropose, MEMORY_PROPOSE_SECTION, MEMORY_PROPOSE_TOOL_NAME, type MemoryProposeAgent, type MemoryProposeArgs, } from "./host/workspace-memory-propose.ts";
 declare module "@deepseek-ai/dsh-typert-protocol" {
     interface TypertContextMap {
         agent: TypertContext<AgentId>;
@@ -54,4 +55,5 @@ export declare class WorkspaceService extends TypertRemoteService {
     private carrier;
 }
 export declare const name = "dsh-workspace-plugin";
+export declare const inject: readonly ["tools", "systemPrompt"];
 export declare function apply(ctx: Context): void;

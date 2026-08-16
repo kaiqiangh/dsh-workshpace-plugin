@@ -14,6 +14,8 @@ export interface WorkspaceMemoryRemote {
     readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
     readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
+    readonly memoryMarkUsed?: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
+    readonly memoryClose?: (request: MemoryScopeRequest) => Promise<RemoteResult<void>>;
 }
 export interface WorkspaceMemorySurfaceOptions {
     readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceMemoryRemote | undefined;

@@ -7,6 +7,7 @@ import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
+import { registerMemoryPropose } from "./host/workspace-memory-propose.ts";
 import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
 export {
@@ -99,6 +100,15 @@ export {
   type WorkspaceArtifactPreview,
   type SessionEventLike,
 } from "./host/workspace-artifacts.ts";
+export {
+  createMemoryProposeTool,
+  proposeMemory,
+  registerMemoryPropose,
+  MEMORY_PROPOSE_SECTION,
+  MEMORY_PROPOSE_TOOL_NAME,
+  type MemoryProposeAgent,
+  type MemoryProposeArgs,
+} from "./host/workspace-memory-propose.ts";
 
 declare module "@deepseek-ai/dsh-typert-protocol" {
   interface TypertContextMap {
@@ -332,6 +342,9 @@ export class WorkspaceService extends TypertRemoteService {
 
 export const name = "dsh-workspace-plugin";
 
+export const inject = ["tools", "systemPrompt"] as const;
+
 export function apply(ctx: Context): void {
   ctx.plugin(WorkspaceService);
+  ctx.effect(() => registerMemoryPropose(ctx), "dsh-workspace memory propose tool");
 }

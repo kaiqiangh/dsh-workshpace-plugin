@@ -383,7 +383,8 @@ export class MemoryStore {
     this.now = options.now ?? Date.now;
     this.idFactory = options.idFactory ?? (() => `memory:${randomUUID()}`);
     this.maxContentBytes = safeLimit(options.maxContentBytes, MEMORY_MAX_CONTENT_BYTES);
-    this.lockStaleMs = Number.isSafeInteger(options.lockStaleMs) && options.lockStaleMs! > 0 ? options.lockStaleMs : 60_000;
+    const lockStaleMs = options.lockStaleMs;
+    this.lockStaleMs = typeof lockStaleMs === "number" && Number.isSafeInteger(lockStaleMs) && lockStaleMs > 0 ? lockStaleMs : 60_000;
   }
 
   async open(): Promise<MemoryReadState> {
