@@ -1,14 +1,16 @@
 import { Remote, RemoteScope, TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
 import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
-import { resolveWorkspaceRoot, startWorkspace } from "./domain/workspace.ts";
+import { resolveWorkspaceRoot, resumeWorkspace, startWorkspace, type WorkspaceSnapshot } from "./domain/workspace.ts";
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
+import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
 import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
 export {
   MEMORY_MAX_CONTENT_BYTES,
+  MEMORY_MAX_FILE_BYTES,
   MEMORY_MAX_QUERY_BYTES,
   MEMORY_MAX_RESULTS,
   MEMORY_MAX_TAGS,
@@ -21,6 +23,12 @@ export {
   type MemoryDraft,
   type MemoryListOptions,
   type MemoryMigration,
+  type MemoryConfidence,
+  type MemoryGovernance,
+  type MemoryOrigin,
+  type MemoryRetention,
+  type MemorySourceRef,
+  type MemoryVerification,
   type MemoryProvenance,
   type MemoryReadState,
   type MemoryRecord,
@@ -32,8 +40,20 @@ export {
   type MemoryStoreOptions,
   type MemoryStoreWarning,
   type MemoryType,
+  type MemoryContentHash,
 } from "./domain/memory-store.ts";
 export { WorkspaceMemoryDomain, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
+export {
+  assertMemoryRevision,
+  conflictGroupFor,
+  exportMemoryBundle,
+  importMemoryBundle,
+  memoryGovernance,
+  memoryGovernanceEligible,
+  MemoryGovernanceError,
+  sourceRef,
+  transitionMemoryGovernance,
+} from "./domain/memory-governance.ts";
 
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
@@ -131,6 +151,7 @@ function validateSnapshot(snapshot: PinnedContextRemoteSnapshot): PinnedContextR
 export class WorkspaceService extends TypertRemoteService {
   private snapshot: PinnedContextRemoteSnapshot = emptySnapshot;
   private readonly memoryDomain = new WorkspaceMemoryDomain();
+  private readonly memoryWorkspaceSnapshots = new Map<string, WorkspaceSnapshot>();
   private artifactCarrier?: WorkspaceArtifactCarrier;
   private artifactAgentId?: string;
   private artifactRouteDispose?: () => void | Promise<void>;
@@ -144,6 +165,7 @@ export class WorkspaceService extends TypertRemoteService {
       this.artifactCarrier?.dispose();
       this.artifactCarrier = undefined;
       this.artifactAgentId = undefined;
+      this.memoryWorkspaceSnapshots.clear();
     }, "workspace artifact carrier");
   }
 
@@ -215,6 +237,21 @@ export class WorkspaceService extends TypertRemoteService {
   }
 
   @RemoteScope("agent")
+  async memoryGovern(request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord> {
+    return this.memoryDomain.govern(this.memoryContext(request), request, id, action, expectedRevision, expectedHash);
+  }
+
+  @RemoteScope("agent")
+  async memoryExport(request: MemoryScopeRequest): Promise<string> {
+    return this.memoryDomain.export(this.memoryContext(request), request);
+  }
+
+  @RemoteScope("agent")
+  async memoryImport(request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {
+    return this.memoryDomain.import(this.memoryContext(request), request, serialized);
+  }
+
+  @RemoteScope("agent")
   async memoryClose(request: MemoryScopeRequest): Promise<void> {
     return this.memoryDomain.close(this.memoryContext(request), request);
   }
@@ -226,11 +263,15 @@ export class WorkspaceService extends TypertRemoteService {
     if (!cwd && request.scope === "user") return { identity: { sessionId: scoped.agent.id, rootId: "root:unavailable" } };
     if (!cwd) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Workspace Session is unavailable");
     try {
-      const root = resolveWorkspaceRoot(cwd, ".");
-      return { identity: startWorkspace({ sessionId: scoped.agent.id, processCwd: cwd }).identity, root };
+      const existingSnapshot = this.memoryWorkspaceSnapshots.get(scoped.agent.id);
+      const snapshot = existingSnapshot
+        ? resumeWorkspace({ snapshot: existingSnapshot, sessionId: scoped.agent.id, processCwd: cwd })
+        : startWorkspace({ sessionId: scoped.agent.id, processCwd: cwd });
+      this.memoryWorkspaceSnapshots.set(scoped.agent.id, snapshot);
+      return { identity: snapshot.identity, root: resolveWorkspaceRoot(cwd, ".") };
     } catch (error) {
       if (request.scope === "user") return { identity: { sessionId: scoped.agent.id, rootId: "root:unavailable" } };
-      throw error;
+      throw new MemoryStoreError("PROJECT_UNAVAILABLE", error instanceof Error ? error.message : "Workspace Root is unavailable");
     }
   }
 

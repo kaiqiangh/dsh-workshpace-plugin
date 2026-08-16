@@ -5,10 +5,35 @@ export declare const MEMORY_MAX_TAGS = 32;
 export declare const MEMORY_MAX_TAG_BYTES = 64;
 export declare const MEMORY_MAX_QUERY_BYTES = 256;
 export declare const MEMORY_MAX_RESULTS = 100;
+export declare const MEMORY_MAX_FILE_BYTES: number;
 export type MemoryScope = "session" | "project" | "user" | "shared-project";
 export type MemoryType = "decision" | "preference" | "convention" | "fact";
 export type MemoryStatus = "active" | "archived" | "forgotten";
 export type MemoryProvenanceKind = "user" | "agent" | "tool" | "import";
+export type MemoryOrigin = "user-authored" | "imported" | "derived" | "model-suggested";
+export type MemoryVerification = "unverified" | "verified" | "rejected" | "stale";
+export type MemoryConfidence = "low" | "medium" | "high";
+export type MemoryRetention = "session-end" | "project-delete" | "user-managed";
+export type MemoryContentHash = string;
+export interface MemorySourceRef {
+    readonly kind: "session" | "event" | "file" | "url" | "import";
+    readonly id: string;
+    readonly contentHash?: MemoryContentHash;
+}
+export interface MemoryGovernance {
+    readonly origin: MemoryOrigin;
+    readonly sourceRefs: readonly MemorySourceRef[];
+    readonly verification: MemoryVerification;
+    readonly verifiedAt?: number;
+    readonly verifiedBy?: "user" | "trusted-tool";
+    readonly confidence?: MemoryConfidence;
+    readonly revision: number;
+    readonly conflictGroup?: string;
+    readonly pinnedAt?: number;
+    readonly pinnedBy?: "user";
+    readonly expiresAt?: number;
+    readonly retention: MemoryRetention;
+}
 export interface MemoryProvenance {
     readonly kind: MemoryProvenanceKind;
     readonly sessionId?: string;
@@ -29,8 +54,9 @@ export interface MemoryRecord {
     readonly updatedAt: number;
     readonly lastUsedAt?: number;
     readonly useCount: number;
-    readonly contentHash: string;
+    readonly contentHash: MemoryContentHash;
     readonly status: MemoryStatus;
+    readonly governance?: MemoryGovernance;
 }
 export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "title" | "content" | "tags" | "provenance"> & {
     readonly id?: string;
@@ -39,6 +65,7 @@ export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "ti
     readonly lastUsedAt?: number;
     readonly useCount?: number;
     readonly status?: MemoryStatus;
+    readonly governance?: MemoryGovernance;
 };
 export interface MemoryStoreLocationOptions {
     readonly scope: MemoryScope;
@@ -59,7 +86,7 @@ export interface MemoryMigration {
     readonly migrate: (record: Record<string, unknown>) => Record<string, unknown>;
 }
 export interface MemoryStoreWarning {
-    readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE";
+    readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE" | "STORE_TOO_LARGE";
     readonly line: number;
     readonly message: string;
 }
@@ -98,6 +125,7 @@ export declare class MemoryStore {
     private warnings;
     private readOnly;
     private opened;
+    private ensureSafePath;
     constructor(options: MemoryStoreOptions);
     open(): Promise<MemoryReadState>;
     state(): MemoryReadState;
@@ -114,6 +142,7 @@ export declare class MemoryStore {
     private ensureOpen;
     private ensureWritable;
     private append;
+    private reloadLatest;
     private withLock;
     private quarantine;
 }

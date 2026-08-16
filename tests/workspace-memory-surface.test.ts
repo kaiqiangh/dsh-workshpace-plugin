@@ -26,6 +26,6 @@ test("renders bounded provenance and hash metadata before review", () => {
     contentHash: `sha256:${"a".repeat(64)}`,
     status: "active",
   });
-  assert.equal(summary, "project · decision · agent/session-1 · sha256:aaaaaaaa");
+  assert.equal(summary, "project · decision · agent/session-1 · sha256:aaaaaaaa · updated 2 · last-used never · used 0");
   assert.doesNotMatch(summary, /root:one/u);
 });

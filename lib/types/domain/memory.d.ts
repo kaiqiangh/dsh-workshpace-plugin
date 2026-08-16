@@ -1,4 +1,5 @@
 import { type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemoryScope, type MemorySearchOptions } from "./memory-store.ts";
+import { type MemoryGovernanceAction } from "./memory-governance.ts";
 import type { WorkspaceIdentity } from "./workspace.ts";
 export interface MemoryScopeRequest {
     readonly scope: MemoryScope;
@@ -22,6 +23,9 @@ export declare class WorkspaceMemoryDomain {
     forget(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
     search(context: MemoryWorkspaceContext, request: MemoryScopeRequest, query: string, options?: MemorySearchOptions): Promise<readonly MemoryRecord[]>;
     markUsed(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
+    govern(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
+    export(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string>;
+    import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
     close(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<void>;
     dispose(): Promise<void>;
     private store;

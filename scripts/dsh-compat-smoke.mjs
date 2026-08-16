@@ -504,7 +504,7 @@ async function conversationSmoke(root, client, ctx) {
           return () => clientSlots.splice(0)
         }
         assert.equal(options.name, 'shell.overlay')
-        assert.equal(options.id, 'dsh-workspace-artifacts')
+        assert.ok(options.id === 'dsh-workspace-artifacts' || options.id === 'dsh-workspace-memory')
         overlaySlots.push(component)
         return () => overlaySlots.splice(0)
       },
@@ -523,7 +523,7 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(definitions.length, 1)
   assert.equal(views.length, 0)
   assert.equal(clientSlots.length, 1)
-  assert.equal(overlaySlots.length, 1)
+  assert.equal(overlaySlots.length, 2)
   assert.equal(clientRemoteMounted, 1)
   await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
   const clientNode = clientSlots[0]({ node: {

@@ -13,6 +13,7 @@ import {
   type MemorySearchOptions,
   type MemoryStoreOptions,
 } from "./memory-store.ts";
+import { assertMemoryRevision, exportMemoryBundle, importMemoryBundle, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
 import type { WorkspaceIdentity } from "./workspace.ts";
 
 export interface MemoryScopeRequest {
@@ -68,7 +69,7 @@ function locationFor(context: MemoryWorkspaceContext, request: MemoryScopeReques
     projectRoot: request.scope === "project" || request.scope === "shared-project" ? context.root : undefined,
     dshHome: request.scope === "session" || request.scope === "user" ? dshHome : undefined,
   };
-  return { key: memoryStorePath(options), options };
+  return { key: `${request.scope}:${scopeKey}:${memoryStorePath(options)}`, options };
 }
 
 export class WorkspaceMemoryDomain {
@@ -117,6 +118,65 @@ export class WorkspaceMemoryDomain {
   async markUsed(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
     const store = await this.store(context, request);
     return store.markUsed(id);
+  }
+
+  async govern(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord> {
+    const store = await this.store(context, request);
+    const current = ["active", "archived", "forgotten"].flatMap((status) => store.list({ status: status as MemoryRecord["status"], limit: 100 })).find((record) => record.id === id);
+    if (!current) throw new MemoryStoreError("INVALID_RECORD", "Memory record is unavailable");
+    assertMemoryRevision(current, expectedRevision, expectedHash);
+    let next: MemoryRecord;
+    try {
+      next = transitionMemoryGovernance(current, action, "user");
+    } catch (error) {
+      if (error instanceof MemoryGovernanceError) throw error;
+      throw new MemoryStoreError("INVALID_RECORD", "Memory governance transition failed");
+    }
+    return store.upsert({
+      scope: current.scope,
+      scopeKey: current.scopeKey,
+      type: current.type,
+      title: current.title,
+      content: current.content,
+      tags: current.tags,
+      provenance: current.provenance,
+      id: current.id,
+      createdAt: current.createdAt,
+      updatedAt: Date.now(),
+      lastUsedAt: current.lastUsedAt,
+      useCount: current.useCount,
+      status: next.status,
+      governance: next.governance,
+    });
+  }
+
+  async export(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string> {
+    const store = await this.store(context, request);
+    const records = ["active", "archived", "forgotten"].flatMap((status) => store.list({ status: status as MemoryRecord["status"], limit: 100 }));
+    return exportMemoryBundle(records);
+  }
+
+  async import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {
+    const store = await this.store(context, request);
+    const imported = importMemoryBundle(serialized);
+    const saved: MemoryRecord[] = [];
+    for (const record of imported) {
+      saved.push(await store.upsert({
+        scope: store.scope,
+        scopeKey: store.scopeKey,
+        type: record.type,
+        title: record.title,
+        content: record.content,
+        tags: record.tags,
+        provenance: { kind: "import", note: "v0.5 import" },
+        id: record.id,
+        createdAt: record.createdAt,
+        updatedAt: Date.now(),
+        status: record.status,
+        governance: record.governance,
+      }));
+    }
+    return saved;
   }
 
   async close(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<void> {

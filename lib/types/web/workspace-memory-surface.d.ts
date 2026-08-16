@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { MemoryDraft, MemoryListOptions, MemoryReadState, MemoryRecord, MemorySearchOptions, MemoryScopeRequest, MemoryType } from "../types.ts";
+import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 export declare const WORKSPACE_MEMORY_OVERLAY_SLOT: "shell.overlay";
 export declare const WORKSPACE_MEMORY_ENTRY_KEY: "dsh-workspace-memory";
 export interface WorkspaceMemoryRemote {
@@ -10,6 +11,9 @@ export interface WorkspaceMemoryRemote {
     readonly memoryUpsert: (request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryArchive: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryForget: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
+    readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
+    readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
+    readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
 }
 export interface WorkspaceMemorySurfaceOptions {
     readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceMemoryRemote | undefined;

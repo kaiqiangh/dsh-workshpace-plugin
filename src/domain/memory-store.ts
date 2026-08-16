@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open as openFile, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { chmod, mkdir, open as openFile, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 
 export const MEMORY_SCHEMA_VERSION = 1 as const;
 export const MEMORY_MAX_TITLE_BYTES = 256;
@@ -9,11 +9,39 @@ export const MEMORY_MAX_TAGS = 32;
 export const MEMORY_MAX_TAG_BYTES = 64;
 export const MEMORY_MAX_QUERY_BYTES = 256;
 export const MEMORY_MAX_RESULTS = 100;
+export const MEMORY_MAX_FILE_BYTES = 8 * 1024 * 1024;
 
 export type MemoryScope = "session" | "project" | "user" | "shared-project";
 export type MemoryType = "decision" | "preference" | "convention" | "fact";
 export type MemoryStatus = "active" | "archived" | "forgotten";
 export type MemoryProvenanceKind = "user" | "agent" | "tool" | "import";
+export type MemoryOrigin = "user-authored" | "imported" | "derived" | "model-suggested";
+export type MemoryVerification = "unverified" | "verified" | "rejected" | "stale";
+export type MemoryConfidence = "low" | "medium" | "high";
+export type MemoryRetention = "session-end" | "project-delete" | "user-managed";
+// Remote codecs accept string only; runtime validation below enforces sha256:<64 hex>.
+export type MemoryContentHash = string;
+
+export interface MemorySourceRef {
+  readonly kind: "session" | "event" | "file" | "url" | "import";
+  readonly id: string;
+  readonly contentHash?: MemoryContentHash;
+}
+
+export interface MemoryGovernance {
+  readonly origin: MemoryOrigin;
+  readonly sourceRefs: readonly MemorySourceRef[];
+  readonly verification: MemoryVerification;
+  readonly verifiedAt?: number;
+  readonly verifiedBy?: "user" | "trusted-tool";
+  readonly confidence?: MemoryConfidence;
+  readonly revision: number;
+  readonly conflictGroup?: string;
+  readonly pinnedAt?: number;
+  readonly pinnedBy?: "user";
+  readonly expiresAt?: number;
+  readonly retention: MemoryRetention;
+}
 
 export interface MemoryProvenance {
   readonly kind: MemoryProvenanceKind;
@@ -36,8 +64,9 @@ export interface MemoryRecord {
   readonly updatedAt: number;
   readonly lastUsedAt?: number;
   readonly useCount: number;
-  readonly contentHash: string;
+  readonly contentHash: MemoryContentHash;
   readonly status: MemoryStatus;
+  readonly governance?: MemoryGovernance;
 }
 
 export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "title" | "content" | "tags" | "provenance"> & {
@@ -47,6 +76,7 @@ export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "ti
   readonly lastUsedAt?: number;
   readonly useCount?: number;
   readonly status?: MemoryStatus;
+  readonly governance?: MemoryGovernance;
 };
 
 export interface MemoryStoreLocationOptions {
@@ -71,7 +101,7 @@ export interface MemoryMigration {
 }
 
 export interface MemoryStoreWarning {
-  readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE";
+  readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE" | "STORE_TOO_LARGE";
   readonly line: number;
   readonly message: string;
 }
@@ -138,8 +168,53 @@ function boundedInteger(value: unknown, label: string): asserts value is number 
   if (!Number.isSafeInteger(value) || (value as number) < 0) throw new MemoryStoreError("INVALID_RECORD", `${label} is invalid`);
 }
 
-function hashFor(content: string): string {
+function hashFor(content: string): MemoryContentHash {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+function validateGovernance(value: unknown, scope: MemoryScope): MemoryGovernance | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") throw new MemoryStoreError("INVALID_RECORD", "Memory governance is invalid");
+  const governance = value as Record<string, unknown>;
+  const origins: readonly MemoryOrigin[] = ["user-authored", "imported", "derived", "model-suggested"];
+  const verifications: readonly MemoryVerification[] = ["unverified", "verified", "rejected", "stale"];
+  const confidences: readonly MemoryConfidence[] = ["low", "medium", "high"];
+  const retentions: readonly MemoryRetention[] = ["session-end", "project-delete", "user-managed"];
+  if (!origins.includes(governance.origin as MemoryOrigin) || !verifications.includes(governance.verification as MemoryVerification) || !retentions.includes(governance.retention as MemoryRetention)) throw new MemoryStoreError("INVALID_RECORD", "Memory governance enum is invalid");
+  if (!Array.isArray(governance.sourceRefs) || governance.sourceRefs.length > 32) throw new MemoryStoreError("INVALID_RECORD", "Memory source references are invalid");
+  const sourceRefs = governance.sourceRefs.map((source) => {
+    if (!source || typeof source !== "object") throw new MemoryStoreError("INVALID_RECORD", "Memory source reference is invalid");
+    const ref = source as Record<string, unknown>;
+    const sourceKinds: readonly MemorySourceRef["kind"][] = ["session", "event", "file", "url", "import"];
+    if (!sourceKinds.includes(ref.kind as MemorySourceRef["kind"])) throw new MemoryStoreError("INVALID_RECORD", "Memory source reference kind is invalid");
+    text(ref.id, 256, "Memory source reference id");
+    if (ref.contentHash !== undefined && (!/^sha256:[0-9a-f]{64}$/u.test(String(ref.contentHash)))) throw new MemoryStoreError("INVALID_RECORD", "Memory source reference hash is invalid");
+    return Object.freeze({ kind: ref.kind as MemorySourceRef["kind"], id: ref.id, ...(ref.contentHash === undefined ? {} : { contentHash: ref.contentHash as MemoryContentHash }) });
+  });
+  if (governance.origin !== "user-authored" && sourceRefs.length === 0) throw new MemoryStoreError("INVALID_RECORD", "Non-user Memory requires a source reference");
+  if (!Number.isSafeInteger(governance.revision) || (governance.revision as number) < 1) throw new MemoryStoreError("INVALID_RECORD", "Memory revision is invalid");
+  if (governance.confidence !== undefined && !confidences.includes(governance.confidence as MemoryConfidence)) throw new MemoryStoreError("INVALID_RECORD", "Memory confidence is invalid");
+  if (governance.verifiedBy !== undefined && governance.verifiedBy !== "user" && governance.verifiedBy !== "trusted-tool") throw new MemoryStoreError("INVALID_RECORD", "Memory verifiedBy is invalid");
+  if (governance.verifiedAt !== undefined) boundedInteger(governance.verifiedAt, "Memory verifiedAt");
+  if (governance.expiresAt !== undefined) boundedInteger(governance.expiresAt, "Memory expiresAt");
+  if (governance.pinnedAt !== undefined) boundedInteger(governance.pinnedAt, "Memory pinnedAt");
+  if (governance.pinnedBy !== undefined && governance.pinnedBy !== "user") throw new MemoryStoreError("INVALID_RECORD", "Memory pinnedBy is invalid");
+  if (governance.pinnedAt !== undefined && governance.pinnedBy === undefined) throw new MemoryStoreError("INVALID_RECORD", "Pinned Memory requires an actor");
+  if (governance.verification === "verified" && governance.verifiedAt === undefined) throw new MemoryStoreError("INVALID_RECORD", "Verified Memory requires a timestamp");
+  return Object.freeze({
+    origin: governance.origin as MemoryOrigin,
+    sourceRefs: Object.freeze(sourceRefs),
+    verification: governance.verification as MemoryVerification,
+    ...(governance.verifiedAt === undefined ? {} : { verifiedAt: governance.verifiedAt as number }),
+    ...(governance.verifiedBy === undefined ? {} : { verifiedBy: governance.verifiedBy as "user" | "trusted-tool" }),
+    ...(governance.confidence === undefined ? {} : { confidence: governance.confidence as MemoryConfidence }),
+    revision: governance.revision as number,
+    ...(governance.conflictGroup === undefined ? {} : { conflictGroup: governance.conflictGroup as string }),
+    ...(governance.pinnedAt === undefined ? {} : { pinnedAt: governance.pinnedAt as number }),
+    ...(governance.pinnedBy === undefined ? {} : { pinnedBy: "user" as const }),
+    ...(governance.expiresAt === undefined ? {} : { expiresAt: governance.expiresAt as number }),
+    retention: governance.retention as MemoryRetention,
+  });
 }
 
 function safeLimit(value: number | undefined, fallback: number): number {
@@ -189,6 +264,7 @@ function validateRecord(value: unknown, expectedScope: MemoryScope, expectedScop
   if (!statuses.includes(record.status as MemoryStatus)) throw new MemoryStoreError("INVALID_RECORD", "Memory status is invalid");
   text(record.contentHash, 80, "Memory content hash");
   if (!/^sha256:[0-9a-f]{64}$/u.test(record.contentHash) || record.contentHash !== hashFor(record.content)) throw new MemoryStoreError("INVALID_RECORD", "Memory content hash is invalid");
+  const governance = validateGovernance(record.governance, expectedScope);
   const normalizedProvenance: { kind: MemoryProvenanceKind; sessionId?: string; eventSeq?: number; note?: string } = { kind: provenance.kind as MemoryProvenanceKind };
   if (provenance.sessionId !== undefined) normalizedProvenance.sessionId = provenance.sessionId as string;
   if (provenance.eventSeq !== undefined) normalizedProvenance.eventSeq = provenance.eventSeq as number;
@@ -209,6 +285,7 @@ function validateRecord(value: unknown, expectedScope: MemoryScope, expectedScop
     useCount: record.useCount,
     contentHash: record.contentHash,
     status: record.status as MemoryStatus,
+    ...(governance === undefined ? {} : { governance }),
   });
 }
 
@@ -259,6 +336,33 @@ export class MemoryStore {
   private readOnly = false;
   private opened = false;
 
+  private async ensureSafePath(): Promise<void> {
+    if (!this.projectRoot) return;
+    let canonicalRoot: string;
+    try { canonicalRoot = await realpath(this.projectRoot); } catch { throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Project Memory Root is unavailable"); }
+    let probe = dirname(this.filePath);
+    while (true) {
+      try {
+        const canonicalProbe = await realpath(probe);
+        const relativeProbe = relative(canonicalRoot, canonicalProbe);
+        if (relativeProbe === ".." || relativeProbe.startsWith(`..${sep}`) || relativeProbe.startsWith(sep)) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Memory store path escapes the Workspace Root");
+        break;
+      } catch (error) {
+        if (error instanceof MemoryStoreError) throw error;
+        const parent = dirname(probe);
+        if (parent === probe) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Memory store path is unavailable");
+        probe = parent;
+      }
+    }
+    try {
+      const canonicalFile = await realpath(this.filePath);
+      const relativeFile = relative(canonicalRoot, canonicalFile);
+      if (relativeFile === ".." || relativeFile.startsWith(`..${sep}`) || relativeFile.startsWith(sep)) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Memory store path escapes the Workspace Root");
+    } catch (error) {
+      if ((error as { code?: string })?.code !== "ENOENT") throw error instanceof MemoryStoreError ? error : new MemoryStoreError("PROJECT_UNAVAILABLE", "Memory store path is unavailable");
+    }
+  }
+
   constructor(options: MemoryStoreOptions) {
     if (!scopes.includes(options.scope)) throw new MemoryStoreError("INVALID_RECORD", "Memory scope is invalid");
     text(options.scopeKey, 512, "Memory scope key");
@@ -282,9 +386,16 @@ export class MemoryStore {
         throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Project Memory Root is unavailable");
       }
     }
+    await this.ensureSafePath();
     this.opened = true;
     let source: string;
     try {
+      const info = await stat(this.filePath);
+      if (info.size > MEMORY_MAX_FILE_BYTES) {
+        this.readOnly = true;
+        this.warnings.push({ code: "STORE_TOO_LARGE", line: 0, message: "Memory store exceeds the safe read limit" });
+        return this.state();
+      }
       source = await readFile(this.filePath, "utf8");
     } catch (error) {
       if ((error as { code?: string })?.code === "ENOENT") {
@@ -331,7 +442,14 @@ export class MemoryStore {
         else await this.quarantine(`${line}\n`, index + 1);
       }
     }
-    if (migrated && !this.readOnly) await this.compact();
+    if (migrated && !this.readOnly) {
+      try { await this.compact(); } catch (error) {
+        this.records.clear();
+        this.foreignLines = [];
+        this.opened = false;
+        throw error;
+      }
+    }
     return this.state();
   }
 
@@ -370,6 +488,7 @@ export class MemoryStore {
       useCount: draft.useCount ?? previous?.useCount ?? 0,
       contentHash: hashFor(draft.content),
       status: draft.status ?? "active",
+      ...(draft.governance === undefined && previous?.governance === undefined ? {} : { governance: draft.governance ?? previous?.governance }),
     }, this.scope, this.scopeKey, this.maxContentBytes);
     await this.append(record);
     this.records.set(record.id, record);
@@ -406,6 +525,7 @@ export class MemoryStore {
   async compact(): Promise<void> {
     this.ensureWritable();
     return this.withLock(async () => {
+      await this.reloadLatest();
       const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
       const backup = `${this.filePath}.bak`;
       const lines = [...this.foreignLines, ...this.records.values()].map((record) => typeof record === "string" ? record : JSON.stringify(record));
@@ -434,6 +554,9 @@ export class MemoryStore {
   async close(): Promise<void> {
     this.opened = false;
     this.records.clear();
+    this.foreignLines = [];
+    this.warnings = [];
+    this.readOnly = false;
   }
 
   private async tombstone(id: string, status: "archived" | "forgotten"): Promise<MemoryRecord> {
@@ -460,6 +583,7 @@ export class MemoryStore {
   }
 
   private async append(record: MemoryRecord): Promise<void> {
+    await this.ensureSafePath();
     return this.withLock(async () => {
       try {
         await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
@@ -474,7 +598,35 @@ export class MemoryStore {
     });
   }
 
+  private async reloadLatest(): Promise<void> {
+    await this.ensureSafePath();
+    let source: string;
+    try { source = await readFile(this.filePath, "utf8"); } catch (error) {
+      if ((error as { code?: string })?.code === "ENOENT") return;
+      throw new MemoryStoreError("STORE_UNAVAILABLE", "Memory store cannot be refreshed");
+    }
+    const latest = new Map(this.records);
+    const foreign: string[] = [];
+    for (const line of source.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        if (this.scope === "user" && parsed && typeof parsed === "object" && (parsed as Record<string, unknown>).scope === "user" && typeof (parsed as Record<string, unknown>).scopeKey === "string" && (parsed as Record<string, unknown>).scopeKey !== this.scopeKey) {
+          foreign.push(line.trim());
+          continue;
+        }
+        const record = validateRecord(parsed, this.scope, this.scopeKey, this.maxContentBytes);
+        latest.set(record.id, record);
+      } catch {
+        // Preserve the current in-memory view for damaged lines; compaction never invents data.
+      }
+    }
+    this.records = latest;
+    if (this.scope === "user") this.foreignLines = foreign;
+  }
+
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {
+    await this.ensureSafePath();
     const lockPath = `${this.filePath}.lock`;
     let lock;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -504,6 +656,7 @@ export class MemoryStore {
   }
 
   private async quarantine(line: string, lineNumber: number): Promise<void> {
+    await this.ensureSafePath();
     try {
       await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
       const quarantinePath = `${this.filePath}.corrupt`;

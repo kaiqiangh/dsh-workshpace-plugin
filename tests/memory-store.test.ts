@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   MemoryStore,
   MemoryStoreError,
+  MEMORY_MAX_FILE_BYTES,
   memoryStorePath,
 } from "../src/domain/memory-store.ts";
 
@@ -111,4 +112,34 @@ test("migrates known schemas atomically and fails closed for missing projects", 
   await access(`${filePath}.bak`);
   const missing = new MemoryStore({ scope: "project", scopeKey: "root:missing", projectRoot: join(root, "gone") });
   await assert.rejects(() => missing.open(), (error: unknown) => error instanceof MemoryStoreError && error.code === "PROJECT_UNAVAILABLE");
+});
+
+test("compaction reconciles another writer before replacing the append-only log", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-memory-writers-"));
+  const filePath = join(root, "records.jsonl");
+  const first = new MemoryStore({ scope: "project", scopeKey: "root:writers", projectRoot: root, filePath, idFactory: () => "memory:a", now: () => 1 });
+  const second = new MemoryStore({ scope: "project", scopeKey: "root:writers", projectRoot: root, filePath, idFactory: () => "memory:b", now: () => 2 });
+  await first.open();
+  await second.open();
+  await first.upsert({ scope: "project", scopeKey: "root:writers", type: "fact", title: "A", content: "a", tags: [], provenance: { kind: "user" } });
+  await second.upsert({ scope: "project", scopeKey: "root:writers", type: "fact", title: "B", content: "b", tags: [], provenance: { kind: "user" } });
+  await first.compact();
+  const reopened = new MemoryStore({ scope: "project", scopeKey: "root:writers", projectRoot: root, filePath });
+  await reopened.open();
+  assert.deepEqual(reopened.list().map((record) => record.title).sort(), ["A", "B"]);
+});
+
+test("fails closed for oversized stores and project memory symlinks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-memory-boundary-"));
+  const oversized = join(root, "records.jsonl");
+  await writeFile(oversized, Buffer.alloc(MEMORY_MAX_FILE_BYTES + 1, 0x20));
+  const large = new MemoryStore({ scope: "project", scopeKey: "root:large", projectRoot: root, filePath: oversized });
+  const state = await large.open();
+  assert.equal(state.readOnly, true);
+  assert.equal(state.warnings[0]?.code, "STORE_TOO_LARGE");
+
+  const outside = await mkdtemp(join(tmpdir(), "dsh-memory-outside-"));
+  await symlink(outside, join(root, ".dsh"));
+  const escaped = new MemoryStore({ scope: "project", scopeKey: "root:escape", projectRoot: root, filePath: join(root, ".dsh", "workspace-memory", "records.jsonl") });
+  await assert.rejects(() => escaped.open(), (error: unknown) => error instanceof MemoryStoreError && error.code === "PROJECT_UNAVAILABLE");
 });

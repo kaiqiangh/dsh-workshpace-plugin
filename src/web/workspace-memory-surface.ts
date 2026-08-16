@@ -10,6 +10,7 @@ import type {
   MemoryScopeRequest,
   MemoryType,
 } from "../types.ts";
+import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 
 export const WORKSPACE_MEMORY_OVERLAY_SLOT = "shell.overlay" as const;
 export const WORKSPACE_MEMORY_ENTRY_KEY = "dsh-workspace-memory" as const;
@@ -21,6 +22,9 @@ export interface WorkspaceMemoryRemote {
   readonly memoryUpsert: (request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryArchive: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryForget: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
+  readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
+  readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
+  readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
 }
 
 export interface WorkspaceMemorySurfaceOptions {
@@ -37,12 +41,12 @@ export function workspaceMemoryRequest(scope: MemoryScopeRequest["scope"], userI
 
 export function workspaceMemoryRecordSummary(record: MemoryRecord): string {
   const provenance = record.provenance.sessionId ? `${record.provenance.kind}/${record.provenance.sessionId}` : record.provenance.kind;
-  return `${record.scope} · ${record.type} · ${provenance} · ${record.contentHash.slice(0, 15)}`;
+  return `${record.scope} · ${record.type} · ${provenance} · ${record.contentHash.slice(0, 15)} · updated ${record.updatedAt} · last-used ${record.lastUsedAt ?? "never"} · used ${record.useCount}`;
 }
 
 function valueOf<T>(result: RemoteResult<T>): T {
   if (result.ok) return result.value;
-  throw new Error("Memory capability is unavailable");
+  throw new Error(`${result.error.code}: ${result.error.message}`);
 }
 
 function errorMessage(error: unknown): string {
@@ -133,15 +137,43 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       } catch (error) { setMessage(errorMessage(error)); }
     };
 
-    const mutate = async (operation: "archive" | "forget"): Promise<void> => {
+    const mutate = async (operation: "archive" | "forget" | "verify" | "reverify" | "pin" | "unpin" | "restore"): Promise<void> => {
       if (!remote || !selected) return;
       try {
-        valueOf(await (operation === "archive" ? remote.memoryArchive(request, selected.id) : remote.memoryForget(request, selected.id)));
+        const governance = selected.governance;
+        if (operation === "forget" && typeof globalThis.confirm === "function" && !globalThis.confirm(`Forget ${selected.title} from ${selected.scope} Memory? Existing exports or model turns cannot be recalled.`)) return;
+        valueOf(await remote.memoryGovern(request, selected.id, operation, governance?.revision ?? 1, selected.contentHash));
         setSelectedId(undefined);
         setTitle("");
         setContent("");
         await load("");
         setMessage(operation === "archive" ? "Memory archived locally." : "Memory forgotten locally.");
+      } catch (error) { setMessage(errorMessage(error)); }
+    };
+
+    const exportMemory = async (): Promise<void> => {
+      if (!remote) return;
+      try {
+        const serialized = valueOf(await remote.memoryExport(request));
+        const url = globalThis.URL?.createObjectURL?.(new Blob([serialized], { type: "application/json" }));
+        if (url && typeof document !== "undefined") {
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = "dsh-memory-export.json";
+          anchor.click();
+          globalThis.URL.revokeObjectURL(url);
+        }
+        setMessage(`Memory export ready (${serialized.length} bytes).`);
+      } catch (error) { setMessage(errorMessage(error)); }
+    };
+
+    const importMemory = async (event: { target: { files?: readonly { text: () => Promise<string> }[] } }): Promise<void> => {
+      const file = event.target.files?.[0];
+      if (!remote || !file) return;
+      try {
+        const imported = valueOf(await remote.memoryImport(request, await file.text()));
+        await load("");
+        setMessage(`${imported.length} record(s) imported as unverified review items.`);
       } catch (error) { setMessage(errorMessage(error)); }
     };
 
@@ -162,6 +194,10 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("button", { type: "submit", disabled: !state || state.readOnly }, selected ? "Save changes" : "Create Memory"),
       selected && createElement("button", { type: "button", onClick: () => void mutate("archive") }, "Archive"),
       selected && createElement("button", { type: "button", onClick: () => void mutate("forget") }, "Forget"),
+      selected?.status === "archived" && createElement("button", { type: "button", onClick: () => void mutate("restore") }, "Restore"),
+      selected?.governance?.verification === "unverified" && createElement("button", { type: "button", onClick: () => void mutate("verify") }, "Verify"),
+      selected?.governance?.verification === "stale" && createElement("button", { type: "button", onClick: () => void mutate("reverify") }, "Re-verify"),
+      selected?.governance?.verification === "verified" && createElement("button", { type: "button", onClick: () => void mutate(selected.governance?.pinnedAt === undefined ? "pin" : "unpin") }, selected.governance?.pinnedAt === undefined ? "Pin" : "Unpin"),
       selected && createElement("button", { type: "button", "aria-pressed": pinnedId === selected.id, onClick: () => { setPinnedId(selected.id); setMessage("Pinned for review only; Memory is not injected into Agent context."); } }, pinnedId === selected.id ? "Pinned for review" : "Pin for review"),
     );
     const body = status === "loading"
@@ -173,6 +209,8 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
           createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => setQuery(event.target.value), "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
           createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
+          createElement("button", { type: "button", onClick: () => void exportMemory() }, "Export Memory"),
+          createElement("label", null, "Import Memory ", createElement("input", { type: "file", accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { text: () => Promise<string> }[] } }) => void importMemory(event) })),
           recordList,
           editor,
           createElement("p", { role: "status" }, state?.readOnly ? "Read-only Memory" : "Review only: Memory never injects records into Agent context."),

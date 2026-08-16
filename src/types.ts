@@ -20,6 +20,13 @@ export type {
   MemoryDraft,
   MemoryListOptions,
   MemoryMigration,
+  MemoryConfidence,
+  MemoryContentHash,
+  MemoryGovernance,
+  MemoryOrigin,
+  MemoryRetention,
+  MemorySourceRef,
+  MemoryVerification,
   MemoryProvenance,
   MemoryReadState,
   MemoryRecord,
@@ -33,6 +40,12 @@ export type {
   MemoryType,
 } from "./domain/memory-store.ts";
 export type { MemoryScopeRequest, MemoryWorkspaceContext } from "./domain/memory.ts";
+export type {
+  MemoryGovernanceAction,
+  MemoryGovernanceErrorCode,
+  MemoryExportBundle,
+  MemoryRevisionConflict,
+} from "./domain/memory-governance.ts";
 
 export type AgentId = SessionId;
 

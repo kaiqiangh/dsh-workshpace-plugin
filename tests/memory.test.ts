@@ -43,3 +43,17 @@ test("keeps User Memory available without project files and rejects path-shaped 
   await assert.rejects(() => domain.open(context, { scope: "user", userId: "../escape" }), (error: unknown) => error instanceof MemoryStoreError && error.code === "INVALID_RECORD");
   await domain.dispose();
 });
+
+test("caches User profiles by identity instead of sharing the active store", async () => {
+  const home = await mkdtemp(join(tmpdir(), "dsh-memory-user-domain-"));
+  const domain = new WorkspaceMemoryDomain(home);
+  const context = { identity: { sessionId: "session-3", rootId: "root:three" }, root: "/missing" };
+  const a = { scope: "user" as const, userId: "profile-a" };
+  const aState = await domain.open(context, a);
+  await domain.upsert(context, a, { scope: aState.scope, scopeKey: aState.scopeKey, type: "fact", title: "A", content: "a", tags: [], provenance: { kind: "user" } });
+  const bState = await domain.open(context, { scope: "user", userId: "profile-b" });
+  assert.equal(bState.scopeKey, "profile-b");
+  assert.equal((await domain.list(context, { scope: "user", userId: "profile-b" })).length, 0);
+  assert.equal((await domain.list(context, a)).length, 1);
+  await domain.dispose();
+});
