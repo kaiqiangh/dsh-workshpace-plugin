@@ -63,6 +63,11 @@ function formatSize(sizeBytes: number): string {
   return `${Math.round(sizeBytes / (102.4 * 1024)) / 10} MB`;
 }
 
+function artifactIdentity(artifact: WorkspaceDeliverable | undefined): string {
+  if (!artifact) return "";
+  return [artifact.id, artifact.resourceId, artifact.version, artifact.sizeBytes, artifact.preview, artifact.mediaType].join("\u0000");
+}
+
 /** Convert a path-free Host preview into the existing bounded renderer contract. */
 export function workspaceArtifactPreviewDescriptor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor {
   return descriptorFor(artifact, preview);
@@ -90,6 +95,8 @@ export function createWorkspaceArtifactSurfaceComponent(
     const request = useRef(0);
     const detailArtifact = useRef<string | undefined>();
     const refreshRequest = useRef(0);
+    const selectedIdRef = useRef<string | undefined>();
+    const selectedIdentityRef = useRef("");
     const downloadRequest = useRef(0);
     const runtime = options.runtime ?? defaultRuntime();
 
@@ -105,15 +112,23 @@ export function createWorkspaceArtifactSurfaceComponent(
         try {
           const items = normalizeWorkspaceArtifacts(remoteValue(await activeRemote.artifactMetadata()));
           if (!active || token !== refreshRequest.current) return;
+          const currentId = selectedIdRef.current;
+          const nextId = currentId && items.some((item) => item.id === currentId) ? currentId : items[0]?.id;
+          const nextIdentity = artifactIdentity(items.find((item) => item.id === nextId));
+          const selectedArtifactChanged = selectedIdentityRef.current !== nextIdentity;
+          selectedIdRef.current = nextId;
+          selectedIdentityRef.current = nextIdentity;
           setArtifacts(items);
-          setSelectedId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id);
-          request.current += 1;
-          detailArtifact.current = undefined;
-          setDetail(undefined);
-          setDetailStatus("idle");
-          downloadRequest.current += 1;
-          downloadController.current?.cancel();
-          setDownload({});
+          setSelectedId(nextId);
+          if (selectedArtifactChanged) {
+            request.current += 1;
+            detailArtifact.current = undefined;
+            setDetail(undefined);
+            setDetailStatus("idle");
+            downloadRequest.current += 1;
+            downloadController.current?.cancel();
+            setDownload({});
+          }
           setStatus("ready");
           setMessage(undefined);
         } catch {
@@ -150,6 +165,8 @@ export function createWorkspaceArtifactSurfaceComponent(
     useEffect(() => {
       detailArtifact.current = undefined;
       request.current += 1;
+      selectedIdRef.current = undefined;
+      selectedIdentityRef.current = "";
       setDetail(undefined);
       setDetailStatus("idle");
       setMessage(undefined);
@@ -161,6 +178,8 @@ export function createWorkspaceArtifactSurfaceComponent(
       downloadRequest.current += 1;
       downloadController.current?.cancel();
       detailArtifact.current = artifact.id;
+      selectedIdRef.current = artifact.id;
+      selectedIdentityRef.current = artifactIdentity(artifact);
       setSelectedId(artifact.id);
       setDetail(undefined);
       setDetailStatus("loading");
@@ -232,7 +251,7 @@ export function createWorkspaceArtifactSurfaceComponent(
             "article",
             { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
             createElement("h3", null, selected.name),
-            createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
+            createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
             createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
             selected.resourceId && createElement("button", { type: "button", onClick: downloadArtifact }, download.status === "loading" ? "Downloading…" : "Download"),
             download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
