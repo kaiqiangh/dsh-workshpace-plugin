@@ -5,9 +5,7 @@ import type { PreviewDescriptor } from "../domain/preview.ts";
 import { type WorkspaceDownloadRuntime } from "./workspace-deliverables.ts";
 import { type WorkspacePrimitiveSet } from "./workspace-preview-adapters.ts";
 import type { WorkspaceArtifactPreview } from "../host/workspace-artifacts.ts";
-export declare const WORKSPACE_ARTIFACT_OVERLAY_SLOT: "shell.overlay";
 export declare const WORKSPACE_ARTIFACT_SLOT_NAME: "shell.overlay";
-export declare const WORKSPACE_ARTIFACT_ENTRY_KEY: "dsh-workspace-artifacts";
 export interface WorkspaceArtifactRemote {
     readonly artifactMetadata: () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>;
     readonly previewArtifact: (id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>;

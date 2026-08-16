@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import type { WorkspaceSurfaceComponent } from "./workspace-panel.ts";
+import type { WorkspaceSurfaceComponent } from "./workspace-styles.ts";
 /** The public Harness conversation view ring: one list entry per view tab. */
 export declare const WORKSPACE_VIEW_SLOT: "conversation.view";
 export declare const WORKSPACE_VIEW_ENTRY_KEY: "dsh-workspace";

@@ -16,6 +16,7 @@ export { installWorkspaceResourceRoute, registerWorkspaceResourceRoute, type Web
 export { WorkspaceArtifactCarrier, sessionToolRecords, type WorkspaceArtifactCarrierOptions, type WorkspaceArtifactPreview, type SessionEventLike, } from "./host/workspace-artifacts.ts";
 export { createMemoryProposeTool, proposeMemory, registerMemoryPropose, MEMORY_PROPOSE_SECTION, MEMORY_PROPOSE_TOOL_NAME, type MemoryProposeArgs, } from "./host/workspace-memory-propose.ts";
 export { attachWorkspaceSummaryEmitter, workspaceSummaryFor, type SummaryAgent, type WorkspaceSummaryData, } from "./host/workspace-summary.ts";
+export { attachWorkspaceMemoryAutoWriter, buildAutoFactContent, writeAutoFact, AUTO_FACT_TAGS, AUTO_FACT_TITLE, type AutoWriteAgent, } from "./host/workspace-memory-auto-write.ts";
 declare module "@deepseek-ai/dsh-typert-protocol" {
     interface TypertContextMap {
         agent: TypertContext<AgentId>;

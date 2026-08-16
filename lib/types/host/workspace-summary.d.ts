@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import { WorkspaceMemoryDomain } from "../domain/memory.ts";
 import { type SessionEventLike } from "./workspace-artifacts.ts";
 /** Summary card payload; also carried by the durable `workspace/summary` event. */
 export interface WorkspaceSummaryData {
@@ -6,6 +7,20 @@ export interface WorkspaceSummaryData {
     readonly changes: number;
     readonly artifacts: number;
     readonly workspaceName: string;
+    /** Files whose last observed activity was a create. */
+    readonly filesCreated: number;
+    /** Files whose last observed activity was an edit. */
+    readonly filesModified: number;
+    /** Files whose last observed activity was a delete. */
+    readonly filesDeleted: number;
+    /** Earliest observed activity timestamp in the session (0 when none). */
+    readonly firstObservedAt: number;
+    /** Latest observed activity timestamp in the session (0 when none). */
+    readonly lastObservedAt: number;
+    /** Active-scope Memory records (session scope), 0 when unavailable. */
+    readonly memoryCount: number;
+    /** Active-scope `decision` Memory records (session scope), 0 when unavailable. */
+    readonly decisionCount: number;
 }
 declare module "@deepseek-ai/dsh-session/types" {
     interface SessionEventMap {
@@ -36,6 +51,8 @@ export declare function workspaceSummaryFor(agent: SummaryAgent): WorkspaceSumma
 /**
  * Observe final tool outcomes through the public `tools/result` seam,
  * debounce a per-session summary, and append a durable `workspace/summary`
- * event on the owning session. Returns a disposer.
+ * event on the owning session. When `memoryDomain` is supplied, the summary
+ * is augmented with active-scope (session) Memory and decision counts. Returns
+ * a disposer.
  */
-export declare function attachWorkspaceSummaryEmitter(ctx: Context): () => void;
+export declare function attachWorkspaceSummaryEmitter(ctx: Context, memoryDomain?: WorkspaceMemoryDomain): () => void;
