@@ -13,6 +13,27 @@ async function writeJson(file, value) {
   await writeFile(file, json(value))
 }
 
+async function wrapWebClient(file) {
+  const source = (await readFile(file, "utf8")).replace(/[ \t]+$/gm, "")
+  const match = source.match(/export \{ ([^}]+) \};\n?$/)
+  if (!match) throw new Error("client bundle must end with named exports")
+  const exports = match[1]
+  const body = source.slice(0, match.index)
+  if (/^\s*(?:import|export)\b/m.test(body)) throw new Error("client bundle must be self-contained")
+  await writeFile(file, `window.__ModuleLoader__.load({
+  id: "dsh-workspace-plugin",
+  factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
+    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+${body}
+    Object.assign(exports, { ${exports} });
+    return module.exports;
+  }
+});
+`)
+}
+
 const root = await mkdtemp(join(tmpdir(), "dsh-workspace-build-"))
 try {
   const plugin = join(root, "packages/plugin")
@@ -48,7 +69,7 @@ try {
   await writeJson(join(root, "tsconfig.bundle.json"), { compilerOptions: { target: "ES2024", module: "ESNext", moduleResolution: "Bundler", strict: true, allowImportingTsExtensions: true, skipLibCheck: true, types: ["node"] } })
   await writeJson(join(root, "tsconfig.declarations.json"), { extends: "./tsconfig.base.json", compilerOptions: { rootDir: "packages/plugin/src", outDir: "packages/plugin/lib/types", declaration: true, emitDeclarationOnly: true, noEmit: false }, include: ["packages/plugin/src"] })
   await writeFile(join(root, "tsdown.host.config.mjs"), `import { defineConfig } from 'tsdown'\nimport { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'\nexport default defineConfig({ entry: ['packages/plugin/src/index.ts'], outDir: 'packages/plugin/lib', format: ['esm'], platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false, external: [/^@deepseek-ai\\//], plugins: [typertPlugin({ mode: 'workspace', faces: ['host', 'client'] })] })\n`)
-  await writeFile(join(root, "tsdown.client.config.mjs"), `import { defineConfig } from 'tsdown'\nexport default defineConfig({ entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib', format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false, dts: false, clean: false, external: ['@deepseek-ai/cordis', /^@deepseek-ai\\//] })\n`)
+  await writeFile(join(root, "tsdown.client.config.mjs"), `import { defineConfig } from 'tsdown'\nexport default defineConfig({ entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib', format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false, dts: false, clean: false, external: ['@deepseek-ai/cordis', /^@deepseek-ai\\//], deps: { alwaysBundle: ['react', 'zod'] } })\n`)
   const node = process.execPath
   const tsdown = join(repo, "node_modules/tsdown/dist/run.mjs")
   const tsc = join(repo, "node_modules/typescript/bin/tsc")
@@ -59,8 +80,7 @@ try {
   await run([tsc, "-p", "tsconfig.declarations.json", "--pretty", "false"])
   await rm(join(repo, "lib"), { recursive: true, force: true })
   await cp(join(plugin, "lib"), join(repo, "lib"), { recursive: true })
-  const clientBundle = join(repo, "lib/client.js")
-  await writeFile(clientBundle, (await readFile(clientBundle, "utf8")).replace(/[ \t]+$/gm, ""))
+  await wrapWebClient(join(repo, "lib/client.js"))
   console.log("built dsh-workspace-plugin/lib")
 } finally {
   await rm(root, { recursive: true, force: true })

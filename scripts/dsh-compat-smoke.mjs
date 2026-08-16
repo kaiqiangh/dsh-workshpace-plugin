@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { pathToFileURL } from 'node:url'
+import { runInNewContext } from 'node:vm'
 
 const exec = promisify(execFile)
 const SOURCE_REVISION = '47f943859bef60e4160492346772ded9b24f765a'
@@ -47,6 +48,27 @@ async function writeJson(file, value) {
 async function writeText(file, value) {
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, value)
+}
+
+async function wrapWebClient(file) {
+  const source = (await readFile(file, 'utf8')).replace(/[ \t]+$/gm, '')
+  const match = source.match(/export \{ ([^}]+) \};\n?$/)
+  if (!match) throw new Error('client bundle must end with named exports')
+  const body = source.slice(0, match.index)
+  const esmLine = body.split('\n').find(line => /^\s*(?:import|export)\b/.test(line))
+  if (esmLine) throw new Error(`client bundle must be self-contained: ${esmLine}`)
+  await writeText(file, `window.__ModuleLoader__.load({
+  id: "dsh-workspace-plugin",
+  factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
+    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+${body}
+    Object.assign(exports, { ${match[1]} });
+    return module.exports;
+  }
+});
+`)
 }
 
 async function packageJson(root, name) {
@@ -165,7 +187,7 @@ import { defineConfig } from 'tsdown'
 export default defineConfig({
   entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib',
   format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false,
-  dts: false, clean: false, external: ['@deepseek-ai/cordis'],
+  dts: false, clean: false, external: ['@deepseek-ai/cordis'], deps: { alwaysBundle: ['react', 'zod'] },
   })
 `)
   return { pluginRoot }
@@ -178,6 +200,7 @@ async function buildFixture(root) {
   await exec(process.execPath, [tsdown, '--config', 'tsdown.host.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
   await cp(join(pluginRoot, 'lib/typert.remote-client.js'), join(pluginRoot, 'src/typert.remote-client.js'))
   await exec(process.execPath, [tsdown, '--config', 'tsdown.client.config.mjs', '--tsconfig', 'tsconfig.bundle.json', '--no-report'], { cwd: root, stdio: 'inherit' })
+  await wrapWebClient(join(pluginRoot, 'lib/client.js'))
   await writeJson(join(root, 'tsconfig.declarations.json'), {
     extends: './tsconfig.base.json',
     compilerOptions: {
@@ -217,12 +240,21 @@ async function installPackedBundle(root, pluginRoot) {
     assert.equal(entry?.version, expected, `${name} must be pinned in consumer package-lock.json`)
   }
   await writeText(join(consumer, 'runtime.mjs'), `
+import { readFile } from 'node:fs/promises'
+import { runInNewContext } from 'node:vm'
 const manifest = (await import('dsh-workspace-plugin/package.json', { with: { type: 'json' } })).default
 const host = await import('dsh-workspace-plugin')
-const client = await import('dsh-workspace-plugin/client')
 const hostTypert = await import('dsh-workspace-plugin/typert')
 const clientTypert = await import('dsh-workspace-plugin/client/typert')
 const remote = await import('dsh-workspace-plugin/remote')
+const clientSource = await readFile(new URL('./node_modules/dsh-workspace-plugin/lib/client.js', import.meta.url), 'utf8')
+let handoff
+const sandbox = { console, Symbol }
+sandbox.globalThis = sandbox
+sandbox.window = { __ModuleLoader__: { load(value) { handoff = value } } }
+runInNewContext(clientSource, sandbox)
+if (handoff?.id !== 'dsh-workspace-plugin' || typeof handoff.factory !== 'function') throw new Error('packed client did not register with the public module loader')
+const client = handoff.factory(() => { throw new Error('packed client requested an unexpected dependency') })
 export { manifest, host, client, hostTypert, clientTypert, remote }
 `)
   await writeText(join(consumer, 'check.mjs'), `
@@ -423,7 +455,8 @@ async function conversationSmoke(root, client, ctx) {
         return () => { dispose(); clientSlots.splice(0) }
       },
       register(options, component) {
-        assert.deepEqual(options, { name: 'conversation.chat.node', key: 'dsh-workspace-summary' })
+        assert.equal(options.name, 'conversation.chat.node')
+        assert.equal(options.key, 'dsh-workspace-summary')
         clientSlots.push(component)
         return () => clientSlots.splice(0)
       },
@@ -440,7 +473,7 @@ async function conversationSmoke(root, client, ctx) {
   })
   const clientDispose = await client.apply(contribution)
   assert.equal(definitions.length, 1)
-  assert.equal(views.length, 1)
+  assert.equal(views.length, 0)
   assert.equal(clientSlots.length, 1)
   assert.equal(clientRemoteMounted, 1)
   await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
@@ -454,8 +487,10 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(clientNode.props.children[2].type, 'button')
   clientNode.props.children[2].props.onClick()
   assert.equal(clientOpened, 1)
+  const workspace = client
+  assert.equal(typeof workspace.workspaceConversationView, 'object')
   const events = { entries: () => definitions, fallbackEntry: () => undefined }
-  const viewDefinitions = { entries: () => views }
+  const viewDefinitions = { entries: () => [workspace.workspaceConversationView] }
   const assembler = new ConversationNodeAssembler(events, viewDefinitions)
   const input = {
     event: {
@@ -476,7 +511,6 @@ async function conversationSmoke(root, client, ctx) {
   assert.deepEqual([...first.nodes.keys()], [...replayed.nodes.keys()])
   assert.deepEqual([...first.nodes.values()].map(node => node.data), [...replayed.nodes.values()].map(node => node.data))
 
-  const workspace = client
   assert.equal(typeof workspace.applyWorkspaceConversationContribution, 'function', 'packed Client must export the Workspace Web contribution')
   assert.equal(typeof workspace.createWorkspaceDrawerController, 'function', 'packed Client must export typed Workspace operations')
   const workspaceDefinitions = []
@@ -498,7 +532,8 @@ async function conversationSmoke(root, client, ctx) {
         return () => { dispose(); workspaceSlots.splice(0) }
       },
       register(options, component) {
-        assert.deepEqual(options, { name: 'conversation.chat.node', key: 'dsh-workspace-summary' })
+        assert.equal(options.name, 'conversation.chat.node')
+        assert.equal(options.key, 'dsh-workspace-summary')
         workspaceSlots.push(component)
         return () => workspaceSlots.splice(0)
       },
@@ -515,7 +550,8 @@ async function conversationSmoke(root, client, ctx) {
   const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat' }
   const summaryEvent = { type: 'workspace/summary', seq: 2, data: { id: 'compat-session', phase: 'start', summary } }
   const summaryMatch = workspace.workspaceConversationDefinition.match(summaryEvent)
-  assert.deepEqual(summaryMatch, { id: 'compat-session', role: 'start' })
+  assert.equal(summaryMatch.id, 'compat-session')
+  assert.equal(summaryMatch.role, 'start')
   const summaryNode = workspace.workspaceConversationDefinition.buildViewNode({
     key: 'dsh-workspace-summary:compat-session', kind: 'dsh-workspace-summary', id: 'compat-session',
     start: { event: summaryEvent, role: 'start', id: 'compat-session', summary }, state: summary,

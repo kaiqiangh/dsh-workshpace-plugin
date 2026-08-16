@@ -1,8 +1,7 @@
-import { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, createWorkspaceDrawerController, type WorkspaceConversationEventRegistry, type WorkspaceConversationViewRegistry, type WorkspaceConversationContributionOptions, type WorkspaceSlotRegistry, workspaceConversationDefinition, workspaceConversationView } from "./web/workspace-conversation.ts";
+import { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, createWorkspaceDrawerController, type WorkspaceConversationEventRegistry, type WorkspaceConversationContributionOptions, type WorkspaceSlotRegistry, workspaceConversationDefinition, workspaceConversationView } from "./web/workspace-conversation.ts";
 import type { TypertClientRemote } from "@deepseek-ai/dsh-typert-protocol";
 interface ClientContributionContext {
     readonly conversationEvents: WorkspaceConversationEventRegistry;
-    readonly conversationViews: WorkspaceConversationViewRegistry;
     readonly slots: WorkspaceSlotRegistry;
     readonly effect: (factory: () => void | (() => void), label?: string) => void;
     readonly remote: TypertClientRemote;
@@ -18,6 +17,7 @@ export interface WorkspaceClientSurface {
     readonly ready: boolean;
 }
 export declare const workspaceClient: WorkspaceClientSurface;
+export declare const inject: readonly ["conversationEvents", "slots", "remote"];
 export declare function apply(ctx: ClientContributionContext): Promise<() => Promise<void>>;
 export { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, createWorkspaceDrawerController, workspaceConversationDefinition, workspaceConversationView, };
 export type { WorkspaceConversationContributionOptions };

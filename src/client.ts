@@ -3,7 +3,6 @@ import {
   createWorkspaceChatNodeComponent,
   createWorkspaceDrawerController,
   type WorkspaceConversationEventRegistry,
-  type WorkspaceConversationViewRegistry,
   type WorkspaceConversationContributionOptions,
   type WorkspaceSlotRegistry,
   workspaceConversationDefinition,
@@ -15,7 +14,6 @@ import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } fro
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
-  readonly conversationViews: WorkspaceConversationViewRegistry;
   readonly slots: WorkspaceSlotRegistry;
   readonly effect: (factory: () => void | (() => void), label?: string) => void;
   readonly remote: TypertClientRemote;
@@ -35,8 +33,10 @@ export interface WorkspaceClientSurface {
 
 export const workspaceClient: WorkspaceClientSurface = Object.freeze({ ready: true });
 
+export const inject = ["conversationEvents", "slots", "remote"] as const;
+
 export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
-  if (!ctx?.conversationEvents || !ctx.conversationViews || !ctx.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount || typeof ctx.emit !== "function") {
+  if (!ctx?.conversationEvents || !ctx.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount || typeof ctx.emit !== "function") {
     throw new Error("DSH Workspace requires the public conversation and Typert Remote seams");
   }
   const remoteDispose: TypertDisposer = await ctx.remote.$mount(TYPERT_REMOTE as TypertRemoteContribution);
@@ -44,7 +44,6 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
   try {
     ctx.effect(() => {
       const disposeEvent = ctx.conversationEvents.register(workspaceConversationDefinition);
-      const disposeView = ctx.conversationViews.register(workspaceConversationView);
       const disposeSlot = ctx.slots.inject("conversation.chat.node", () => ctx.slots.register(
         { name: "conversation.chat.node", key: "dsh-workspace-summary" },
         createWorkspaceChatNodeComponent(
@@ -63,7 +62,6 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         if (disposed) return;
         disposed = true;
         disposeSlot();
-        disposeView();
         disposeEvent();
       };
       return disposeConversation;

@@ -50,7 +50,13 @@ fresh consumer, and never imports the repository source from the consumer.
   required conversation/Remote seams are missing, registers and replays the
   Workspace conversation node,
   exercises typed preview/Working Set/Pinned Context operations, and disposes
-  all Remote, event, view, slot, WebServer, registry, and carrier registrations.
+  all Remote, event, slot, WebServer, registry, and carrier registrations. Its
+  browser artifact is wrapped as the official `window.__ModuleLoader__.load`
+  factory and contains no top-level ESM imports/exports.
+- An installed local profile was launched with `dsh web --host 127.0.0.1
+  --port 0`, loaded the packed plugin, and was exercised in Chrome through the
+  profile URL. The response was HTTP 200, the Harness rendered its normal New
+  Session/Workspaces shell, and the browser recorded no console or page errors.
 
 ## Upgrade trigger
 
@@ -58,6 +64,3 @@ Re-run the research gates and update the pinned profile whenever Harness moves
 the public Typert, Agent context, WebServer, conversation-node, bundle/client
 metadata, or package export contracts. A floating prerelease range is not a
 supported release input.
-
-The separate installed `dsh web` browser-run gate remains environment-bound;
-the packed smoke is not presented as a substitute for that live launcher run.
