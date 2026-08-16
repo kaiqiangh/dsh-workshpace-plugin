@@ -18,7 +18,11 @@ export interface WorkspacePreviewRenderOptions {
 
 /** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
 export function sanitizeWorkspaceMarkdown(text: string): string {
-  const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[[^\]]+\]:\s*https?:\/\/\S+.*$/gimu, "");
+  const remoteDefinitions = new Set<string>();
+  const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[([^\]]+)\]:\s*<?https?:\/\/[^>\s]+>?[^\r\n]*$/gimu, (_match, label: string) => {
+    remoteDefinitions.add(label.trim().toUpperCase());
+    return "";
+  });
   const readDelimited = (start: number, open: string, close: string): number => {
     let depth = 0;
     for (let index = start; index < withoutRemoteDefinitions.length; index += 1) {
@@ -39,9 +43,10 @@ export function sanitizeWorkspaceMarkdown(text: string): string {
           : withoutRemoteDefinitions[destinationStart] === "["
             ? readDelimited(destinationStart, "[", "]")
             : -1;
-        if (destinationEnd !== -1) {
-          sanitized += withoutRemoteDefinitions.slice(index + 2, altEnd);
-          index = destinationEnd + 1;
+        const alt = withoutRemoteDefinitions.slice(index + 2, altEnd);
+        if (destinationEnd !== -1 || remoteDefinitions.has(alt.trim().toUpperCase())) {
+          sanitized += alt;
+          index = destinationEnd === -1 ? altEnd + 1 : destinationEnd + 1;
           continue;
         }
       }
@@ -57,12 +62,17 @@ function status(message: string): ReactNode {
 }
 
 function csvTable(columns: readonly string[], rows: readonly (readonly string[])[], truncated: boolean): ReactNode {
-  return createElement(
+  const table = createElement(
     "table",
     { "data-dsh-workspace-preview": "csv" },
     createElement("caption", null, truncated ? "Workspace CSV preview (additional rows omitted)" : "Workspace CSV preview"),
     createElement("thead", null, createElement("tr", null, columns.map((column, index) => createElement("th", { key: index, scope: "col" }, column)))),
     createElement("tbody", null, rows.map((row, rowIndex) => createElement("tr", { key: rowIndex }, row.map((cell, columnIndex) => createElement("td", { key: columnIndex }, cell))))),
+  );
+  return createElement(
+    "div",
+    { role: "region", "aria-label": "Workspace CSV preview", "data-dsh-workspace-preview": "csv-scroll", tabIndex: 0, style: { overflowX: "auto", maxWidth: "100%" } },
+    table,
   );
 }
 
@@ -72,7 +82,7 @@ function primitiveElement<Props extends object>(primitive: WorkspacePrimitive<Pr
 
 function resourceHref(descriptor: Extract<PreviewDescriptor, { type: "binary" }>, options: WorkspacePreviewRenderOptions, download: boolean): string | undefined {
   const path = options.resourcePath ?? "/workspace/resource";
-  if (!/^\/[A-Za-z0-9._/-]+$/u.test(path) || path.endsWith("/")) return undefined;
+  if (typeof path !== "string" || !/^\/[A-Za-z0-9._/-]+$/u.test(path) || path.endsWith("/")) return undefined;
   const url = new URL(path, "http://workspace.local");
   url.searchParams.set("id", descriptor.resourceId);
   url.searchParams.set("type", descriptor.mediaType);
@@ -98,7 +108,10 @@ function withTruncation(content: ReactNode, truncated: boolean): ReactNode {
 /** Render only bounded, already-authorized Host data through public UI primitives. */
 export function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet, descriptor: PreviewDescriptor, options: WorkspacePreviewRenderOptions = {}): unknown {
   if (descriptor.type === "error") return status(descriptor.message);
-  if (descriptor.type === "unsupported") return status(`Preview unavailable: ${descriptor.reason}`);
+  if (descriptor.type === "unsupported") {
+    const metadata = [descriptor.mediaType, descriptor.size === undefined ? undefined : `${descriptor.size} bytes`].filter(Boolean).join(", ");
+    return status(`Preview unavailable: ${descriptor.reason}${metadata ? ` (${metadata})` : ""}. Download is unavailable for this file.`);
+  }
   if (descriptor.type === "text") return withTruncation(primitiveElement(primitives.CodeBlock, { code: descriptor.content, lang: descriptor.language }), descriptor.truncated);
   if (descriptor.type === "markdown") return withTruncation(primitiveElement(primitives.MarkdownText, { text: sanitizeWorkspaceMarkdown(descriptor.content), streaming: false }), descriptor.truncated);
   if (descriptor.type === "json") {

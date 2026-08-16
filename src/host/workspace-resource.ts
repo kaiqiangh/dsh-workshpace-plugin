@@ -57,11 +57,11 @@ export function registerWorkspaceResourceRoute(
         return;
       }
       const controller = new AbortController();
-      const abort = () => { if (!request.complete) controller.abort(); };
+      const abort = () => { if (!response.writableEnded) controller.abort(); };
       if (typeof request.once === "function") {
         request.once("aborted", abort);
-        request.once("close", abort);
       }
+      response.once?.("close", abort);
       try {
         const opened = await options.preview.openResource(resourceId, { identity: options.preview.identity, mediaType, signal: controller.signal });
         const headers: Record<string, string | number> = {
@@ -79,7 +79,7 @@ export function registerWorkspaceResourceRoute(
         noStore(response, statusFor(error));
       } finally {
         request.off?.("aborted", abort);
-        request.off?.("close", abort);
+        response.off?.("close", abort);
       }
     },
   });

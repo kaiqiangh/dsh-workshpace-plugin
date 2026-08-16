@@ -40,7 +40,9 @@ test("adapts bounded Markdown, code, and JSON through public primitive seams", (
 test("keeps CSV accessible and binary states explicit", () => {
   const csv = element(createWorkspacePreviewRenderer(primitives, { type: "csv", path: "data.csv" as never, renderer: "ui-primitives", columns: ["name"], rows: [["a"]], truncated: true }));
   assert.equal(csv.props["data-dsh-workspace-preview"], "truncated");
-  const csvTable = element((csv.props.children as readonly unknown[])[0]);
+  const csvScroll = element((csv.props.children as readonly unknown[])[0]);
+  assert.equal((csvScroll.props.style as { overflowX: string }).overflowX, "auto");
+  const csvTable = element(csvScroll.props.children);
   const csvCaption = element((csvTable.props.children as readonly unknown[])[0]);
   assert.match(String(csvCaption.props.children), /additional rows omitted/);
   const image = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "image.png" as never, mediaType: "image/png", resourceId: "opaque", version: "v1", expiresAt: 1 }, { resourcePath: "/workspace/resource", altText: "Chart" }));
@@ -50,11 +52,12 @@ test("keeps CSV accessible and binary states explicit", () => {
   assert.equal(invalid.props.role, "status");
   const unsupported = createWorkspacePreviewRenderer(primitives, { type: "unsupported", path: "archive.zip" as never, reason: "unsupported-binary", mediaType: "application/octet-stream" });
   assert.equal((unsupported as { props: { role: string } }).props.role, "status");
+  assert.match(String((unsupported as { props: { children: unknown } }).props.children), /Download is unavailable/);
 });
 
 test("sanitizes Markdown images without touching links", () => {
   assert.equal(
-    sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com) ![y][remote]\n[remote]: https://example.com/y.png\n![a [b]](https://evil.invalid/x.png)"),
-    "x [link](https://example.com) y\n\na [b]",
+    sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com) ![y][remote]\n[remote]: https://example.com/y.png\n![a [b]](https://evil.invalid/x.png)\n![shortcut]\n[shortcut]: <https://evil.invalid/shortcut.png>"),
+    "x [link](https://example.com) y\n\na [b]\nshortcut\n",
   );
 });
