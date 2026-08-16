@@ -55,6 +55,7 @@ export function createWorkspaceChangesSurfaceComponent(
     const [diffStatus, setDiffStatus] = useState<"idle" | "loading" | "error">("idle");
     const [message, setMessage] = useState<string | undefined>();
     const request = useRef(0);
+    const selectedButton = useRef<HTMLButtonElement | null>(null);
 
     useEffect(() => {
       let active = true;
@@ -96,29 +97,51 @@ export function createWorkspaceChangesSurfaceComponent(
       }).catch(() => { if (token === request.current) setDiffStatus("error"); });
     }, [selectedPath, activeRemote]);
 
+    useEffect(() => {
+      if (selectedPath) selectedButton.current?.focus();
+    }, [selectedPath]);
+
     const select = (path: string): void => setSelectedPath(path);
 
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading git changes…")
       : status === "degraded"
-        ? createElement("p", { role: "status" }, message ?? "Git changes are unavailable.")
+        ? createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "warning" }, createElement("p", { role: "status" }, message ?? "Git changes are unavailable."))
         : createElement("div", { "data-dsh-workspace": "changes-surface" },
-          changes.length === 0 && createElement("p", { role: "status" }, "No changes in the working tree."),
-          changes.length > 0 && createElement("ul", { "aria-label": "Git changes" }, changes.map((change) => createElement("li", { key: `${change.staged ? "i" : "w"}:${change.path}` },
-            createElement("button", { type: "button", "aria-pressed": change.path === selectedPath, onClick: () => select(change.path) }, change.path),
-            createElement("span", null, ` ${statusText(change.status, change.staged)}${change.previousPath ? ` (from ${change.previousPath})` : ""}`),
+          createElement("header", { "data-dsh-workspace": "surface-header" },
+            createElement("div", { "data-dsh-workspace": "surface-title" },
+              createElement("h3", null, "Changes"),
+              createElement("span", { "data-dsh-workspace": "count-badge", "aria-label": "Change count" }, `${changes.length} change${changes.length === 1 ? "" : "s"}`),
+            ),
+          ),
+          changes.length === 0 && createElement("div", { "data-dsh-workspace": "empty-state" }, "No changes in the working tree."),
+          changes.length > 0 && createElement("ul", { "aria-label": "Git changes", "data-dsh-workspace": "changes-list" }, changes.map((change) => createElement("li", {
+            key: `${change.staged ? "i" : "w"}:${change.path}`,
+            "data-dsh-workspace": "change-item",
+            "data-selected": String(change.path === selectedPath),
+            "data-status": change.status,
+          },
+            createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "change-status-badge", "data-status": change.status }, statusLabels[change.status]),
+            createElement("button", {
+              ref: change.path === selectedPath ? selectedButton : undefined,
+              type: "button",
+              "data-dsh-workspace": "change-select",
+              "aria-pressed": change.path === selectedPath,
+              onClick: () => select(change.path),
+            }, change.path),
+            createElement("span", { "data-dsh-workspace": "change-meta" }, `${statusText(change.status, change.staged)}${change.previousPath ? ` (from ${change.previousPath})` : ""}`),
           ))),
           selectedPath && diffStatus === "loading" && createElement("p", { role: "status" }, "Loading diff…"),
-          selectedPath && diffStatus === "error" && createElement("p", { role: "status" }, "Diff is unavailable for this change."),
+          selectedPath && diffStatus === "error" && createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "error" }, createElement("p", { role: "status" }, "Diff is unavailable for this change.")),
           selectedPath && diff && createElement("article", { "aria-label": `${selectedPath} diff`, "data-dsh-workspace": "change-diff" },
             createElement("h3", null, selectedPath),
-            diff.truncated && createElement("p", { role: "status" }, "Diff truncated; additional content omitted."),
-            diff.staged && createElement("section", { "aria-label": "Staged diff" },
+            diff.truncated && createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "warning" }, createElement("p", { role: "status" }, "Diff truncated; additional content omitted.")),
+            diff.staged && createElement("section", { "aria-label": "Staged diff", "data-dsh-workspace": "diff-block" },
               createElement("h4", null, "Staged"),
-              createElement("pre", null, diff.staged)),
-            diff.unstaged && createElement("section", { "aria-label": "Unstaged diff" },
+              createElement("pre", { "data-dsh-workspace": "diff-code" }, diff.staged)),
+            diff.unstaged && createElement("section", { "aria-label": "Unstaged diff", "data-dsh-workspace": "diff-block" },
               createElement("h4", null, "Unstaged"),
-              createElement("pre", null, diff.unstaged)),
+              createElement("pre", { "data-dsh-workspace": "diff-code" }, diff.unstaged)),
             !diff.staged && !diff.unstaged && createElement("p", { role: "status" }, "No diff content for this change."),
           ),
           message && createElement("p", { role: "status" }, message),

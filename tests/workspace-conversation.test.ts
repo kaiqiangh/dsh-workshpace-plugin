@@ -11,7 +11,19 @@ import {
   type WorkspaceConversationContributionContext,
 } from "../src/web/workspace-conversation.ts";
 
-const summary: WorkspaceChatData = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: "repo" };
+const summary: WorkspaceChatData = {
+  filesTouched: 8,
+  changes: 3,
+  artifacts: 2,
+  workspaceName: "repo",
+  filesCreated: 4,
+  filesModified: 3,
+  filesDeleted: 1,
+  firstObservedAt: 1000,
+  lastObservedAt: 5000,
+  memoryCount: 2,
+  decisionCount: 1,
+};
 const event = { type: "workspace/summary" as const, seq: 4, data: { id: "session-1", phase: "start" as const, summary } };
 
 test("replays a supplied Workspace summary without scanning history", () => {
@@ -65,17 +77,15 @@ test("binds the summary renderer, public registrations, and owned disposal", () 
   };
   applyWorkspaceConversationContribution(context, {
     renderSummary: (model) => model,
-    openWorkspace: () => undefined,
   });
   assert.deepEqual(registrations, ["event", "view", "inject", "slot"]);
-  const component = createWorkspaceChatNodeComponent((model) => model, () => undefined);
-  const card = component({ node: workspaceConversationDefinition.buildViewNode({ key: "k", kind: "dsh-workspace-summary", id: "session-1", start: { event, role: "start", id: "session-1", summary }, state: summary })! }) as { summary: WorkspaceChatData; openWorkspace: { label: string } };
+  const component = createWorkspaceChatNodeComponent((model) => model);
+  const card = component({ node: workspaceConversationDefinition.buildViewNode({ key: "k", kind: "dsh-workspace-summary", id: "session-1", start: { event, role: "start", id: "session-1", summary }, state: summary })! }) as { summary: WorkspaceChatData };
   assert.deepEqual(card.summary, summary);
-  assert.equal(card.openWorkspace.label, "Open Workspace");
   cleanup?.();
   assert.deepEqual(registrations.slice(-4), ["slot-dispose", "inject-dispose", "view-dispose", "event-dispose"]);
 });
 
 test("rejects missing public seams with a typed integration error", () => {
-  assert.throws(() => applyWorkspaceConversationContribution(null as never, { renderSummary: () => undefined, openWorkspace: () => undefined }), (error) => error instanceof WorkspaceWebIntegrationError && error.code === "INTEGRATION_UNAVAILABLE");
+  assert.throws(() => applyWorkspaceConversationContribution(null as never, { renderSummary: () => undefined }), (error) => error instanceof WorkspaceWebIntegrationError && error.code === "INTEGRATION_UNAVAILABLE");
 });

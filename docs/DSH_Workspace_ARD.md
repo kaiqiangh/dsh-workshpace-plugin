@@ -1725,3 +1725,12 @@ If this is achieved with:
 - and reproducible session activity,
 
 then the v0.5 architecture is delivered and the plugin is ready for release review.
+
+---
+
+## v0.2 Change Notes (2026-08-16)
+
+- **Entry simplification:** overlay slot removed (`workspace-panel.ts` deleted, `shell.overlay` registration gone); the `conversation.view` tab is the single entry. Dead overlay constants (`WORKSPACE_ARTIFACT_OVERLAY_SLOT`, `WORKSPACE_MEMORY_OVERLAY_SLOT`, `*_ENTRY_KEY`) removed from exports.
+- **Shared visual system:** styles extracted to `src/web/workspace-styles.ts` (`installWorkspaceStyles`, scoped under `[data-dsh-workspace=…]`); all three surfaces rebuilt on cards/badges/status chips/empty states with the same tokens.
+- **Overview data flow:** `WorkspaceSummaryData` extended with `filesCreated/filesModified/filesDeleted/firstObservedAt/lastObservedAt/memoryCount/decisionCount`; emitted `workspace/summary` events are validated client-side (`validSummary`) and rendered in the chat summary card; the emitter optionally augments counts from the Memory domain.
+- **Memory auto-write (ADR-compatible):** new `src/host/workspace-memory-auto-write.ts` — host-side derivation only, `origin=derived`, `verification=unverified`, `retention=session-end`, never injected into Agent context (respects the zero-injection governance boundary); idempotent stable-id upserts; per-session prune to 6.

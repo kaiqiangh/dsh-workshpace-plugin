@@ -10,6 +10,7 @@ import { gitDiff as gitDiffForRoot, gitStatus as gitStatusForRoot, GitError, typ
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
 import { registerMemoryPropose } from "./host/workspace-memory-propose.ts";
 import { attachWorkspaceSummaryEmitter } from "./host/workspace-summary.ts";
+import { attachWorkspaceMemoryAutoWriter } from "./host/workspace-memory-auto-write.ts";
 import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
 export {
@@ -116,6 +117,14 @@ export {
   type SummaryAgent,
   type WorkspaceSummaryData,
 } from "./host/workspace-summary.ts";
+export {
+  attachWorkspaceMemoryAutoWriter,
+  buildAutoFactContent,
+  writeAutoFact,
+  AUTO_FACT_TAGS,
+  AUTO_FACT_TITLE,
+  type AutoWriteAgent,
+} from "./host/workspace-memory-auto-write.ts";
 
 declare module "@deepseek-ai/dsh-typert-protocol" {
   interface TypertContextMap {
@@ -321,5 +330,6 @@ export function apply(ctx: Context): void {
   const memoryDomain = new WorkspaceMemoryDomain();
   ctx.plugin(WorkspaceService, { memoryDomain });
   ctx.effect(() => registerMemoryPropose(ctx, memoryDomain), "dsh-workspace memory propose tool");
-  ctx.effect(() => attachWorkspaceSummaryEmitter(ctx), "dsh-workspace summary emitter");
+  ctx.effect(() => attachWorkspaceSummaryEmitter(ctx, memoryDomain), "dsh-workspace summary emitter");
+  ctx.effect(() => attachWorkspaceMemoryAutoWriter(ctx, memoryDomain), "dsh-workspace memory auto-writer");
 }

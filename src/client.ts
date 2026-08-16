@@ -26,12 +26,7 @@ import {
   type WorkspaceChangesRemote,
 } from "./web/workspace-changes-surface.ts";
 import type { MemoryScopeRequest } from "./domain/memory.ts";
-import {
-  createWorkspacePanelComponent,
-  installWorkspacePanelStyles,
-  WORKSPACE_PANEL_ENTRY_KEY,
-  WORKSPACE_PANEL_OVERLAY_SLOT,
-} from "./web/workspace-panel.ts";
+import { installWorkspaceStyles } from "./web/workspace-styles.ts";
 import {
   createWorkspaceConversationViewComponent,
   workspaceConversationViewRegistration,
@@ -47,11 +42,6 @@ interface ClientContributionContext {
   readonly remote: TypertClientRemote;
   readonly sessions?: { readonly scope: (id: string) => { readonly get?: (key: string) => unknown; readonly remote?: TypertClientRemote } | undefined };
   readonly emit: (event: string, ...args: readonly unknown[]) => void;
-}
-
-interface WorkspaceOverlaySlotRegistry {
-  readonly inject: (key: string, callback: () => () => void) => () => void;
-  readonly register: (options: { readonly name: string; readonly id: string; readonly order?: number; readonly label?: string; readonly priority?: number }, component: (props: Record<string, unknown>) => unknown) => () => void;
 }
 
 declare module "@deepseek-ai/cordis" {
@@ -71,6 +61,18 @@ export function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: 
   return createWorkspacePreviewRenderer({ MarkdownText, CodeBlock, JsonTree }, descriptor, options);
 }
 
+/** Compact human-readable session activity span derived from host timestamps. */
+function formatActiveSpan(firstObservedAt: number, lastObservedAt: number): string {
+  if (!firstObservedAt || !lastObservedAt || lastObservedAt <= firstObservedAt) return "just now";
+  const seconds = Math.round((lastObservedAt - firstObservedAt) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
 export const inject = ["conversationEvents", "slots", "remote", "sessions"] as const;
 
 export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
@@ -79,26 +81,29 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
   }
   const remoteDispose: TypertDisposer = await ctx.remote.$mount(TYPERT_REMOTE as TypertRemoteContribution);
   let disposeConversation: (() => void) | undefined;
-  let openWorkspacePanel: (() => void) | undefined;
   try {
     ctx.effect(() => {
       const disposeEvent = ctx.conversationEvents.register(workspaceConversationDefinition);
       const disposeSlot = ctx.slots.inject("conversation.chat.node", () => ctx.slots.register(
         { name: "conversation.chat.node", key: "dsh-workspace-summary" },
         createWorkspaceChatNodeComponent(
-          (model) => createElement(
-            "section",
-            { "data-dsh-workspace": "summary" },
-            createElement("strong", null, model.summary.workspaceName),
-            createElement("span", null, ` ${model.summary.filesTouched} files, ${model.summary.changes} changes`),
-            createElement("button", { type: "button", onClick: model.openWorkspace.action }, model.openWorkspace.label),
-          ),
-          () => { ctx.emit("workspace/open"); openWorkspacePanel?.(); },
+          (model) => {
+            const summary = model.summary;
+            return createElement(
+              "section",
+              { "data-dsh-workspace": "summary" },
+              createElement("strong", null, summary.workspaceName),
+              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.filesTouched} files`),
+              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.filesCreated} new · ${summary.filesModified} edited · ${summary.filesDeleted} deleted`),
+              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.artifacts} artifacts`),
+              summary.memoryCount > 0 && createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.memoryCount} memory · ${summary.decisionCount} decisions`),
+              createElement("span", { "data-dsh-workspace": "summary-metric" }, `active ${formatActiveSpan(summary.firstObservedAt, summary.lastObservedAt)}`),
+            );
+          },
         ),
       ));
       let disposed = false;
       let disposeSurfaces = () => {};
-      const overlay = ctx.slots as unknown as WorkspaceOverlaySlotRegistry;
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
       const registerWorkspaceSurfaces = (scope: ClientContributionContext): (() => void) => {
         const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
@@ -128,7 +133,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
           remotes.set(sessionId, adapted);
           return adapted;
         };
-        const disposeStyles = installWorkspacePanelStyles();
+        const disposeStyles = installWorkspaceStyles();
         const disposers: (() => void)[] = [disposeStyles];
         const artifacts = createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
           resolveRemote,
@@ -139,25 +144,14 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         const changes = createWorkspaceChangesSurfaceComponent(undefined, {
           resolveRemote,
         });
-        if (typeof overlay.inject === "function" && typeof overlay.register === "function") {
-          disposers.push(overlay.inject(WORKSPACE_PANEL_OVERLAY_SLOT, () => overlay.register(
-            { name: WORKSPACE_PANEL_OVERLAY_SLOT, id: WORKSPACE_PANEL_ENTRY_KEY, label: "Workspace", order: 0, priority: 100 },
-            createWorkspacePanelComponent({ artifacts, memory, changes }),
-          )));
-        }
         if (typeof viewSlots.inject === "function" && typeof viewSlots.register === "function") {
           disposers.push(viewSlots.inject(WORKSPACE_VIEW_SLOT, () => viewSlots.register(
             workspaceConversationViewRegistration(),
             createWorkspaceConversationViewComponent({ artifacts, memory, changes }),
           )));
         }
-        openWorkspacePanel = () => {
-          const panel = typeof document === "object" ? document.querySelector?.('[data-dsh-workspace="panel"]') : undefined;
-          if (panel && typeof panel.setAttribute === "function") panel.setAttribute("open", "");
-        };
         return () => {
           remotes.clear();
-          openWorkspacePanel = undefined;
           for (const dispose of disposers.reverse()) dispose();
         };
       };
@@ -212,8 +206,6 @@ export {
   createWorkspaceArtifactSurfaceComponent,
   workspaceArtifactPreviewDescriptor,
   workspaceArtifactResourceUrl,
-  WORKSPACE_ARTIFACT_ENTRY_KEY,
-  WORKSPACE_ARTIFACT_OVERLAY_SLOT,
   WORKSPACE_ARTIFACT_SLOT_NAME,
 } from "./web/workspace-artifact-surface.ts";
 export type {
@@ -233,8 +225,6 @@ export {
   createWorkspaceMemorySurfaceComponent,
   workspaceMemoryRecordSummary,
   workspaceMemoryRequest,
-  WORKSPACE_MEMORY_ENTRY_KEY,
-  WORKSPACE_MEMORY_OVERLAY_SLOT,
   workspaceMemoryTypes,
 } from "./web/workspace-memory-surface.ts";
 export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";
@@ -242,13 +232,8 @@ export {
   createWorkspaceChangesSurfaceComponent,
 } from "./web/workspace-changes-surface.ts";
 export type { WorkspaceChangesRemote, WorkspaceChangesSurfaceOptions } from "./web/workspace-changes-surface.ts";
-export {
-  createWorkspacePanelComponent,
-  installWorkspacePanelStyles,
-  WORKSPACE_PANEL_ENTRY_KEY,
-  WORKSPACE_PANEL_OVERLAY_SLOT,
-} from "./web/workspace-panel.ts";
-export type { WorkspacePanelOptions, WorkspaceSurfaceComponent } from "./web/workspace-panel.ts";
+export { installWorkspaceStyles } from "./web/workspace-styles.ts";
+export type { WorkspaceSurfaceComponent } from "./web/workspace-styles.ts";
 export {
   createWorkspaceConversationViewComponent,
   workspaceConversationViewRegistration,

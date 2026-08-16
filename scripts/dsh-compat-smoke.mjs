@@ -344,11 +344,9 @@ const contribution = {
   emit: () => {},
 }
 const disposeSurface = await client.apply(contribution)
-if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
-if (surfaceRegistrations.filter((value) => value === 'register:dsh-workspace-panel').length !== 1) throw new Error('packed client did not register the Workspace panel exactly once')
-await disposeSurface()
-if (surfaceRegistrations.filter((value) => value === 'register-dispose:dsh-workspace-panel').length !== 1) throw new Error('packed client did not dispose the Workspace panel exactly once')
-console.log('installed-bundle-ok')
+  if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
+  await disposeSurface()
+  console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
   assert.match(check.stdout, /installed-bundle-ok/)
@@ -862,10 +860,7 @@ async function conversationSmoke(root, client, ctx) {
           conversationViewSlots.push(component)
           return () => conversationViewSlots.splice(0)
         }
-        assert.equal(options.name, 'shell.overlay')
-        assert.equal(options.id, 'dsh-workspace-panel')
-        overlaySlots.push(component)
-        return () => overlaySlots.splice(0)
+        assert.fail(`unexpected conversation slot registration: ${options.name}`)
       },
     },
     effect(factory) { clientCleanup = factory() },
@@ -886,20 +881,17 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(definitions.length, 1)
   assert.equal(views.length, 0)
   assert.equal(clientSlots.length, 1)
-  assert.equal(overlaySlots.length, 1)
+  assert.equal(overlaySlots.length, 0)
   assert.equal(conversationViewSlots.length, 1)
   assert.equal(clientRemoteMounted, 1)
   await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
   const clientNode = clientSlots[0]({ node: {
     key: 'dsh-workspace-summary:client', kind: 'dsh-workspace-summary', id: 'client', target: 'chat',
-    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client' }, anchorSeq: 1,
+    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client', filesCreated: 1, filesModified: 0, filesDeleted: 0, firstObservedAt: 1, lastObservedAt: 2, memoryCount: 0, decisionCount: 0 }, anchorSeq: 1,
     location: { kind: 'session' }, visibility: 'visible',
   } })
   assert.equal(clientNode.type, 'section')
   assert.equal(clientNode.props['data-dsh-workspace'], 'summary')
-  assert.equal(clientNode.props.children[2].type, 'button')
-  clientNode.props.children[2].props.onClick()
-  assert.equal(clientOpened, 1)
   const workspace = client
   assert.equal(typeof workspace.workspaceConversationView, 'object')
   const events = { entries: () => definitions, fallbackEntry: () => undefined }
@@ -910,7 +902,7 @@ async function conversationSmoke(root, client, ctx) {
       seq: 1,
       time: 1,
       type: 'workspace/summary',
-      data: { id: 'summary-1', phase: 'start', summary: { filesTouched: 1, changes: 0, artifacts: 0, workspaceName: 'compat' } },
+      data: { id: 'summary-1', phase: 'start', summary: { filesTouched: 1, changes: 0, artifacts: 0, workspaceName: 'compat', filesCreated: 1, filesModified: 0, filesDeleted: 0, firstObservedAt: 1, lastObservedAt: 1, memoryCount: 0, decisionCount: 0 } },
       ignorable: true,
     },
     view: undefined,
@@ -954,12 +946,11 @@ async function conversationSmoke(root, client, ctx) {
   }
   workspace.applyWorkspaceConversationContribution(workspaceContext, {
     renderSummary(model) { rendered = model; return model },
-    openWorkspace() { opened = true },
   })
   assert.equal(workspaceDefinitions.length, 1)
   assert.equal(workspaceViews.length, 1)
   assert.equal(workspaceSlots.length, 1)
-  const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat' }
+  const summary = { filesTouched: 8, changes: 3, artifacts: 2, workspaceName: 'compat', filesCreated: 4, filesModified: 3, filesDeleted: 1, firstObservedAt: 1000, lastObservedAt: 5000, memoryCount: 2, decisionCount: 1 }
   const summaryEvent = { type: 'workspace/summary', seq: 2, data: { id: 'compat-session', phase: 'start', summary } }
   const summaryMatch = workspace.workspaceConversationDefinition.match(summaryEvent)
   assert.equal(summaryMatch.id, 'compat-session')
@@ -970,8 +961,6 @@ async function conversationSmoke(root, client, ctx) {
   })
   rendered = workspaceSlots[0]({ node: summaryNode })
   assert.deepEqual(rendered.summary, summary)
-  rendered.openWorkspace.action()
-  assert.equal(opened, true)
   await clientDispose()
   assert.equal(clientRemoteMounted, 0)
   assert.equal(clientRemoteDisposed, true)

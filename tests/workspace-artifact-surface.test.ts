@@ -59,3 +59,51 @@ test("renders a degraded notice instead of nothing without an active session", (
   const texts = tree.root.findAllByType("p").map((node) => node.children.join(""));
   assert.ok(texts.includes("Workspace artifacts require an active Harness session."));
 });
+
+test("renders grouped artifact cards with a count badge", async () => {
+  const remote = {
+    artifactMetadata: async () => ({ ok: true, value: [artifact] }),
+    previewArtifact: async () => ({
+      ok: true,
+      value: {
+        type: "markdown",
+        renderer: "ui-primitives",
+        content: "# Report",
+        truncated: false,
+        policy: { allowRawHtml: false, allowRemoteImages: false, allowedLinkSchemes: ["http", "https", "mailto"] },
+      },
+    }),
+  };
+  const primitives = {
+    MarkdownText: () => null,
+    CodeBlock: () => null,
+    JsonTree: () => null,
+  };
+  const render = createWorkspaceArtifactSurfaceComponent(remote, primitives, { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const countBadges = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "count-badge").map((node) => node.children.join(""));
+  assert.ok(countBadges.includes("1 artifact"));
+  const groups = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-group").map((node) => node.props["aria-label"]);
+  assert.ok(groups.includes("Documents artifacts"));
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-item").length >= 1);
+});
+
+test("renders an empty state when the session has no artifacts", async () => {
+  const remote = {
+    artifactMetadata: async () => ({ ok: true, value: [] }),
+    previewArtifact: async () => ({ ok: false, error: { code: "missing", message: "missing", details: {} } }),
+  };
+  const primitives = {
+    MarkdownText: () => null,
+    CodeBlock: () => null,
+    JsonTree: () => null,
+  };
+  const render = createWorkspaceArtifactSurfaceComponent(remote, primitives, { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const texts = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "empty-state").map((node) => node.children.join(""));
+  assert.ok(texts.some((text) => text.includes("No session artifacts yet")));
+});

@@ -7,6 +7,20 @@ export interface WorkspaceChatData {
     readonly changes: number;
     readonly artifacts: number;
     readonly workspaceName: string;
+    /** Files whose last observed activity was a create. */
+    readonly filesCreated: number;
+    /** Files whose last observed activity was an edit. */
+    readonly filesModified: number;
+    /** Files whose last observed activity was a delete. */
+    readonly filesDeleted: number;
+    /** Earliest observed activity timestamp in the session (0 when none). */
+    readonly firstObservedAt: number;
+    /** Latest observed activity timestamp in the session (0 when none). */
+    readonly lastObservedAt: number;
+    /** Active-scope Memory records (session scope). */
+    readonly memoryCount: number;
+    /** Active-scope `decision` Memory records (session scope). */
+    readonly decisionCount: number;
 }
 export interface WorkspaceSummaryEventData {
     readonly id: string;
@@ -81,10 +95,6 @@ export interface WorkspaceConversationViewDefinition {
 }
 export interface WorkspaceSummaryCardModel {
     readonly summary: WorkspaceChatData;
-    readonly openWorkspace: {
-        readonly label: "Open Workspace";
-        readonly action: () => void;
-    };
 }
 export type WorkspaceSummaryRenderer = (model: WorkspaceSummaryCardModel) => unknown;
 export interface WorkspaceChatNodeProps {
@@ -102,8 +112,8 @@ export declare class WorkspaceWebIntegrationError extends Error {
 }
 export declare const workspaceConversationDefinition: WorkspaceConversationDefinition;
 export declare const workspaceConversationView: WorkspaceConversationViewDefinition;
-export declare function createWorkspaceSummaryCard(summary: WorkspaceChatData, openWorkspace: () => void): WorkspaceSummaryCardModel;
-export declare function createWorkspaceChatNodeComponent(render: WorkspaceSummaryRenderer, openWorkspace: () => void): WorkspaceChatNodeComponent;
+export declare function createWorkspaceSummaryCard(summary: WorkspaceChatData): WorkspaceSummaryCardModel;
+export declare function createWorkspaceChatNodeComponent(render: WorkspaceSummaryRenderer): WorkspaceChatNodeComponent;
 export interface WorkspaceConversationEventRegistry {
     readonly register: (definition: WorkspaceConversationDefinition) => () => void;
 }
@@ -126,6 +136,5 @@ export interface WorkspaceConversationContributionContext {
 }
 export interface WorkspaceConversationContributionOptions {
     readonly renderSummary: WorkspaceSummaryRenderer;
-    readonly openWorkspace: () => void;
 }
 export declare function applyWorkspaceConversationContribution(ctx: WorkspaceConversationContributionContext, options: WorkspaceConversationContributionOptions): void;

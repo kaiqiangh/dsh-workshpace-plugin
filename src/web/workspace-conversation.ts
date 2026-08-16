@@ -8,6 +8,20 @@ export interface WorkspaceChatData {
   readonly changes: number;
   readonly artifacts: number;
   readonly workspaceName: string;
+  /** Files whose last observed activity was a create. */
+  readonly filesCreated: number;
+  /** Files whose last observed activity was an edit. */
+  readonly filesModified: number;
+  /** Files whose last observed activity was a delete. */
+  readonly filesDeleted: number;
+  /** Earliest observed activity timestamp in the session (0 when none). */
+  readonly firstObservedAt: number;
+  /** Latest observed activity timestamp in the session (0 when none). */
+  readonly lastObservedAt: number;
+  /** Active-scope Memory records (session scope). */
+  readonly memoryCount: number;
+  /** Active-scope `decision` Memory records (session scope). */
+  readonly decisionCount: number;
 }
 
 export interface WorkspaceSummaryEventData {
@@ -80,7 +94,6 @@ export interface WorkspaceConversationViewDefinition {
 
 export interface WorkspaceSummaryCardModel {
   readonly summary: WorkspaceChatData;
-  readonly openWorkspace: { readonly label: "Open Workspace"; readonly action: () => void };
 }
 
 export type WorkspaceSummaryRenderer = (model: WorkspaceSummaryCardModel) => unknown;
@@ -118,7 +131,17 @@ function validWorkspaceName(value: unknown): value is string {
 function validSummary(value: unknown): value is WorkspaceChatData {
   if (!value || typeof value !== "object") return false;
   const summary = value as Partial<WorkspaceChatData>;
-  return validCount(summary.filesTouched) && validCount(summary.changes) && validCount(summary.artifacts) && validWorkspaceName(summary.workspaceName);
+  return validCount(summary.filesTouched)
+    && validCount(summary.changes)
+    && validCount(summary.artifacts)
+    && validCount(summary.filesCreated)
+    && validCount(summary.filesModified)
+    && validCount(summary.filesDeleted)
+    && validCount(summary.firstObservedAt)
+    && validCount(summary.lastObservedAt)
+    && validCount(summary.memoryCount)
+    && validCount(summary.decisionCount)
+    && validWorkspaceName(summary.workspaceName);
 }
 
 function eventData(value: unknown): WorkspaceSummaryEventData | undefined {
@@ -187,13 +210,13 @@ export const workspaceConversationView: WorkspaceConversationViewDefinition = {
   },
 };
 
-export function createWorkspaceSummaryCard(summary: WorkspaceChatData, openWorkspace: () => void): WorkspaceSummaryCardModel {
+export function createWorkspaceSummaryCard(summary: WorkspaceChatData): WorkspaceSummaryCardModel {
   if (!validSummary(summary)) throw new WorkspaceWebIntegrationError("LOCAL_OPERATION_FAILED", "Workspace summary is invalid");
-  return { summary, openWorkspace: { label: "Open Workspace", action: openWorkspace } };
+  return { summary };
 }
 
-export function createWorkspaceChatNodeComponent(render: WorkspaceSummaryRenderer, openWorkspace: () => void): WorkspaceChatNodeComponent {
-  return ({ node }) => render(createWorkspaceSummaryCard(node.data, openWorkspace));
+export function createWorkspaceChatNodeComponent(render: WorkspaceSummaryRenderer): WorkspaceChatNodeComponent {
+  return ({ node }) => render(createWorkspaceSummaryCard(node.data));
 }
 
 export interface WorkspaceConversationEventRegistry {
@@ -218,7 +241,6 @@ export interface WorkspaceConversationContributionContext {
 
 export interface WorkspaceConversationContributionOptions {
   readonly renderSummary: WorkspaceSummaryRenderer;
-  readonly openWorkspace: () => void;
 }
 
 export function applyWorkspaceConversationContribution(
@@ -228,7 +250,7 @@ export function applyWorkspaceConversationContribution(
   if (!ctx?.conversationEvents || !ctx.conversationViews || !ctx.slots || typeof ctx.effect !== "function") {
     throw new WorkspaceWebIntegrationError("INTEGRATION_UNAVAILABLE", "Public DSH Web conversation seam is unavailable");
   }
-  if (typeof options?.renderSummary !== "function" || typeof options.openWorkspace !== "function") {
+  if (typeof options?.renderSummary !== "function") {
     throw new WorkspaceWebIntegrationError("INTEGRATION_UNAVAILABLE", "Workspace summary renderer is unavailable");
   }
   ctx.effect(() => {
@@ -236,7 +258,7 @@ export function applyWorkspaceConversationContribution(
     const disposeView = ctx.conversationViews.register(workspaceConversationView);
     const disposeSlot = ctx.slots.inject(WORKSPACE_CHAT_SLOT, () => ctx.slots.register(
       { name: WORKSPACE_CHAT_SLOT, key: WORKSPACE_CONVERSATION_KIND },
-      createWorkspaceChatNodeComponent(options.renderSummary, options.openWorkspace),
+      createWorkspaceChatNodeComponent(options.renderSummary),
     ));
     return () => {
       disposeSlot();

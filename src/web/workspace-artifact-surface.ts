@@ -14,9 +14,7 @@ import {
 import { createWorkspacePreviewRenderer, type WorkspacePrimitiveSet } from "./workspace-preview-adapters.ts";
 import type { WorkspaceArtifactPreview, WorkspaceJsonValue } from "../host/workspace-artifacts.ts";
 
-export const WORKSPACE_ARTIFACT_OVERLAY_SLOT = "shell.overlay" as const;
 export const WORKSPACE_ARTIFACT_SLOT_NAME = "shell.overlay" as const;
-export const WORKSPACE_ARTIFACT_ENTRY_KEY = "dsh-workspace-artifacts" as const;
 
 export interface WorkspaceArtifactRemote {
   readonly artifactMetadata: () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>;
@@ -84,9 +82,10 @@ const categoryLabels: Record<WorkspaceArtifactCategory, string> = {
   other: "Other",
 };
 
+const categoryOrder: readonly WorkspaceArtifactCategory[] = ["documents", "data", "images", "other"];
+
 function artifactGroups(artifacts: readonly WorkspaceDeliverable[]): readonly (readonly WorkspaceDeliverable[])[] {
-  const groups: WorkspaceArtifactCategory[] = ["documents", "data", "images", "other"];
-  return groups.map((group) => artifacts.filter((artifact) => workspaceArtifactCategory(artifact.mediaType) === group));
+  return categoryOrder.map((group) => artifacts.filter((artifact) => workspaceArtifactCategory(artifact.mediaType) === group));
 }
 
 function artifactTypeBadge(artifact: WorkspaceDeliverable): string {
@@ -263,51 +262,71 @@ export function createWorkspaceArtifactSurfaceComponent(
       setDownload({ status: result.status, url: result.url, name: result.downloadName });
     };
 
+    const groupList = (group: readonly WorkspaceDeliverable[], groupIndex: number): ReactNode => {
+      const category = categoryOrder[groupIndex] as WorkspaceArtifactCategory;
+      return createElement(
+        "section",
+        { key: category, "data-dsh-workspace": "artifact-group", "aria-label": `${categoryLabels[category]} artifacts` },
+        createElement("div", { "data-dsh-workspace": "artifact-group-header" },
+          createElement("h4", null, categoryLabels[category]),
+          createElement("span", { "data-dsh-workspace": "count-badge", "data-dsw-variant": "neutral" }, String(group.length)),
+        ),
+        createElement("ul", { "data-dsh-workspace": "artifact-list" }, group.map((artifact) => createElement(
+          "li",
+          {
+            key: artifact.id,
+            "data-dsh-workspace": "artifact-item",
+            "data-selected": String(artifact.id === selectedId),
+          },
+          createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-type-badge" }, artifactTypeBadge(artifact)),
+          createElement(
+            "button",
+            {
+              ref: artifact.id === selectedId ? selectedButton : undefined,
+              type: "button",
+              "data-dsh-workspace": "artifact-select",
+              "aria-pressed": artifact.id === selectedId,
+              onClick: () => select(artifact),
+            },
+            artifact.name,
+          ),
+          createElement("span", { "data-dsh-workspace": "artifact-meta", "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${artifact.preview}` }, `${formatSize(artifact.sizeBytes)} · ${artifact.preview}`),
+        ))),
+      );
+    };
+
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace artifacts…")
       : status === "degraded"
-        ? createElement("p", { role: "status" }, message ?? "Workspace artifacts are unavailable.")
+        ? createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "error" }, createElement("p", { role: "status" }, message ?? "Workspace artifacts are unavailable."))
         : createElement(
           "div",
           { "data-dsh-workspace": "artifact-surface" },
-          createElement("div", { "data-dsh-workspace": "artifact-toolbar" },
-            createElement("span", { "aria-label": "Artifact count" }, `${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}`),
-            createElement("button", { type: "button", onClick: () => setRefreshTick((tick) => tick + 1) }, "Refresh"),
+          createElement("header", { "data-dsh-workspace": "surface-header" },
+            createElement("div", { "data-dsh-workspace": "surface-title" },
+              createElement("h3", null, "Artifacts"),
+              createElement("span", { "data-dsh-workspace": "count-badge", "aria-label": "Artifact count" }, `${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}`),
+            ),
+            createElement("div", { "data-dsh-workspace": "surface-actions" },
+              createElement("button", { type: "button", onClick: () => setRefreshTick((tick) => tick + 1) }, "Refresh"),
+            ),
           ),
-          artifactGroups(artifacts).map((group, groupIndex) => group.length === 0
-            ? null
-            : createElement("section", { key: groupIndex, "data-dsh-workspace": "artifact-group", "aria-label": `${categoryLabels[["documents", "data", "images", "other"][groupIndex] as WorkspaceArtifactCategory]} artifacts` },
-              createElement("h3", null, categoryLabels[["documents", "data", "images", "other"][groupIndex] as WorkspaceArtifactCategory]),
-              createElement("ul", null, group.map((artifact) => createElement(
-                "li",
-                { key: artifact.id },
-                createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-type" }, artifactTypeBadge(artifact)),
-                createElement(
-                  "button",
-                  {
-                    ref: artifact.id === selectedId ? selectedButton : undefined,
-                    type: "button",
-                    "aria-pressed": artifact.id === selectedId,
-                    onClick: () => select(artifact),
-                  },
-                  artifact.name,
-                ),
-                createElement("span", { "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${artifact.preview}` }, ` ${formatSize(artifact.sizeBytes)} · ${artifact.preview}`),
-              ))),
-            )),
+          artifacts.length === 0 && createElement("div", { "data-dsh-workspace": "empty-state" }, "No session artifacts yet — ask the agent to create a file and it appears here automatically."),
+          ...artifactGroups(artifacts).map((group, groupIndex) => group.length === 0 ? null : groupList(group, groupIndex)),
           selected && detail && createElement(
             "article",
             { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
             createElement("h3", null, selected.name),
             createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
             createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
-            selected.resourceId && createElement("button", { type: "button", onClick: downloadArtifact }, download.status === "loading" ? "Downloading…" : "Download"),
-            download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
-            download.url && createElement("a", { href: download.url, download: download.name ?? selected.downloadName }, "Save download"),
+            createElement("div", { role: "group" },
+              selected.resourceId && createElement("button", { type: "button", onClick: downloadArtifact }, download.status === "loading" ? "Downloading…" : "Download"),
+              download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
+              download.url && createElement("a", { href: download.url, download: download.name ?? selected.downloadName }, "Save download"),
+            ),
             message && createElement("p", { role: "status" }, message),
           ),
           selected && !detail && detailStatus === "loading" && createElement("p", { role: "status" }, "Loading artifact preview…"),
-          artifacts.length === 0 && createElement("p", { role: "status" }, "No session artifacts yet — ask the agent to create a file and it appears here automatically."),
           selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
         );
     if (!sessionId) {
