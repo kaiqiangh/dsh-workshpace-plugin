@@ -96,3 +96,22 @@ export {
 export type { WorkspaceConversationContributionOptions };
 export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
 export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";
+export {
+  buildWorkspaceResourceUrl,
+  createWorkspaceArtifactDetail,
+  createWorkspaceArtifactView,
+  createWorkspaceDownloadController,
+  normalizeWorkspaceArtifacts,
+} from "./web/workspace-deliverables.ts";
+export type {
+  WorkspaceArtifactDetail,
+  WorkspaceArtifactDetailStatus,
+  WorkspaceArtifactView,
+  WorkspaceDeliverable,
+  WorkspaceDeliverablePreview,
+  WorkspaceDeliverableSource,
+  WorkspaceDownloadResult,
+  WorkspaceDownloadRuntime,
+  WorkspaceDownloadStatus,
+  WorkspaceFetchResponse,
+} from "./web/workspace-deliverables.ts";

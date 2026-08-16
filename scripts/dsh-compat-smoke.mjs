@@ -252,7 +252,7 @@ const clientTypert = await import('dsh-workspace-plugin/client/typert')
 const remote = await import('dsh-workspace-plugin/remote')
 const clientSource = await readFile(new URL('./node_modules/dsh-workspace-plugin/lib/client.js', import.meta.url), 'utf8')
 let handoff
-const sandbox = { console, Symbol, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
+const sandbox = { console, Symbol, URL, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
 sandbox.globalThis = sandbox
 sandbox.window = { __ModuleLoader__: { load(value) { handoff = value } } }
 runInNewContext(clientSource, sandbox)
@@ -271,6 +271,10 @@ if (typeof manifest.exports?.['./typert'] !== 'object') throw new Error('missing
 if (typeof manifest.exports?.['./client/typert'] !== 'object') throw new Error('missing public ./client/typert export')
 if (typeof host.WorkspaceService !== 'function' || typeof client.apply !== 'function') throw new Error('public bundle entries did not load')
 if (typeof client.renderWorkspacePreview !== 'function') throw new Error('packed client preview renderer did not load')
+if (typeof client.createWorkspaceArtifactView !== 'function' || typeof client.createWorkspaceDownloadController !== 'function') throw new Error('packed client artifact surface did not load')
+const artifact = { id: 'workspace:smoke', name: 'smoke.md', mediaType: 'text/markdown', sizeBytes: 7, source: { sessionId: 'session-1', workspaceId: 'root-1', kind: 'artifact' }, preview: 'available', resourceId: 'resource-smoke', downloadName: 'smoke.md' }
+if (client.createWorkspaceArtifactView([artifact], artifact.id).selected?.id !== artifact.id) throw new Error('packed client artifact view did not select')
+if (client.buildWorkspaceResourceUrl(artifact) !== '/workspace/resource?id=resource-smoke&type=text%2Fmarkdown&download=1') throw new Error('packed client artifact resource URL did not build')
 if (!client.renderWorkspacePreview({ type: 'text', path: 'smoke.txt', renderer: 'ui-primitives', content: 'bounded', language: 'text', truncated: false })) throw new Error('packed client preview renderer did not render')
 if (hostTypert.TYPERT.face !== 'host' || clientTypert.TYPERT.face !== 'client') throw new Error('generated face mismatch')
 if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.package !== 'dsh-workspace-plugin') throw new Error('generated package identity mismatch')
@@ -297,6 +301,11 @@ async function publicBundleSmoke(consumer) {
   assert.equal(typeof host.WorkspaceService, 'function')
   assert.equal(typeof client.apply, 'function')
   assert.equal(typeof client.renderWorkspacePreview, 'function')
+  assert.equal(typeof client.createWorkspaceArtifactView, 'function')
+  assert.equal(typeof client.createWorkspaceDownloadController, 'function')
+  const artifact = { id: 'workspace:smoke', name: 'smoke.md', mediaType: 'text/markdown', sizeBytes: 7, source: { sessionId: 'session-1', workspaceId: 'root-1', kind: 'artifact' }, preview: 'available', resourceId: 'resource-smoke', downloadName: 'smoke.md' }
+  assert.equal(client.createWorkspaceArtifactView([artifact], artifact.id).selected.id, artifact.id)
+  assert.equal(client.buildWorkspaceResourceUrl(artifact), '/workspace/resource?id=resource-smoke&type=text%2Fmarkdown&download=1')
   assert.ok(client.renderWorkspacePreview({ type: 'text', path: 'smoke.txt', renderer: 'ui-primitives', content: 'bounded', language: 'text', truncated: false }))
   assert.equal(hostTypert.TYPERT.face, 'host')
   assert.equal(hostTypert.TYPERT.package, 'dsh-workspace-plugin')

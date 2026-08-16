@@ -48,6 +48,12 @@ test("keeps CSV accessible and binary states explicit", () => {
   const image = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "image.png" as never, mediaType: "image/png", resourceId: "opaque", version: "v1", expiresAt: 1 }, { resourcePath: "/workspace/resource", altText: "Chart" }));
   assert.equal((image.props.src as string), "/workspace/resource?id=opaque&type=image%2Fpng");
   assert.equal(image.props.alt, "Chart");
+  const pdf = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "report.pdf" as never, mediaType: "application/pdf", resourceId: "pdf-resource", version: "v1", expiresAt: 1 }, { resourcePath: "/workspace/resource" }));
+  assert.equal(pdf.type, "iframe");
+  assert.equal(pdf.props.title, "Workspace PDF preview");
+  const binary = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "archive.bin" as never, mediaType: "application/octet-stream", resourceId: "binary-resource", version: "v1", expiresAt: 1 }, { resourcePath: "/workspace/resource", downloadName: "archive.bin" }));
+  assert.equal(binary.type, "a");
+  assert.equal(binary.props.download, "archive.bin");
   const invalid = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "image.png" as never, mediaType: "image/png", resourceId: "opaque", version: "v1", expiresAt: 1 }, { resourcePath: "https://evil.invalid/resource" }));
   assert.equal(invalid.props.role, "status");
   const unsupported = createWorkspacePreviewRenderer(primitives, { type: "unsupported", path: "archive.zip" as never, reason: "unsupported-binary", mediaType: "application/octet-stream" });
