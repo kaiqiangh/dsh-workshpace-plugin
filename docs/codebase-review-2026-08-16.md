@@ -1,5 +1,14 @@
 # DSH Workspace Plugin — Full Codebase Review Report
 
+> **⚠️ SUPERSEDED (2026-08-16, v0.3.0).** This review describes the state at
+> `dev` HEAD `fec5bf2`. The follow-up work was delivered in v0.3.0 — see
+> [`CHANGELOG.md`](CHANGELOG.md) and
+> [`adr/0011-workspace-v07-surface-ux-and-hygiene.md`](adr/0011-workspace-v07-surface-ux-and-hygiene.md).
+> In particular, the Git Changes/Diff view now exists with colored diffs and
+> stats, `memoryMarkUsed`/`memoryClose` are wired, the summary card data flow is
+> fixed, and the surfaces were redesigned. Keep this file only as a historical
+> snapshot; do not use it to judge the current codebase.
+
 **Review date:** 2026-08-16
 **Scope:** `dsh-workshpace-plugin` (`dev` branch, HEAD `fec5bf2`, v0.2.0)
 **Focus:** Memory implementation, Artifact Preview / Diff inspection, docs-vs-code comparison, closed-Issue tracking
