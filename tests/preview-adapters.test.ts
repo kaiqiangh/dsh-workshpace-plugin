@@ -36,6 +36,9 @@ test("keeps CSV accessible and binary states explicit", () => {
   assert.equal((unsupported as { props: { role: string } }).props.role, "status");
 });
 
-test("sanitizes only remote Markdown images", () => {
-  assert.equal(sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com)"), "x [link](https://example.com)");
+test("sanitizes Markdown images without touching links", () => {
+  assert.equal(
+    sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com) ![y][remote]\n[remote]: https://example.com/y.png"),
+    "x [link](https://example.com) y\n",
+  );
 });

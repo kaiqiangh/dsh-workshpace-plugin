@@ -19,7 +19,7 @@ export interface WorkspacePreviewRenderOptions {
     readonly resourceUrl?: string;
     readonly downloadName?: string;
 }
-/** Remove remote image fetches before handing bounded Markdown to the Harness renderer. */
+/** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
 export declare function sanitizeWorkspaceMarkdown(text: string): string;
 /** Render only bounded, already-authorized Host data through public UI primitives. */
 export declare function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet, descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;

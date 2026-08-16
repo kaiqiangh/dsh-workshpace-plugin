@@ -13,9 +13,12 @@ export interface WorkspacePreviewRenderOptions {
   readonly downloadName?: string;
 }
 
-/** Remove remote image fetches before handing bounded Markdown to the Harness renderer. */
+/** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
 export function sanitizeWorkspaceMarkdown(text: string): string {
-  return text.replace(/!\[([^\]]*)\]\(https?:\/\/[^)]+\)/giu, "$1");
+  const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[[^\]]+\]:\s*https?:\/\/\S+.*$/gimu, "");
+  return withoutRemoteDefinitions
+    .replace(/!\[([^\]]*)\]\([^)]*\)/giu, "$1")
+    .replace(/!\[([^\]]*)\]\[[^\]]*\]/giu, "$1");
 }
 
 function status(message: string): unknown {
