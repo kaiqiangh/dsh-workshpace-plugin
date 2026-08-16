@@ -44,6 +44,6 @@ created `browser-artifact-clean.md`.
 
 ## Deterministic gates
 
-`npm run check`, `npm test` (114/114), `npm run build`,
+`npm run check`, `npm test` (115/115), `npm run build`,
 `npm run smoke:compat`, `git diff --check`, and `npm pack --dry-run` pass on
 the source commit.
