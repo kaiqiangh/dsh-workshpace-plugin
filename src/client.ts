@@ -9,8 +9,11 @@ import {
   workspaceConversationView,
 } from "./web/workspace-conversation.ts";
 import { createElement } from "react";
+import { CodeBlock, JsonTree, MarkdownText } from "@deepseek-ai/dsh-client-ui-primitives";
 import { TYPERT_REMOTE } from "./typert.remote-client.js";
 import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
+import { createWorkspacePreviewRenderer, type WorkspacePreviewRenderOptions } from "./web/workspace-preview-adapters.ts";
+import type { PreviewDescriptor } from "./domain/preview.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -32,6 +35,10 @@ export interface WorkspaceClientSurface {
 }
 
 export const workspaceClient: WorkspaceClientSurface = Object.freeze({ ready: true });
+
+export function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown {
+  return createWorkspacePreviewRenderer({ MarkdownText, CodeBlock, JsonTree }, descriptor, options);
+}
 
 export const inject = ["conversationEvents", "slots", "remote"] as const;
 
@@ -87,3 +94,5 @@ export {
 };
 
 export type { WorkspaceConversationContributionOptions };
+export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
+export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";

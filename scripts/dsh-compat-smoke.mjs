@@ -18,6 +18,7 @@ const PACKAGE_VERSIONS = {
   '@deepseek-ai/dsh-api-remotes': '0.1.0-rc.6',
   '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
   '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
   '@deepseek-ai/dsh-session': '0.1.0-rc.6',
@@ -28,6 +29,7 @@ const PACKAGE_VERSIONS = {
   '@deepseek-ai/dsh-typert-registry': '0.1.0-rc.6',
   '@types/react': '18.3.12',
   '@types/node': '26.2.0',
+  '@tsdown/css': '0.22.14',
   react: '18.3.1',
   tsdown: '0.22.14',
   typescript: '6.0.3',
@@ -187,7 +189,8 @@ import { defineConfig } from 'tsdown'
 export default defineConfig({
   entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib',
   format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false,
-  dts: false, clean: false, external: ['@deepseek-ai/cordis'], deps: { alwaysBundle: ['react', 'zod'] },
+  dts: false, clean: false, outputOptions: { codeSplitting: false },
+  external: ['@deepseek-ai/cordis', /^@deepseek-ai\\/(?!dsh-client-ui-primitives(?:\\/|$))/], deps: { alwaysBundle: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'zod', '@deepseek-ai/dsh-client-ui-primitives'] },
   })
 `)
   return { pluginRoot }
@@ -249,7 +252,7 @@ const clientTypert = await import('dsh-workspace-plugin/client/typert')
 const remote = await import('dsh-workspace-plugin/remote')
 const clientSource = await readFile(new URL('./node_modules/dsh-workspace-plugin/lib/client.js', import.meta.url), 'utf8')
 let handoff
-const sandbox = { console, Symbol }
+const sandbox = { console, Symbol, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
 sandbox.globalThis = sandbox
 sandbox.window = { __ModuleLoader__: { load(value) { handoff = value } } }
 runInNewContext(clientSource, sandbox)
@@ -267,6 +270,7 @@ if (typeof manifest.exports?.['./client'] !== 'object') throw new Error('missing
 if (typeof manifest.exports?.['./typert'] !== 'object') throw new Error('missing public ./typert export')
 if (typeof manifest.exports?.['./client/typert'] !== 'object') throw new Error('missing public ./client/typert export')
 if (typeof host.WorkspaceService !== 'function' || typeof client.apply !== 'function') throw new Error('public bundle entries did not load')
+if (typeof client.renderWorkspacePreview !== 'function') throw new Error('packed client preview renderer did not load')
 if (hostTypert.TYPERT.face !== 'host' || clientTypert.TYPERT.face !== 'client') throw new Error('generated face mismatch')
 if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.package !== 'dsh-workspace-plugin') throw new Error('generated package identity mismatch')
 if (remote.TYPERT_REMOTE.package !== 'dsh-workspace-plugin' || remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
@@ -291,6 +295,7 @@ async function publicBundleSmoke(consumer) {
   assert.equal(typeof manifest.exports['./client/typert'], 'object')
   assert.equal(typeof host.WorkspaceService, 'function')
   assert.equal(typeof client.apply, 'function')
+  assert.equal(typeof client.renderWorkspacePreview, 'function')
   assert.equal(hostTypert.TYPERT.face, 'host')
   assert.equal(hostTypert.TYPERT.package, 'dsh-workspace-plugin')
   assert.equal(clientTypert.TYPERT.face, 'client')
