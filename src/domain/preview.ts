@@ -224,7 +224,7 @@ function mediaTypeFor(path: WorkspacePath): string | undefined {
 }
 
 function resourceName(path: WorkspacePath, mediaType: string): string {
-  const raw = basename(path).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/gu, "_").trim().replace(/^[. ]+|[. ]+$/gu, "");
+  const raw = basename(path).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/gu, "_").replace(/[^\x20-\x7e]/gu, "_").trim().replace(/^[. ]+|[. ]+$/gu, "");
   if (raw) return raw.slice(0, 180);
   return mediaType === "application/pdf" ? "workspace-download.pdf" : "workspace-download.bin";
 }

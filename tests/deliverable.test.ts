@@ -33,6 +33,13 @@ test("builds bounded deliverable metadata with a safe download name", async () =
     assert.equal(deliverable.resourceId, descriptor.resourceId);
     assert.deepEqual(deliverable.source, { sessionId: identity.sessionId, workspaceId: identity.rootId, kind: "artifact" });
     assert.equal(deliverable.id.includes("report"), false);
+    await writeFile(join(root, "报告.png"), Buffer.from([4, 5, 6]));
+    const unicode = await service.preview("报告.png");
+    assert.equal(unicode.type, "binary");
+    if (unicode.type === "binary") {
+      const opened = await service.openResource(unicode.resourceId, { identity, mediaType: "image/png" });
+      assert.equal(opened.downloadName, "__.png");
+    }
     assert.equal("content" in deliverable, false);
     service.dispose();
   } finally {
