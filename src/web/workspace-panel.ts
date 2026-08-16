@@ -63,6 +63,28 @@ const WORKSPACE_PANEL_STYLES = `
   outline-offset: 2px;
 }
 
+[data-dsh-workspace="panel"] [data-dsh-workspace="view"] {
+  color: CanvasText;
+  font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+}
+
+[data-dsh-workspace="panel"] [data-dsh-workspace="view"] [data-dsh-workspace="panel-content"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [for="dsh-workspace-view-tab-artifacts"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [for="dsh-workspace-view-tab-memory"] {
+  border-color: color-mix(in srgb, Highlight 45%, transparent);
+  background: color-mix(in srgb, Highlight 14%, transparent);
+  color: CanvasText;
+  font-weight: 600;
+}
+
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [data-dsh-workspace-tab="memory"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [data-dsh-workspace-tab="artifacts"] {
+  display: none;
+}
+
 [data-dsh-workspace="panel"][open] > summary {
   display: none;
 }

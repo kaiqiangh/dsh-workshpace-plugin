@@ -28,6 +28,12 @@ import {
   WORKSPACE_PANEL_ENTRY_KEY,
   WORKSPACE_PANEL_OVERLAY_SLOT,
 } from "./web/workspace-panel.ts";
+import {
+  createWorkspaceConversationViewComponent,
+  workspaceConversationViewRegistration,
+  WORKSPACE_VIEW_SLOT,
+  type WorkspaceViewSlotRegistry,
+} from "./web/workspace-view.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -125,7 +131,22 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
               }),
             }),
           ));
-          return () => { remotes.clear(); disposeStyles(); disposeWorkspaceOverlay(); };
+          let disposeWorkspaceView = () => {};
+          const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
+          if (typeof viewSlots.inject === "function" && typeof viewSlots.register === "function") {
+            disposeWorkspaceView = viewSlots.inject(WORKSPACE_VIEW_SLOT, () => viewSlots.register(
+              workspaceConversationViewRegistration(),
+              createWorkspaceConversationViewComponent({
+                artifacts: createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
+                  resolveRemote,
+                }),
+                memory: createWorkspaceMemorySurfaceComponent({
+                  resolveRemote,
+                }),
+              }),
+            ));
+          }
+          return () => { remotes.clear(); disposeStyles(); disposeWorkspaceOverlay(); disposeWorkspaceView(); };
         };
         let directWorkspace = false;
         try { directWorkspace = Boolean((ctx.remote as unknown as { readonly workspace?: unknown }).workspace); } catch {}
@@ -213,3 +234,12 @@ export {
   WORKSPACE_PANEL_OVERLAY_SLOT,
 } from "./web/workspace-panel.ts";
 export type { WorkspacePanelOptions, WorkspaceSurfaceComponent } from "./web/workspace-panel.ts";
+export {
+  createWorkspaceConversationViewComponent,
+  workspaceConversationViewRegistration,
+  WORKSPACE_VIEW_ENTRY_KEY,
+  WORKSPACE_VIEW_LABEL,
+  WORKSPACE_VIEW_ORDER,
+  WORKSPACE_VIEW_SLOT,
+} from "./web/workspace-view.ts";
+export type { WorkspaceConversationViewOptions, WorkspaceConversationViewRegistration, WorkspaceViewSlotRegistry } from "./web/workspace-view.ts";
