@@ -254,6 +254,22 @@ const host = await import('dsh-workspace-plugin')
 const hostTypert = await import('dsh-workspace-plugin/typert')
 const clientTypert = await import('dsh-workspace-plugin/client/typert')
 const remote = await import('dsh-workspace-plugin/remote')
+let publicClientFactory
+globalThis.window = { __ModuleLoader__: { load(value) { if (value.id === 'dsh-workspace-plugin') publicClientFactory = value.factory } } }
+await import('dsh-workspace-plugin/client')
+if (typeof publicClientFactory !== 'function') throw new Error('packed public ./client export did not register with the module loader')
+globalThis.document = { createElement() { return { innerHTML: '', textContent: '' } } }
+const publicReact = await import('react')
+const publicJsxRuntime = await import('react/jsx-runtime')
+const publicPrimitives = { CodeBlock: () => null, JsonTree: () => null, MarkdownText: () => null }
+const publicClient = publicClientFactory((id) => {
+  if (id === 'react') return publicReact
+  if (id === 'react/jsx-runtime') return publicJsxRuntime
+  if (id === '@deepseek-ai/dsh-client-ui-primitives') return publicPrimitives
+  throw new Error('packed public ./client requested an unexpected dependency: ' + id)
+})
+delete globalThis.document
+delete globalThis.window
 const clientSource = await readFile(new URL('./node_modules/dsh-workspace-plugin/lib/client.js', import.meta.url), 'utf8')
 let handoff
 const sandbox = { console, Symbol, URL, AbortController, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
@@ -270,6 +286,7 @@ const client = handoff.factory((id) => {
   if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitives
   throw new Error('packed client requested an unexpected dependency: ' + id)
 })
+if (JSON.stringify(Object.keys(publicClient).sort()) !== JSON.stringify(Object.keys(client).sort())) throw new Error('packed public ./client export keys differ from the browser bundle')
 export { manifest, host, client, hostTypert, clientTypert, remote }
 `)
   await writeText(join(consumer, 'check.mjs'), `
@@ -326,9 +343,10 @@ const contribution = {
   emit: () => {},
 }
 const disposeSurface = await client.apply(contribution)
-if (!surfaceRegistrations.includes('register:dsh-workspace-artifacts')) throw new Error('packed client did not register the artifact surface')
+if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
+if (surfaceRegistrations.filter((value) => value === 'register:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not register the artifact surface exactly once')
 await disposeSurface()
-if (!surfaceRegistrations.includes('register-dispose:dsh-workspace-artifacts')) throw new Error('packed client did not dispose the artifact surface')
+if (surfaceRegistrations.filter((value) => value === 'register-dispose:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not dispose the artifact surface exactly once')
 console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
