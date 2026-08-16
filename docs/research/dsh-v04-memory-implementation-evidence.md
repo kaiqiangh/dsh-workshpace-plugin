@@ -1,6 +1,6 @@
 # v0.4 Project Memory implementation evidence
 
-Fixed SHA: `af1503b1e1d97fd1613ab8f4787d69c65ec0b222`
+Fixed SHA: `cacff0114744b11db5aad38f58a02ea0b6086c24`
 
 - JSONL append-only `MemoryStore` covers Session, Project, User, and explicit Shared Project scopes.
 - Validation is bounded and hash checked; malformed lines quarantine, unknown schemas are read-only, migrations compact atomically, and concurrent compaction reloads before replacement.
