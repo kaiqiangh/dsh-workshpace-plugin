@@ -20,10 +20,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'agent:workspace/artifactMetadata': () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
     'agent:workspace/contextSnapshot': () => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     'agent:workspace/focus': () => Promise<RemoteResult<{ readonly focused: boolean; }>>
-    'agent:workspace/memoryArchive': (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    'agent:workspace/memoryArchive': (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'agent:workspace/memoryClose': (request: MemoryScopeRequest) => Promise<RemoteResult<void>>
     'agent:workspace/memoryExport': (request: MemoryScopeRequest) => Promise<RemoteResult<string>>
-    'agent:workspace/memoryForget': (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    'agent:workspace/memoryForget': (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'agent:workspace/memoryGovern': (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'agent:workspace/memoryImport': (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
     'agent:workspace/memoryList': (request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>

@@ -40,8 +40,8 @@ export declare class WorkspaceService extends TypertRemoteService {
     memoryOpen(request: MemoryScopeRequest): Promise<MemoryReadState>;
     memoryList(request: MemoryScopeRequest, options?: MemoryListOptions): Promise<readonly MemoryRecord[]>;
     memoryUpsert(request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord>;
-    memoryArchive(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
-    memoryForget(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
+    memoryArchive(request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
+    memoryForget(request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
     memorySearch(request: MemoryScopeRequest, query: string, options?: MemorySearchOptions): Promise<readonly MemoryRecord[]>;
     memoryMarkUsed(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
     memoryGovern(request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;

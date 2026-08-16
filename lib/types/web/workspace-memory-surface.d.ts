@@ -9,8 +9,8 @@ export interface WorkspaceMemoryRemote {
     readonly memoryList: (request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>;
     readonly memorySearch: (request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>;
     readonly memoryUpsert: (request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>;
-    readonly memoryArchive: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
-    readonly memoryForget: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
+    readonly memoryArchive: (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
+    readonly memoryForget: (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
     readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;

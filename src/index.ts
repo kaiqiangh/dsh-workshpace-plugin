@@ -217,13 +217,13 @@ export class WorkspaceService extends TypertRemoteService {
   }
 
   @RemoteScope("agent")
-  async memoryArchive(request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
-    return this.memoryDomain.archive(this.memoryContext(request), request, id);
+  async memoryArchive(request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord> {
+    return this.memoryDomain.govern(this.memoryContext(request), request, id, "archive", expectedRevision, expectedHash);
   }
 
   @RemoteScope("agent")
-  async memoryForget(request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
-    return this.memoryDomain.forget(this.memoryContext(request), request, id);
+  async memoryForget(request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord> {
+    return this.memoryDomain.govern(this.memoryContext(request), request, id, "forget", expectedRevision, expectedHash);
   }
 
   @RemoteScope("agent")

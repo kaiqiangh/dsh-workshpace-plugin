@@ -66,6 +66,8 @@ export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "ti
     readonly useCount?: number;
     readonly status?: MemoryStatus;
     readonly governance?: MemoryGovernance;
+    readonly expectedRevision?: number;
+    readonly expectedHash?: string;
 };
 export interface MemoryStoreLocationOptions {
     readonly scope: MemoryScope;

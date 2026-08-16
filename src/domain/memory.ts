@@ -13,7 +13,7 @@ import {
   type MemorySearchOptions,
   type MemoryStoreOptions,
 } from "./memory-store.ts";
-import { assertMemoryRevision, exportMemoryBundle, importMemoryBundle, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
+import { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
 import type { WorkspaceIdentity } from "./workspace.ts";
 
 export interface MemoryScopeRequest {
@@ -97,7 +97,22 @@ export class WorkspaceMemoryDomain {
 
   async upsert(context: MemoryWorkspaceContext, request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord> {
     const store = await this.store(context, request);
-    return store.upsert(draft);
+    const previous = draft.id === undefined ? undefined : ["active", "archived", "forgotten"].flatMap((status) => store.list({ status: status as MemoryRecord["status"], limit: 100 })).find((record) => record.id === draft.id);
+    if (previous) {
+      if (draft.expectedRevision === undefined || draft.expectedHash === undefined) throw new MemoryGovernanceError("CONFLICT", `Memory ${previous.id} requires a revision and content hash`);
+      assertMemoryRevision(previous, draft.expectedRevision, draft.expectedHash);
+    }
+    const duplicate = draft.id === undefined && store.list({ status: "active", limit: 100 }).find((record) => record.title.trim().toLocaleLowerCase() === draft.title.trim().toLocaleLowerCase());
+    const governance = duplicate ? {
+      origin: "user-authored" as const,
+      sourceRefs: [],
+      verification: "unverified" as const,
+      revision: 1,
+      conflictGroup: conflictGroupFor(draft.title),
+      retention: request.scope === "session" ? "session-end" as const : request.scope === "user" ? "user-managed" as const : "project-delete" as const,
+    } : draft.governance;
+    const { expectedRevision: _expectedRevision, expectedHash: _expectedHash, ...persisted } = draft;
+    return store.upsert({ ...persisted, ...(governance === undefined ? {} : { governance }) });
   }
 
   async archive(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {

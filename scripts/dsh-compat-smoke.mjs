@@ -339,6 +339,8 @@ async function publicBundleSmoke(consumer) {
   assert.ok(remote.TYPERT_REMOTE.descriptors.every(descriptor => descriptor.id.startsWith('dsh-workspace-plugin#')))
   assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'artifactMetadata'))
   assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'previewArtifact'))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'memoryOpen'))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'memoryGovern'))
   const strictJson = JSON.stringify(hostTypert.TYPERT)
   assert.equal(strictJson.includes('src-json'), false, 'compatibility smoke must not downgrade to SRC JSON')
   return { host, client, hostTypert, profileRoot: consumer }
@@ -349,6 +351,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   const TypertRegistry = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-typert-registry/lib/index.js')).href)).default
   const TypertGatewayService = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js')).href)).default
   const ctx = new Context()
+  const disposeAgent = ctx.provide('agent', { id: 'agent-1', session: { header: { cwd: root }, events: [] } })
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(host.WorkspaceService)
@@ -371,6 +374,28 @@ async function gatewaySmoke(root, host, hostTypert) {
     namespace: 'workspace', method: 'previewArtifact', args: { agentId: 'agent-1', id: 'workspace:missing' },
   })
   assert.equal(unavailableArtifactPreview.type, 'error')
+  const memoryRequest = { scope: 'project' }
+  const memoryState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.equal(memoryState.scope, 'project')
+  const memoryRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed memory', content: 'compatibility', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.equal(memoryRecord.title, 'Packed memory')
+  const governedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryGovern', args: {
+      agentId: 'agent-1', request: memoryRequest, id: memoryRecord.id, action: 'archive', expectedRevision: memoryRecord.governance?.revision ?? 1, expectedHash: memoryRecord.contentHash,
+    },
+  })
+  assert.equal(governedMemory.status, 'archived')
+  const memoryExport = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryExport', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.match(memoryExport, /Packed memory/u)
   const initialContext = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
   })
@@ -423,6 +448,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   carrier.dispose()
   assert.equal(registrations.length, 0)
   assert.ok(ctx.typert.local.list().length > 0)
+  disposeAgent()
   return { ctx, registry: ctx.typert, host }
 }
 

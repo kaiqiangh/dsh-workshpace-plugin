@@ -8,6 +8,7 @@ import type {
   MemoryRecord,
   MemorySearchOptions,
   MemoryScopeRequest,
+  MemoryStatus,
   MemoryType,
 } from "../types.ts";
 import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
@@ -20,8 +21,8 @@ export interface WorkspaceMemoryRemote {
   readonly memoryList: (request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>;
   readonly memorySearch: (request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>;
   readonly memoryUpsert: (request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>;
-  readonly memoryArchive: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
-  readonly memoryForget: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
+  readonly memoryArchive: (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
+  readonly memoryForget: (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
   readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
@@ -74,11 +75,15 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const [content, setContent] = useState("");
     const [type, setType] = useState<MemoryType>("fact");
     const [filterType, setFilterType] = useState<MemoryType | "">("");
+    const [statusFilter, setStatusFilter] = useState<MemoryStatus>("active");
     const [pinnedId, setPinnedId] = useState<string | undefined>();
+    const [forgetPending, setForgetPending] = useState(false);
     const [status, setStatus] = useState<"loading" | "ready" | "degraded">("loading");
     const [message, setMessage] = useState<string | undefined>();
     const requestToken = useRef(0);
     const selectedButton = useRef<HTMLButtonElement | null>(null);
+    const forgetTrigger = useRef<HTMLButtonElement | null>(null);
+    const confirmButton = useRef<HTMLButtonElement | null>(null);
     const request = workspaceMemoryRequest(scope, userId, sharedProject);
     const selected = records.find((record) => record.id === selectedId);
 
@@ -91,7 +96,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       }
       try {
         const opened = valueOf(await remote.memoryOpen(request));
-        const filters = filterType ? { type: filterType, limit: 100 } : { limit: 100 };
+        const filters = { limit: 100, status: statusFilter, ...(filterType ? { type: filterType } : {}) };
         const next = text.trim() ? valueOf(await remote.memorySearch(request, text, filters)) : valueOf(await remote.memoryList(request, filters));
         if (token !== requestToken.current) return;
         setState(opened);
@@ -116,7 +121,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       setContent("");
       void load("");
       return () => { requestToken.current += 1; };
-    }, [remote, request.scope, request.userId, request.sharedProject, filterType]);
+    }, [remote, request.scope, request.userId, request.sharedProject, filterType, statusFilter]);
 
     useEffect(() => { selectedButton.current?.focus(); }, [selectedId]);
 
@@ -130,7 +135,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const save = async (): Promise<void> => {
       if (!remote || !state) return;
       try {
-        const draft: MemoryDraft = { scope: state.scope, scopeKey: state.scopeKey, type, title, content, tags: selected?.tags ?? [], provenance: { kind: "user" }, ...(selected ? { id: selected.id } : {}) };
+      const draft: MemoryDraft = { scope: state.scope, scopeKey: state.scopeKey, type, title, content, tags: selected?.tags ?? [], provenance: { kind: "user" }, ...(selected ? { id: selected.id, expectedRevision: selected.governance?.revision ?? 1, expectedHash: selected.contentHash } : {}) };
         valueOf(await remote.memoryUpsert(request, draft));
         await load("");
         setMessage("Memory saved locally.");
@@ -141,15 +146,19 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       if (!remote || !selected) return;
       try {
         const governance = selected.governance;
-        if (operation === "forget" && typeof globalThis.confirm === "function" && !globalThis.confirm(`Forget ${selected.title} from ${selected.scope} Memory? Existing exports or model turns cannot be recalled.`)) return;
         valueOf(await remote.memoryGovern(request, selected.id, operation, governance?.revision ?? 1, selected.contentHash));
         setSelectedId(undefined);
         setTitle("");
         setContent("");
         await load("");
-        setMessage(operation === "archive" ? "Memory archived locally." : "Memory forgotten locally.");
+        const labels: Record<typeof operation, string> = { archive: "archived", forget: "forgotten", verify: "verified", reverify: "re-verified", pin: "pinned", unpin: "unpinned", restore: "restored" };
+        setMessage(`Memory ${labels[operation]} locally.`);
       } catch (error) { setMessage(errorMessage(error)); }
     };
+
+    useEffect(() => {
+      if (forgetPending) confirmButton.current?.focus();
+    }, [forgetPending]);
 
     const exportMemory = async (): Promise<void> => {
       if (!remote) return;
@@ -193,7 +202,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("label", null, "Content ", createElement("textarea", { value: content, maxLength: 64 * 1024, onChange: (event: { target: { value: string } }) => setContent(event.target.value) })),
       createElement("button", { type: "submit", disabled: !state || state.readOnly }, selected ? "Save changes" : "Create Memory"),
       selected && createElement("button", { type: "button", onClick: () => void mutate("archive") }, "Archive"),
-      selected && createElement("button", { type: "button", onClick: () => void mutate("forget") }, "Forget"),
+      selected && createElement("button", { ref: forgetTrigger, type: "button", onClick: () => setForgetPending(true) }, "Forget"),
       selected?.status === "archived" && createElement("button", { type: "button", onClick: () => void mutate("restore") }, "Restore"),
       selected?.governance?.verification === "unverified" && createElement("button", { type: "button", onClick: () => void mutate("verify") }, "Verify"),
       selected?.governance?.verification === "stale" && createElement("button", { type: "button", onClick: () => void mutate("reverify") }, "Re-verify"),
@@ -209,6 +218,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
           createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => setQuery(event.target.value), "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
           createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
+          createElement("label", null, "Status filter ", createElement("select", { value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": "Filter Memory status" }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, value)))),
           createElement("button", { type: "button", onClick: () => void exportMemory() }, "Export Memory"),
           createElement("label", null, "Import Memory ", createElement("input", { type: "file", accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { text: () => Promise<string> }[] } }) => void importMemory(event) })),
           recordList,
@@ -216,6 +226,12 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           createElement("p", { role: "status" }, state?.readOnly ? "Read-only Memory" : "Review only: Memory never injects records into Agent context."),
           message && createElement("p", { role: "status" }, message),
         );
-    return createElement("section", { role: "region", "aria-label": "Workspace Memory", "data-dsh-workspace": "memory" }, createElement("h2", null, "Workspace Memory"), body);
+    const confirmation = forgetPending && selected && createElement("div", { role: "alertdialog", "aria-modal": "true", "aria-labelledby": "memory-forget-title", "aria-describedby": "memory-forget-description" },
+      createElement("h3", { id: "memory-forget-title" }, "Forget Memory?"),
+      createElement("p", { id: "memory-forget-description" }, `This will tombstone 1 record in ${scopeLabel(selected.scope)}. Existing exports or model turns cannot be recalled.`),
+      createElement("button", { ref: confirmButton, type: "button", onClick: () => { setForgetPending(false); void mutate("forget"); } }, "Forget record"),
+      createElement("button", { type: "button", onClick: () => { setForgetPending(false); forgetTrigger.current?.focus(); } }, "Cancel"),
+    );
+    return createElement("section", { role: "region", "aria-label": "Workspace Memory", "data-dsh-workspace": "memory" }, createElement("h2", null, "Workspace Memory"), body, confirmation);
   };
 }

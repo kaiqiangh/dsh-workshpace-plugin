@@ -77,6 +77,8 @@ export type MemoryDraft = Pick<MemoryRecord, "scope" | "scopeKey" | "type" | "ti
   readonly useCount?: number;
   readonly status?: MemoryStatus;
   readonly governance?: MemoryGovernance;
+  readonly expectedRevision?: number;
+  readonly expectedHash?: string;
 };
 
 export interface MemoryStoreLocationOptions {
@@ -461,7 +463,7 @@ export class MemoryStore {
     this.ensureOpen();
     const limit = safeLimit(options.limit, MEMORY_MAX_RESULTS);
     return Object.freeze([...this.records.values()]
-      .filter((record) => (options.type === undefined || record.type === options.type) && (options.status === undefined ? record.status === "active" : record.status === options.status))
+      .filter((record) => (options.type === undefined || record.type === options.type) && (options.status === undefined ? record.status === "active" : record.status === options.status) && (record.governance?.expiresAt === undefined || record.governance.expiresAt > this.now()))
       .sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
       .slice(0, limit));
   }
@@ -516,7 +518,7 @@ export class MemoryStore {
     text(query, MEMORY_MAX_QUERY_BYTES, "Memory query");
     const limit = safeLimit(options.limit, MEMORY_MAX_RESULTS);
     return Object.freeze([...this.records.values()]
-      .filter((record) => record.status === (options.status ?? "active") && (options.type === undefined || record.type === options.type))
+      .filter((record) => record.status === (options.status ?? "active") && (options.type === undefined || record.type === options.type) && (record.governance?.expiresAt === undefined || record.governance.expiresAt > this.now()))
       .filter((record) => recordRank(record, query) < 5)
       .sort((left, right) => recordRank(left, query) - recordRank(right, query) || right.updatedAt - left.updatedAt || (right.lastUsedAt ?? 0) - (left.lastUsedAt ?? 0) || left.id.localeCompare(right.id))
       .slice(0, limit));
