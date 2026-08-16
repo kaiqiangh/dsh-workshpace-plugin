@@ -79,6 +79,7 @@ const EDIT_TOOLS = /^(?:edit|edit[-_]file|file[-_]edit|apply[-_]patch|str[-_]rep
 const DELETE_TOOLS = /^(?:delete|delete[-_]file|remove[-_]file|file[-_]delete)$/i;
 const EDITOR_TOOLS = /(?:editor|structured|document|patch)/i;
 const SHELL_TOOLS = /(?:shell|bash|zsh|sh|powershell|terminal|exec|command|run|python|node|git)/i;
+const NON_PREVIEWABLE_EXTENSIONS = /\.(?:7z|avi|bin|doc|docx|gz|mp3|mp4|odt|ppt|pptx|tar|wav|xls|xlsx|zip|svg)$/iu;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
@@ -103,12 +104,16 @@ function field(record: Record<string, unknown> | undefined, ...names: string[]):
 function pathInputs(outcome: LiveToolOutcome): string[] {
   const args = asRecord(outcome.arguments);
   const value = asRecord(resultValue(outcome.result));
-  const paths: unknown[] = [
-    field(args, "path", "file", "filePath", "file_path", "filename", "target"),
-    field(value, "path", "file", "filePath", "file_path", "filename", "target"),
-  ];
-  for (const collection of [field(args, "paths", "files"), field(value, "paths", "files")]) {
-    if (Array.isArray(collection)) paths.push(...collection);
+  const paths: unknown[] = [];
+  for (const record of [args, value]) {
+    paths.push(field(record, "path", "file", "filePath", "file_path", "filename", "target"));
+    for (const collection of [field(record, "paths", "files", "locations", "diffs")]) {
+      if (Array.isArray(collection)) {
+        for (const item of collection) {
+          paths.push(typeof item === "string" ? item : field(asRecord(item), "path", "file", "filePath", "file_path", "filename", "target"));
+        }
+      }
+    }
   }
   return [...new Set(paths.filter((path): path is string => typeof path === "string" && path.trim() !== ""))];
 }
@@ -124,6 +129,10 @@ function editorAction(outcome: LiveToolOutcome): string | undefined {
 function writeKind(outcome: LiveToolOutcome): ActivityKind {
   const value = asRecord(resultValue(outcome.result));
   const action = editorAction(outcome);
+  const diffs = field(value, "diffs");
+  if (Array.isArray(diffs) && diffs.length > 0) {
+    return diffs.some((item) => asRecord(item)?.oldText === null) ? "CREATED" : "MODIFIED";
+  }
   if (value?.created === true || value?.created === "true" || value?.existsBefore === false
     || value?.status === "created" || value?.action === "create" || action === "create") return "CREATED";
   return "MODIFIED";
@@ -131,6 +140,8 @@ function writeKind(outcome: LiveToolOutcome): ActivityKind {
 
 function directKind(outcome: LiveToolOutcome): ActivityKind | undefined {
   const name = outcome.tool.trim();
+  const value = asRecord(resultValue(outcome.result));
+  if (Array.isArray(field(value, "diffs"))) return writeKind(outcome);
   if (READ_TOOLS.test(name)) return "READ";
   if (WRITE_TOOLS.test(name)) return writeKind(outcome);
   if (DELETE_TOOLS.test(name)) return "DELETED";
@@ -162,6 +173,10 @@ function observationId(outcome: LiveToolOutcome, path: string, index: number): s
   return `${outcome.source ?? "live-tool"}:${call}:${index}:${path}`;
 }
 
+function previewablePath(path: string): boolean {
+  return !NON_PREVIEWABLE_EXTENSIONS.test(path);
+}
+
 export function classifyToolOutcome(outcome: LiveToolOutcome): readonly ActivityObservation[] {
   if (!isSuccessful(outcome) || (outcome.background === true && outcome.settled !== true)) return [];
   const kind = directKind(outcome);
@@ -175,6 +190,7 @@ export function classifyToolOutcome(outcome: LiveToolOutcome): readonly Activity
     observedAt: outcome.observedAt,
     source,
     attribution: "agent-evidenced" as const,
+    previewable: previewablePath(path),
   }));
 }
 

@@ -279,6 +279,8 @@ if (!client.renderWorkspacePreview({ type: 'text', path: 'smoke.txt', renderer: 
 if (hostTypert.TYPERT.face !== 'host' || clientTypert.TYPERT.face !== 'client') throw new Error('generated face mismatch')
 if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.package !== 'dsh-workspace-plugin') throw new Error('generated package identity mismatch')
 if (remote.TYPERT_REMOTE.package !== 'dsh-workspace-plugin' || remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
+if (!remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'artifactMetadata')) throw new Error('missing artifact metadata descriptor')
+if (!remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'previewArtifact')) throw new Error('missing artifact preview descriptor')
 console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
@@ -313,6 +315,8 @@ async function publicBundleSmoke(consumer) {
   assert.equal(clientTypert.TYPERT.package, 'dsh-workspace-plugin')
   assert.equal(remote.TYPERT_REMOTE.package, 'dsh-workspace-plugin')
   assert.ok(remote.TYPERT_REMOTE.descriptors.every(descriptor => descriptor.id.startsWith('dsh-workspace-plugin#')))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'artifactMetadata'))
+  assert.ok(remote.TYPERT_REMOTE.descriptors.some(descriptor => descriptor.method === 'previewArtifact'))
   const strictJson = JSON.stringify(hostTypert.TYPERT)
   assert.equal(strictJson.includes('src-json'), false, 'compatibility smoke must not downgrade to SRC JSON')
   return { host, client, hostTypert, profileRoot: consumer }
@@ -337,6 +341,14 @@ async function gatewaySmoke(root, host, hostTypert) {
     namespace: 'workspace', method: 'focus', args: { agentId: 'agent-1' },
   })
   assert.deepEqual(result, { focused: true })
+  const artifacts = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'artifactMetadata', args: { agentId: 'agent-1' },
+  })
+  assert.deepEqual(artifacts, [])
+  const unavailableArtifactPreview = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'previewArtifact', args: { agentId: 'agent-1', id: 'workspace:missing' },
+  })
+  assert.equal(unavailableArtifactPreview.type, 'error')
   const initialContext = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
   })

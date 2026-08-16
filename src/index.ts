@@ -1,6 +1,8 @@
 import { Remote, RemoteScope, TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
-import type { AgentId, PinnedContextRemoteSnapshot } from "./types.ts";
+import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
+import { resolveWorkspaceRoot, startWorkspace } from "./domain/workspace.ts";
+import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
 
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
@@ -38,6 +40,13 @@ export {
   type WorkspaceEffectRegistrar,
   type WorkspaceResourceRouteOptions,
 } from "./host/workspace-resource.ts";
+export {
+  WorkspaceArtifactCarrier,
+  sessionToolRecords,
+  type WorkspaceArtifactCarrierOptions,
+  type WorkspaceArtifactPreview,
+  type SessionEventLike,
+} from "./host/workspace-artifacts.ts";
 
 declare module "@deepseek-ai/dsh-typert-protocol" {
   interface TypertContextMap {
@@ -90,9 +99,12 @@ function validateSnapshot(snapshot: PinnedContextRemoteSnapshot): PinnedContextR
 
 export class WorkspaceService extends TypertRemoteService {
   private snapshot: PinnedContextRemoteSnapshot = emptySnapshot;
+  private artifactCarrier?: WorkspaceArtifactCarrier;
+  private artifactAgentId?: string;
 
   constructor(ctx: Context) {
     super(ctx, "workspace");
+    ctx.effect(() => () => this.artifactCarrier?.dispose(), "workspace artifact carrier");
   }
 
   @Remote
@@ -114,6 +126,56 @@ export class WorkspaceService extends TypertRemoteService {
   replaceContext(snapshot: PinnedContextRemoteSnapshot): PinnedContextRemoteSnapshot {
     this.snapshot = validateSnapshot(snapshot);
     return this.snapshot;
+  }
+
+  @RemoteScope("agent")
+  async artifactMetadata(): Promise<readonly WorkspaceDeliverable[]> {
+    return (await this.carrier())?.metadata() ?? [];
+  }
+
+  @RemoteScope("agent")
+  async previewArtifact(id: string): Promise<WorkspaceArtifactPreview> {
+    const carrier = await this.carrier();
+    return carrier ? carrier.previewArtifact(id) : { type: "error", code: "PROVIDER_UNAVAILABLE", message: "Workspace artifact carrier is unavailable" };
+  }
+
+  private async carrier(): Promise<WorkspaceArtifactCarrier | undefined> {
+    const scoped = this.ctx as Context & {
+      readonly agent?: {
+        readonly id: AgentId;
+        readonly session?: { readonly header?: { readonly cwd?: string }; readonly events?: readonly {
+          readonly seq: number;
+          readonly time?: number;
+          readonly type: string;
+          readonly data?: Record<string, unknown>;
+        }[] };
+      };
+    };
+    const agent = scoped.agent;
+    const cwd = agent?.session?.header?.cwd;
+    if (!agent || !cwd || typeof agent.id !== "string") return undefined;
+    if (this.artifactCarrier && this.artifactAgentId === agent.id) return this.artifactCarrier;
+    this.artifactCarrier?.dispose();
+    try {
+      const root = resolveWorkspaceRoot(cwd, ".");
+      const workspace = startWorkspace({ sessionId: agent.id, processCwd: cwd });
+      this.artifactCarrier = new WorkspaceArtifactCarrier({
+        workspace,
+        root,
+        records: () => sessionToolRecords((agent.session?.events ?? []) as readonly {
+          readonly seq: number;
+          readonly time?: number;
+          readonly type: string;
+          readonly data?: Record<string, unknown>;
+        }[]),
+      });
+      this.artifactAgentId = agent.id;
+      return this.artifactCarrier;
+    } catch {
+      this.artifactCarrier = undefined;
+      this.artifactAgentId = undefined;
+      return undefined;
+    }
   }
 }
 

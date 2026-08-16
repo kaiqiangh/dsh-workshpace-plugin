@@ -3,7 +3,8 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentId, PinnedContextRemoteSnapshot } from 'dsh-workspace-plugin/types'
+import type { WorkspaceDeliverable } from 'dsh-workspace-plugin/client'
+import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview } from 'dsh-workspace-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$776f726b7370616365 {
@@ -16,8 +17,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace': TypertRemoteNamespace$776f726b7370616365
   }
   interface TypertRemoteScopeMap {
+    'agent:workspace/artifactMetadata': () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
     'agent:workspace/contextSnapshot': () => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     'agent:workspace/focus': () => Promise<RemoteResult<{ readonly focused: boolean; }>>
+    'agent:workspace/previewArtifact': (id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
     'agent:workspace/replaceContext': (snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
   }
 }
