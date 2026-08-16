@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 
 import { createWorkspacePanelComponent } from "../src/web/workspace-panel.ts";
 
-test("renders one collapsed Workspace panel with artifact and memory tabs", () => {
+test("renders one collapsed Workspace panel with artifact, memory, and changes tabs", () => {
   const render = createWorkspacePanelComponent({
     artifacts: () => ({ type: "artifacts" }),
     memory: () => ({ type: "memory" }),
+    changes: () => ({ type: "changes" }),
   });
   const root = render({}) as { readonly type: string; readonly props: Record<string, any> };
   const children = root.props.children as readonly { readonly type: string; readonly props: Record<string, any> }[];
@@ -17,4 +18,5 @@ test("renders one collapsed Workspace panel with artifact and memory tabs", () =
   assert.equal(children[1].props["data-dsh-workspace"], "drawer");
   assert.equal(children[1].props.children[0].props.id, "dsh-workspace-tab-artifacts");
   assert.equal(children[1].props.children[1].props.id, "dsh-workspace-tab-memory");
+  assert.equal(children[1].props.children[2].props.id, "dsh-workspace-tab-changes");
 });

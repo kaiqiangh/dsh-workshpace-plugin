@@ -8,6 +8,7 @@ export type WorkspaceSurfaceComponent = (props: Record<string, unknown>) => Reac
 export interface WorkspacePanelOptions {
   readonly artifacts: WorkspaceSurfaceComponent;
   readonly memory: WorkspaceSurfaceComponent;
+  readonly changes: WorkspaceSurfaceComponent;
 }
 
 const WORKSPACE_STYLE_ID = "dsh-workspace-panel-styles";
@@ -87,16 +88,22 @@ const WORKSPACE_PANEL_STYLES = `
 }
 
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [for="dsh-workspace-view-tab-artifacts"],
-[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [for="dsh-workspace-view-tab-memory"] {
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [for="dsh-workspace-view-tab-memory"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [for="dsh-workspace-view-tab-changes"] {
   border-color: color-mix(in srgb, Highlight 45%, transparent);
   background: color-mix(in srgb, Highlight 14%, transparent);
   color: CanvasText;
   font-weight: 600;
 }
 
-[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [data-dsh-workspace-tab="memory"],
-[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [data-dsh-workspace-tab="artifacts"] {
+[data-dsh-workspace="view"] [data-dsh-workspace-tab] {
   display: none;
+}
+
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [data-dsh-workspace-tab="artifacts"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [data-dsh-workspace-tab="memory"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [data-dsh-workspace-tab="changes"] {
+  display: block;
 }
 
 [data-dsh-workspace="panel"][open] > summary {
@@ -174,7 +181,7 @@ const WORKSPACE_PANEL_STYLES = `
 
 [data-dsh-workspace="panel-tabs"] {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 10px 12px;
   border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
@@ -201,7 +208,8 @@ const WORKSPACE_PANEL_STYLES = `
 }
 
 [data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-artifacts:checked) [for="dsh-workspace-tab-artifacts"],
-[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-memory:checked) [for="dsh-workspace-tab-memory"] {
+[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-memory:checked) [for="dsh-workspace-tab-memory"],
+[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-changes:checked) [for="dsh-workspace-tab-changes"] {
   border-color: color-mix(in srgb, Highlight 45%, transparent);
   background: color-mix(in srgb, Highlight 14%, transparent);
   color: CanvasText;
@@ -212,9 +220,14 @@ const WORKSPACE_PANEL_STYLES = `
   min-width: 0;
 }
 
-[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-artifacts:checked) [data-dsh-workspace-tab="memory"],
-[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-memory:checked) [data-dsh-workspace-tab="artifacts"] {
+[data-dsh-workspace="drawer"] [data-dsh-workspace-tab] {
   display: none;
+}
+
+[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-artifacts:checked) [data-dsh-workspace-tab="artifacts"],
+[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-memory:checked) [data-dsh-workspace-tab="memory"],
+[data-dsh-workspace="drawer"]:has(#dsh-workspace-tab-changes:checked) [data-dsh-workspace-tab="changes"] {
+  display: block;
 }
 
 [data-dsh-workspace="panel-content"] {
@@ -417,6 +430,7 @@ export function createWorkspacePanelComponent(options: WorkspacePanelOptions): W
       createElement("aside", { id: "dsh-workspace-drawer", role: "dialog", "aria-label": "Workspace", "data-dsh-workspace": "drawer" },
         createElement("input", { id: "dsh-workspace-tab-artifacts", name: "dsh-workspace-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": "Artifacts" }),
         createElement("input", { id: "dsh-workspace-tab-memory", name: "dsh-workspace-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Memory" }),
+        createElement("input", { id: "dsh-workspace-tab-changes", name: "dsh-workspace-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Changes" }),
         createElement("header", { "data-dsh-workspace": "panel-header" },
           createElement("div", { "data-dsh-workspace": "panel-heading" },
             createElement("strong", null, "Workspace"),
@@ -434,10 +448,12 @@ export function createWorkspacePanelComponent(options: WorkspacePanelOptions): W
         createElement("div", { role: "group", "aria-label": "Workspace sections", "data-dsh-workspace": "panel-tabs" },
           createElement("label", { htmlFor: "dsh-workspace-tab-artifacts", "data-dsh-workspace": "panel-tab" }, "Artifacts"),
           createElement("label", { htmlFor: "dsh-workspace-tab-memory", "data-dsh-workspace": "panel-tab" }, "Memory"),
+          createElement("label", { htmlFor: "dsh-workspace-tab-changes", "data-dsh-workspace": "panel-tab" }, "Changes"),
         ),
         createElement("div", { "data-dsh-workspace": "panel-content" },
           createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
           createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
+          createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "changes" }, createElement(options.changes, props)),
         ),
       ),
     );

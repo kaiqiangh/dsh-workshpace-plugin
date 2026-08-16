@@ -6,6 +6,7 @@ import { resolveWorkspaceRoot, resumeWorkspace, startWorkspace, type WorkspaceSn
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
+import { gitDiff as gitDiffForRoot, gitStatus as gitStatusForRoot, GitError, type GitChange, type GitDiffResult } from "./domain/git.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
 import { registerMemoryPropose } from "./host/workspace-memory-propose.ts";
 import { attachWorkspaceSummaryEmitter } from "./host/workspace-summary.ts";
@@ -60,6 +61,7 @@ export {
 
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { MEMORY_TYPES } from "./types.ts";
+export { GitError, gitDiff, gitStatus, isGitRepository, parsePorcelain, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitDiffResult, type GitErrorCode } from "./domain/git.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export {
   PreviewPanelError,
@@ -278,6 +280,22 @@ export class WorkspaceService extends TypertRemoteService {
   @Remote("memoryClose")
   async memoryClose(agentId: AgentId, request: MemoryScopeRequest): Promise<void> {
     return this.memoryDomain.close(this.memoryContext(this.agent(agentId), request), request);
+  }
+
+  @Remote("gitStatus")
+  async gitStatus(agentId: AgentId): Promise<readonly GitChange[]> {
+    return gitStatusForRoot(this.rootFor(this.agent(agentId)));
+  }
+
+  @Remote("gitDiff")
+  async gitDiff(agentId: AgentId, path?: string): Promise<GitDiffResult> {
+    return gitDiffForRoot(this.rootFor(this.agent(agentId)), path);
+  }
+
+  private rootFor(agent: Agent): string {
+    const cwd = agent.session?.header?.cwd;
+    if (!cwd) throw new GitError("GIT_UNAVAILABLE", "Workspace Session is unavailable");
+    return resolveWorkspaceRoot(cwd, ".");
   }
 
   private agent(agentId: AgentId): Agent {

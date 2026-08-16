@@ -39,11 +39,12 @@ export interface WorkspaceViewSlotRegistry {
 export interface WorkspaceConversationViewOptions {
   readonly artifacts: WorkspaceSurfaceComponent;
   readonly memory: WorkspaceSurfaceComponent;
+  readonly changes: WorkspaceSurfaceComponent;
 }
 
 /**
- * Conversation view tab body: the Artifacts/Memory switch rendered in the
- * tab row's body, reusing the existing surfaces unchanged. Session-scoped
+ * Conversation view tab body: the Artifacts/Memory/Changes switch rendered in
+ * the tab row's body, reusing the existing surfaces unchanged. Session-scoped
  * slot components receive the global `useSessions` seat, which the surfaces
  * already read, so no remote-resolution changes are needed.
  */
@@ -54,13 +55,16 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
       { role: "region", "aria-label": "Workspace", "data-dsh-workspace": "view" },
       createElement("input", { id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": "Artifacts" }),
       createElement("input", { id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Memory" }),
+      createElement("input", { id: "dsh-workspace-view-tab-changes", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Changes" }),
       createElement("div", { role: "group", "aria-label": "Workspace sections", "data-dsh-workspace": "panel-tabs" },
         createElement("label", { htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, "Artifacts"),
         createElement("label", { htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, "Memory"),
+        createElement("label", { htmlFor: "dsh-workspace-view-tab-changes", "data-dsh-workspace": "panel-tab" }, "Changes"),
       ),
       createElement("div", { "data-dsh-workspace": "panel-content" },
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
+        createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "changes" }, createElement(options.changes, props)),
       ),
     );
   };

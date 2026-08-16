@@ -22,6 +22,10 @@ import {
   createWorkspaceMemorySurfaceComponent,
   type WorkspaceMemoryRemote,
 } from "./web/workspace-memory-surface.ts";
+import {
+  createWorkspaceChangesSurfaceComponent,
+  type WorkspaceChangesRemote,
+} from "./web/workspace-changes-surface.ts";
 import type { MemoryScopeRequest } from "./domain/memory.ts";
 import {
   createWorkspacePanelComponent,
@@ -99,15 +103,17 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
       const registerWorkspaceSurfaces = (scope: ClientContributionContext): (() => void) => {
         const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
-        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote>();
-        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote | undefined => {
+          const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote>();
+          const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote | undefined => {
           if (!sessionId || !workspace) return undefined;
           const cached = remotes.get(sessionId);
           if (cached) return cached;
           const call = <T>(method: string, ...args: readonly unknown[]): Promise<T> => workspace[method]!(sessionId, ...args) as Promise<T>;
-          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote = {
+          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote = {
             artifactMetadata: () => call("artifactMetadata"),
             previewArtifact: (id: Parameters<WorkspaceArtifactRemote["previewArtifact"]>[0]) => call("previewArtifact", id),
+            gitStatus: () => call("gitStatus"),
+            gitDiff: (path: Parameters<WorkspaceChangesRemote["gitDiff"]>[0]) => call("gitDiff", path),
             memoryOpen: (request: Parameters<WorkspaceMemoryRemote["memoryOpen"]>[0]) => call("memoryOpen", request),
             memoryList: (request: Parameters<WorkspaceMemoryRemote["memoryList"]>[0], options: Parameters<WorkspaceMemoryRemote["memoryList"]>[1]) => call("memoryList", request, options),
             memorySearch: (request: Parameters<WorkspaceMemoryRemote["memorySearch"]>[0], query: Parameters<WorkspaceMemoryRemote["memorySearch"]>[1], options: Parameters<WorkspaceMemoryRemote["memorySearch"]>[2]) => call("memorySearch", request, query, options),
@@ -131,16 +137,19 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         const memory = createWorkspaceMemorySurfaceComponent({
           resolveRemote,
         });
+        const changes = createWorkspaceChangesSurfaceComponent(undefined, {
+          resolveRemote,
+        });
         if (typeof overlay.inject === "function" && typeof overlay.register === "function") {
           disposers.push(overlay.inject(WORKSPACE_PANEL_OVERLAY_SLOT, () => overlay.register(
             { name: WORKSPACE_PANEL_OVERLAY_SLOT, id: WORKSPACE_PANEL_ENTRY_KEY, label: "Workspace", order: 0, priority: 100 },
-            createWorkspacePanelComponent({ artifacts, memory }),
+            createWorkspacePanelComponent({ artifacts, memory, changes }),
           )));
         }
         if (typeof viewSlots.inject === "function" && typeof viewSlots.register === "function") {
           disposers.push(viewSlots.inject(WORKSPACE_VIEW_SLOT, () => viewSlots.register(
             workspaceConversationViewRegistration(),
-            createWorkspaceConversationViewComponent({ artifacts, memory }),
+            createWorkspaceConversationViewComponent({ artifacts, memory, changes }),
           )));
         }
         openWorkspacePanel = () => {
@@ -231,6 +240,10 @@ export {
   workspaceMemoryTypes,
 } from "./web/workspace-memory-surface.ts";
 export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";
+export {
+  createWorkspaceChangesSurfaceComponent,
+} from "./web/workspace-changes-surface.ts";
+export type { WorkspaceChangesRemote, WorkspaceChangesSurfaceOptions } from "./web/workspace-changes-surface.ts";
 export {
   createWorkspacePanelComponent,
   installWorkspacePanelStyles,

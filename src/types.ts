@@ -1,6 +1,7 @@
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { MemoryType } from "./domain/memory-store.ts";
 export type { MemoryType };
+export type { GitChange, GitChangeStatus, GitDiffResult, GitErrorCode } from "./domain/git.ts";
 
 export type {
   WorkspaceArtifactPreview,
