@@ -69,6 +69,8 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [type, setType] = useState<MemoryType>("fact");
+    const [filterType, setFilterType] = useState<MemoryType | "">("");
+    const [pinnedId, setPinnedId] = useState<string | undefined>();
     const [status, setStatus] = useState<"loading" | "ready" | "degraded">("loading");
     const [message, setMessage] = useState<string | undefined>();
     const requestToken = useRef(0);
@@ -85,7 +87,8 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       }
       try {
         const opened = valueOf(await remote.memoryOpen(request));
-        const next = text.trim() ? valueOf(await remote.memorySearch(request, text, { limit: 100 })) : valueOf(await remote.memoryList(request, { limit: 100 }));
+        const filters = filterType ? { type: filterType, limit: 100 } : { limit: 100 };
+        const next = text.trim() ? valueOf(await remote.memorySearch(request, text, filters)) : valueOf(await remote.memoryList(request, filters));
         if (token !== requestToken.current) return;
         setState(opened);
         setRecords(next);
@@ -104,11 +107,12 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       setState(undefined);
       setRecords([]);
       setSelectedId(undefined);
+      setPinnedId(undefined);
       setTitle("");
       setContent("");
       void load("");
       return () => { requestToken.current += 1; };
-    }, [remote, request.scope, request.userId, request.sharedProject]);
+    }, [remote, request.scope, request.userId, request.sharedProject, filterType]);
 
     useEffect(() => { selectedButton.current?.focus(); }, [selectedId]);
 
@@ -158,6 +162,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("button", { type: "submit", disabled: !state || state.readOnly }, selected ? "Save changes" : "Create Memory"),
       selected && createElement("button", { type: "button", onClick: () => void mutate("archive") }, "Archive"),
       selected && createElement("button", { type: "button", onClick: () => void mutate("forget") }, "Forget"),
+      selected && createElement("button", { type: "button", "aria-pressed": pinnedId === selected.id, onClick: () => { setPinnedId(selected.id); setMessage("Pinned for review only; Memory is not injected into Agent context."); } }, pinnedId === selected.id ? "Pinned for review" : "Pin for review"),
     );
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace Memory…")
@@ -167,6 +172,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           scopeButtons,
           scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
           createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => setQuery(event.target.value), "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
+          createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
           recordList,
           editor,
           createElement("p", { role: "status" }, state?.readOnly ? "Read-only Memory" : "Review only: Memory never injects records into Agent context."),

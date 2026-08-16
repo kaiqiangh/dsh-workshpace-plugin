@@ -233,7 +233,8 @@ function migrateValue(value: Record<string, unknown>, migrations: readonly Memor
   let version = typeof current.schemaVersion === "number" ? current.schemaVersion : NaN;
   const seen = new Set<number>();
   while (version !== MEMORY_SCHEMA_VERSION) {
-    if (!Number.isSafeInteger(version) || seen.has(version)) throw new MemoryStoreError("UNSUPPORTED_SCHEMA", "Memory record schema is unsupported");
+    if (!Number.isSafeInteger(version)) throw new MemoryStoreError("INVALID_RECORD", "Memory record schema is invalid");
+    if (seen.has(version)) throw new MemoryStoreError("UNSUPPORTED_SCHEMA", "Memory record schema is unsupported");
     seen.add(version);
     const migration = migrations.find((candidate) => candidate.from === version);
     if (!migration || migration.to <= migration.from) throw new MemoryStoreError("UNSUPPORTED_SCHEMA", "Memory record schema is unsupported");
@@ -286,7 +287,16 @@ export class MemoryStore {
     try {
       source = await readFile(this.filePath, "utf8");
     } catch (error) {
-      if ((error as { code?: string })?.code === "ENOENT") return this.state();
+      if ((error as { code?: string })?.code === "ENOENT") {
+        try {
+          await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+          await chmod(dirname(this.filePath), 0o700);
+          return this.state();
+        } catch {
+          this.opened = false;
+          throw new MemoryStoreError("STORE_UNAVAILABLE", "Memory store directory cannot be secured");
+        }
+      }
       this.opened = false;
       throw new MemoryStoreError("STORE_UNAVAILABLE", "Memory store cannot be read");
     }
