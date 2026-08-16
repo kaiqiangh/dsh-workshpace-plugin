@@ -15,9 +15,6 @@ import type {
 import { MEMORY_TYPES } from "../types.ts";
 import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 
-export const WORKSPACE_MEMORY_OVERLAY_SLOT = "shell.overlay" as const;
-export const WORKSPACE_MEMORY_ENTRY_KEY = "dsh-workspace-memory" as const;
-
 export interface WorkspaceMemoryRemote {
   readonly memoryOpen: (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>;
   readonly memoryList: (request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>;
@@ -264,15 +261,17 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       "aria-pressed": scope === value,
       onClick: () => { setScope(value); setSharedProject(value === "shared-project"); setSharedWriteAcknowledged(false); },
     }, scopeLabel(value))));
-    const recordList = createElement("ul", { "aria-label": "Memory records" }, records.map((record) => {
+    const recordList = createElement("ul", { "aria-label": "Memory records", "data-dsh-workspace": "memory-list" }, records.map((record) => {
       const governance = displayGovernance(record);
-      return createElement("li", { key: record.id, "data-dsh-workspace": "memory-card" },
-        createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "memory-badge" }, record.type),
-        createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "memory-badge", "data-dsh-workspace-verification": governance.verification }, governance.verification),
-        governance.origin === "model-suggested" && createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "memory-badge", "data-dsh-workspace-proposal": "true" }, "Proposal"),
-        createElement("button", { ref: record.id === selectedId ? selectedButton : undefined, type: "button", "aria-pressed": record.id === selectedId, onClick: () => setSelectedId(record.id) }, record.title),
+      return createElement("li", { key: record.id, "data-dsh-workspace": "memory-card", "data-selected": String(record.id === selectedId) },
+        createElement("div", { "data-dsh-workspace": "memory-card-header" },
+          createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "memory-badge" }, record.type),
+          createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "memory-badge", "data-dsh-workspace-verification": governance.verification }, governance.verification),
+          governance.origin === "model-suggested" && createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "memory-badge", "data-dsh-workspace-proposal": "true" }, "Proposal"),
+          createElement("button", { ref: record.id === selectedId ? selectedButton : undefined, type: "button", "data-dsh-workspace": "memory-select", "aria-pressed": record.id === selectedId, onClick: () => setSelectedId(record.id) }, record.title),
+        ),
+        createElement("span", { "data-dsh-workspace": "memory-meta" }, `${workspaceMemoryRecordSummary(record)}${record.status !== "active" ? ` · ${record.status}` : ""}`),
         createElement("span", { "data-dsh-workspace": "memory-preview" }, record.content.slice(0, 96)),
-        createElement("span", null, ` ${workspaceMemoryRecordSummary(record)}${record.status !== "active" ? ` · ${record.status}` : ""}`),
       );
     }));
     const editor = createElement("details", { "data-dsh-workspace": "memory-editor" },
@@ -294,19 +293,27 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace Memory…")
       : status === "degraded"
-        ? createElement("p", { role: "status" }, message ?? "Workspace Memory is unavailable.")
+        ? createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "error" }, createElement("p", { role: "status" }, message ?? "Workspace Memory is unavailable."))
         : createElement("div", { "data-dsh-workspace": "memory-surface" },
-          scopeButtons,
-          scope === "shared-project" && createElement("label", null, createElement("input", { type: "checkbox", checked: sharedWriteAcknowledged, onChange: (event: { target: { checked: boolean } }) => setSharedWriteAcknowledged(event.target.checked) }), " I understand this writes to the shared Workspace Memory."),
-          scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
-          createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); if (searchTimer.current) clearTimeout(searchTimer.current); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => { setQuery(event.target.value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => { void load(event.target.value); }, 250); }, "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
-          createElement("span", { "aria-label": "Memory record count" }, `${records.length} record${records.length === 1 ? "" : "s"}`),
-          createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
-          createElement("label", null, "Status filter ", createElement("select", { value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": "Filter Memory status" }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, value)))),
-          createElement("button", { type: "button", onClick: () => void exportMemory() }, "Export Memory"),
-          createElement("label", null, "Import Memory ", createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
+          createElement("div", { "data-dsh-workspace": "memory-toolbar" },
+            scopeButtons,
+            scope === "shared-project" && createElement("label", null, createElement("input", { type: "checkbox", checked: sharedWriteAcknowledged, onChange: (event: { target: { checked: boolean } }) => setSharedWriteAcknowledged(event.target.checked) }), " I understand this writes to the shared Workspace Memory."),
+            scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
+            createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); if (searchTimer.current) clearTimeout(searchTimer.current); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => { setQuery(event.target.value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => { void load(event.target.value); }, 250); }, "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
+            createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
+            createElement("label", null, "Status filter ", createElement("select", { value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": "Filter Memory status" }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, value)))),
+            createElement("button", { type: "button", onClick: () => void exportMemory() }, "Export Memory"),
+            createElement("label", null, "Import Memory ", createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
+          ),
+          createElement("header", { "data-dsh-workspace": "surface-header" },
+            createElement("div", { "data-dsh-workspace": "surface-title" },
+              createElement("h3", null, "Memory"),
+              createElement("span", { "data-dsh-workspace": "count-badge", "aria-label": "Memory record count" }, `${records.length} record${records.length === 1 ? "" : "s"}`),
+            ),
+          ),
+          records.length === 0 && createElement("div", { "data-dsh-workspace": "empty-state" }, "No Memory records for this scope yet. Save a record or ask the agent to propose one."),
           recordList,
-          selected && selectedGovernance && createElement("dl", { "aria-label": "Memory governance" },
+          selected && selectedGovernance && createElement("dl", { "aria-label": "Memory governance", "data-dsh-workspace": "memory-governance" },
             createElement("dt", null, "Origin"), createElement("dd", null, selectedGovernance.origin),
             createElement("dt", null, "Verification"), createElement("dd", null, selectedGovernance.verification),
             createElement("dt", null, "Retention"), createElement("dd", null, selectedGovernance.retention),
