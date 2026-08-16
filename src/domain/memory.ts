@@ -24,6 +24,8 @@ export interface MemoryScopeRequest {
   readonly userId?: string;
   /** Shared Project is opt-in and must be explicitly true. */
   readonly sharedProject?: boolean;
+  /** Required for every Shared Project write; read-only operations may omit it. */
+  readonly sharedWriteAcknowledged?: boolean;
 }
 
 export interface MemoryWorkspaceContext {
@@ -52,6 +54,10 @@ function assertRequest(request: MemoryScopeRequest): void {
   if (request.userId !== undefined) throw new MemoryStoreError("SCOPE_MISMATCH", "User Memory id does not apply to this scope");
   if (request.scope === "shared-project" && request.sharedProject !== true) throw new MemoryStoreError("SCOPE_MISMATCH", "Shared Project Memory requires explicit opt-in");
   if (request.scope !== "shared-project" && request.sharedProject === true) throw new MemoryStoreError("SCOPE_MISMATCH", "Shared Project opt-in does not apply to this scope");
+}
+
+function assertWritableRequest(request: MemoryScopeRequest): void {
+  if (request.scope === "shared-project" && request.sharedWriteAcknowledged !== true) throw new MemoryGovernanceError("UNAUTHORIZED", "Shared Project Memory writes require explicit acknowledgement");
 }
 
 function locationFor(context: MemoryWorkspaceContext, request: MemoryScopeRequest, dshHome: string): MemoryLocation {
@@ -98,6 +104,7 @@ export class WorkspaceMemoryDomain {
   }
 
   async upsert(context: MemoryWorkspaceContext, request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord> {
+    assertWritableRequest(request);
     const store = await this.store(context, request);
     const previous = draft.id === undefined ? undefined : store.all().find((record) => record.id === draft.id);
     if (previous) {
@@ -118,7 +125,7 @@ export class WorkspaceMemoryDomain {
       ...(changed ? { verifiedAt: undefined, verifiedBy: undefined, pinnedAt: undefined, pinnedBy: undefined } : {}),
       revision: currentGovernance.revision + 1,
     };
-    const governance: MemoryGovernance | undefined = draft.governance ?? editedGovernance ?? (duplicate ? {
+    const governance: MemoryGovernance | undefined = previous ? editedGovernance : draft.governance ?? (duplicate ? {
       origin: "user-authored" as const,
       sourceRefs: [],
       verification: "unverified" as const,
@@ -155,6 +162,7 @@ export class WorkspaceMemoryDomain {
   }
 
   async govern(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord> {
+    assertWritableRequest(request);
     const store = await this.store(context, request);
     const current = store.all().find((record) => record.id === id);
     if (!current) throw new MemoryStoreError("INVALID_RECORD", "Memory record is unavailable");
@@ -192,6 +200,7 @@ export class WorkspaceMemoryDomain {
   }
 
   async import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {
+    assertWritableRequest(request);
     const store = await this.store(context, request);
     const imported = importMemoryBundle(serialized);
     const saved: MemoryRecord[] = [];

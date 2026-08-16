@@ -20,11 +20,13 @@ export type MemoryGovernanceErrorCode = "INVALID_TRANSITION" | "UNAUTHORIZED" | 
 
 export class MemoryGovernanceError extends Error {
   readonly code: MemoryGovernanceErrorCode;
+  readonly conflict?: MemoryRevisionConflict;
 
-  constructor(code: MemoryGovernanceErrorCode, message: string) {
+  constructor(code: MemoryGovernanceErrorCode, message: string, conflict?: MemoryRevisionConflict) {
     super(message);
     this.name = "MemoryGovernanceError";
     this.code = code;
+    this.conflict = conflict;
   }
 }
 
@@ -59,7 +61,14 @@ export function memoryGovernanceEligible(record: MemoryRecord, now = Date.now())
 export function assertMemoryRevision(record: MemoryRecord, expectedRevision: number, expectedHash: string): void {
   const governance = memoryGovernance(record);
   if (governance.revision !== expectedRevision || record.contentHash !== expectedHash) {
-    throw new MemoryGovernanceError("CONFLICT", `Memory ${record.id} changed before this edit`);
+    throw new MemoryGovernanceError("CONFLICT", `Memory ${record.id} changed before this edit`, {
+      code: "CONFLICT",
+      id: record.id,
+      currentRevision: governance.revision,
+      currentHash: record.contentHash,
+      expectedRevision,
+      expectedHash,
+    });
   }
 }
 

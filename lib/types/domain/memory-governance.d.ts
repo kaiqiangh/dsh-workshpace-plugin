@@ -4,7 +4,8 @@ export type MemoryGovernanceAction = "verify" | "reject" | "reverify" | "pin" | 
 export type MemoryGovernanceErrorCode = "INVALID_TRANSITION" | "UNAUTHORIZED" | "CONFLICT" | "INELIGIBLE" | "INVALID_SOURCE";
 export declare class MemoryGovernanceError extends Error {
     readonly code: MemoryGovernanceErrorCode;
-    constructor(code: MemoryGovernanceErrorCode, message: string);
+    readonly conflict?: MemoryRevisionConflict;
+    constructor(code: MemoryGovernanceErrorCode, message: string, conflict?: MemoryRevisionConflict);
 }
 export interface MemoryRevisionConflict {
     readonly code: "CONFLICT";

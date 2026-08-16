@@ -100,10 +100,12 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const scopeFirstButton = useRef<HTMLButtonElement | null>(null);
     const forgetTrigger = useRef<HTMLButtonElement | null>(null);
     const confirmButton = useRef<HTMLButtonElement | null>(null);
-    const request = workspaceMemoryRequest(scope, userId, sharedProject);
+    const requestBase = workspaceMemoryRequest(scope, userId, sharedProject);
+    const request: MemoryScopeRequest = scope === "shared-project" ? { ...requestBase, sharedWriteAcknowledged } : requestBase;
     const selected = records.find((record) => record.id === selectedId);
     const selectedGovernance = selected && displayGovernance(selected);
-    const hasConflict = selected !== undefined && records.some((record) => record.id !== selected.id && record.type === selected.type && record.title.trim().toLocaleLowerCase() === selected.title.trim().toLocaleLowerCase() && record.contentHash !== selected.contentHash);
+    const conflictingRecords = selected === undefined ? [] : records.filter((record) => record.id !== selected.id && record.type === selected.type && record.title.trim().toLocaleLowerCase() === selected.title.trim().toLocaleLowerCase() && record.contentHash !== selected.contentHash);
+    const hasConflict = conflictingRecords.length > 0;
     const writesAllowed = scope !== "shared-project" || sharedWriteAcknowledged;
 
     const load = async (text = query): Promise<void> => {
@@ -261,6 +263,14 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
             selectedGovernance.expiresAt !== undefined && createElement("dd", null, String(selectedGovernance.expiresAt)),
           ),
           hasConflict && createElement("p", { role: "status" }, "Conflicting Memory uses the same title and type with different content. Verify one or reject this item."),
+          hasConflict && createElement("aside", { "aria-label": "Memory conflict comparison" },
+            createElement("h3", null, "Conflict comparison"),
+            [selected!, ...conflictingRecords].map((record) => createElement("article", { key: record.id },
+              createElement("button", { type: "button", onClick: () => setSelectedId(record.id) }, `Review ${record.id}`),
+              createElement("span", null, ` · ${displayGovernance(record).verification} · revision ${displayGovernance(record).revision} · ${record.contentHash.slice(0, 15)}`),
+              createElement("p", null, record.content.slice(0, 256)),
+            )),
+          ),
           editor,
           createElement("p", { role: "status" }, state?.readOnly ? "Read-only Memory" : "Review only: Memory never injects records into Agent context."),
           message && createElement("p", { role: "status" }, message),

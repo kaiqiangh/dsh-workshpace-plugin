@@ -7,6 +7,8 @@ export interface MemoryScopeRequest {
     readonly userId?: string;
     /** Shared Project is opt-in and must be explicitly true. */
     readonly sharedProject?: boolean;
+    /** Required for every Shared Project write; read-only operations may omit it. */
+    readonly sharedWriteAcknowledged?: boolean;
 }
 export interface MemoryWorkspaceContext {
     readonly identity: WorkspaceIdentity;

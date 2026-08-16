@@ -493,9 +493,15 @@ export class MemoryStore {
   async upsert(draft: MemoryDraft): Promise<MemoryRecord> {
     this.ensureWritable();
     if (draft.scope !== this.scope || draft.scopeKey !== this.scopeKey) throw new MemoryStoreError("SCOPE_MISMATCH", "Memory draft scope does not match this store");
+    contentText(draft.content, this.maxContentBytes);
     const id = draft.id ?? this.idFactory();
     return this.withLock(async () => {
       await this.reloadLatest();
+      const contentHash = hashMemoryContent(draft.content);
+      if (draft.id === undefined) {
+        const exact = [...this.records.values()].find((record) => record.type === draft.type && record.contentHash === contentHash);
+        if (exact) return this.expiredView(exact);
+      }
       const previous = this.records.get(id);
       const current = previous === undefined ? undefined : this.expiredView(previous);
       if (draft.expectedRevision !== undefined || draft.expectedHash !== undefined) {
@@ -518,7 +524,7 @@ export class MemoryStore {
         updatedAt: draft.updatedAt ?? now,
         ...(draft.lastUsedAt === undefined && previous?.lastUsedAt === undefined ? {} : { lastUsedAt: draft.lastUsedAt ?? previous?.lastUsedAt }),
         useCount: draft.useCount ?? previous?.useCount ?? 0,
-        contentHash: hashMemoryContent(draft.content),
+        contentHash,
         status: draft.status ?? "active",
         ...(draft.governance === undefined && previous?.governance === undefined ? {} : { governance: draft.governance ?? previous?.governance }),
       }, this.scope, this.scopeKey, this.maxContentBytes);
