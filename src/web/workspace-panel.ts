@@ -63,12 +63,26 @@ const WORKSPACE_PANEL_STYLES = `
   outline-offset: 2px;
 }
 
-[data-dsh-workspace="panel"] [data-dsh-workspace="view"] {
+[data-dsh-workspace="view"] {
   color: CanvasText;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
 }
 
-[data-dsh-workspace="panel"] [data-dsh-workspace="view"] [data-dsh-workspace="panel-content"] {
+[data-dsh-workspace="view"] *,
+[data-dsh-workspace="view"] *::before,
+[data-dsh-workspace="view"] *::after {
+  box-sizing: border-box;
+}
+
+[data-dsh-workspace="view"] button,
+[data-dsh-workspace="view"] input,
+[data-dsh-workspace="view"] select,
+[data-dsh-workspace="view"] textarea {
+  color: inherit;
+  font: inherit;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-content"] {
   min-width: 0;
 }
 
