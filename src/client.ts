@@ -21,6 +21,12 @@ import {
   WORKSPACE_ARTIFACT_SLOT_NAME,
   type WorkspaceArtifactRemote,
 } from "./web/workspace-artifact-surface.ts";
+import {
+  createWorkspaceMemorySurfaceComponent,
+  WORKSPACE_MEMORY_ENTRY_KEY,
+  WORKSPACE_MEMORY_OVERLAY_SLOT,
+  type WorkspaceMemoryRemote,
+} from "./web/workspace-memory-surface.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -81,15 +87,23 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       let disposeOverlay = () => {};
       const overlay = ctx.slots as unknown as WorkspaceOverlaySlotRegistry;
       if (typeof overlay.inject === "function" && typeof overlay.register === "function") {
-        disposeOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
+        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote | undefined => {
+          const scoped = sessionId ? ctx.sessions?.scope(sessionId) : undefined;
+          return (scoped?.remote as unknown as { readonly workspace?: WorkspaceArtifactRemote & WorkspaceMemoryRemote } | undefined)?.workspace;
+        };
+        const disposeArtifactOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
           { name: WORKSPACE_ARTIFACT_SLOT_NAME, id: WORKSPACE_ARTIFACT_ENTRY_KEY, order: 0 },
           createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
-            resolveRemote: (sessionId) => {
-              const scoped = sessionId ? ctx.sessions?.scope(sessionId) : undefined;
-              return (scoped?.remote as unknown as { readonly workspace?: WorkspaceArtifactRemote } | undefined)?.workspace;
-            },
+            resolveRemote,
           }),
         ));
+        const disposeMemoryOverlay = overlay.inject(WORKSPACE_MEMORY_OVERLAY_SLOT, () => overlay.register(
+          { name: WORKSPACE_MEMORY_OVERLAY_SLOT, id: WORKSPACE_MEMORY_ENTRY_KEY, order: 1 },
+          createWorkspaceMemorySurfaceComponent({
+            resolveRemote,
+          }),
+        ));
+        disposeOverlay = () => { disposeArtifactOverlay(); disposeMemoryOverlay(); };
       }
       disposeConversation = () => {
         if (disposed) return;
@@ -151,3 +165,12 @@ export type {
   WorkspaceFetchResponse,
 } from "./web/workspace-deliverables.ts";
 export type { WorkspaceArtifactRemote, WorkspaceArtifactSurfaceOptions } from "./web/workspace-artifact-surface.ts";
+export {
+  createWorkspaceMemorySurfaceComponent,
+  workspaceMemoryRecordSummary,
+  workspaceMemoryRequest,
+  WORKSPACE_MEMORY_ENTRY_KEY,
+  WORKSPACE_MEMORY_OVERLAY_SLOT,
+  workspaceMemoryTypes,
+} from "./web/workspace-memory-surface.ts";
+export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";

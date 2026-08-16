@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -40,7 +40,7 @@ test("round-trips bounded records, deterministic search, tombstones, and last-us
   await first.value.compact();
   await first.value.close();
 
-  const reopened = new MemoryStore({ scope: "project", scopeKey: "root:project", filePath: first.filePath, now: () => 101 });
+  const reopened = new MemoryStore({ scope: "project", scopeKey: "root:project", projectRoot: first.root, filePath: first.filePath, now: () => 101 });
   const state = await reopened.open();
   assert.equal(state.records[0]?.status, "forgotten");
   assert.equal(state.records[0]?.useCount, 1);
@@ -78,4 +78,37 @@ test("uses isolated scope-keyed locations and requires explicit project roots", 
   assert.match(memoryStorePath({ scope: "session", scopeKey: "session-1|root-1", dshHome }), /workspace-memory\/sessions\/[0-9a-f]{32}\.jsonl$/u);
   assert.match(memoryStorePath({ scope: "shared-project", scopeKey: "root-1", projectRoot: "/tmp/project" }), /\.dsh\/workspace-memory\/shared\.jsonl$/u);
   assert.throws(() => memoryStorePath({ scope: "project", scopeKey: "root-1" }), /Project Memory Root is unavailable/);
+});
+
+test("keeps multiple User profiles in the shared JSONL file across compaction", async () => {
+  const home = await mkdtemp(join(tmpdir(), "dsh-memory-profiles-"));
+  const filePath = join(home, "workspace-memory", "user.jsonl");
+  const first = new MemoryStore({ scope: "user", scopeKey: "profile-a", dshHome: home, filePath, idFactory: () => "memory:a", now: () => 1 });
+  await first.open();
+  await first.upsert({ scope: "user", scopeKey: "profile-a", type: "preference", title: "A", content: "one", tags: [], provenance: { kind: "user" } });
+  const second = new MemoryStore({ scope: "user", scopeKey: "profile-b", dshHome: home, filePath, idFactory: () => "memory:b", now: () => 2 });
+  await second.open();
+  await second.upsert({ scope: "user", scopeKey: "profile-b", type: "preference", title: "B", content: "two", tags: [], provenance: { kind: "user" } });
+  await first.close();
+  const reopened = new MemoryStore({ scope: "user", scopeKey: "profile-a", dshHome: home, filePath });
+  await reopened.open();
+  assert.deepEqual(reopened.list().map((record) => record.title), ["A"]);
+  await reopened.compact();
+  const other = new MemoryStore({ scope: "user", scopeKey: "profile-b", dshHome: home, filePath });
+  await other.open();
+  assert.deepEqual(other.list().map((record) => record.title), ["B"]);
+});
+
+test("migrates known schemas atomically and fails closed for missing projects", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-memory-migrate-"));
+  const filePath = join(root, "records.jsonl");
+  const source = new MemoryStore({ scope: "project", scopeKey: "root:migrate", projectRoot: root, filePath, idFactory: () => "memory:migrate", now: () => 1 });
+  await source.open();
+  const record = await source.upsert({ scope: "project", scopeKey: "root:migrate", type: "fact", title: "Old", content: "value", tags: [], provenance: { kind: "import" } });
+  await writeFile(filePath, `${JSON.stringify({ ...record, schemaVersion: 0 })}\n`, "utf8");
+  const migrated = new MemoryStore({ scope: "project", scopeKey: "root:migrate", projectRoot: root, filePath, migrations: [{ from: 0, to: 1, migrate: (value) => ({ ...value, schemaVersion: 1 }) }] });
+  assert.equal((await migrated.open()).records[0]?.title, "Old");
+  await access(`${filePath}.bak`);
+  const missing = new MemoryStore({ scope: "project", scopeKey: "root:missing", projectRoot: join(root, "gone") });
+  await assert.rejects(() => missing.open(), (error: unknown) => error instanceof MemoryStoreError && error.code === "PROJECT_UNAVAILABLE");
 });

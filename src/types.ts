@@ -19,6 +19,7 @@ export type {
 export type {
   MemoryDraft,
   MemoryListOptions,
+  MemoryMigration,
   MemoryProvenance,
   MemoryReadState,
   MemoryRecord,

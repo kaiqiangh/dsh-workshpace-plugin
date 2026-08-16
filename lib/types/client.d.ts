@@ -35,3 +35,5 @@ export { buildWorkspaceResourceUrl, createWorkspaceArtifactDetail, createWorkspa
 export { createWorkspaceArtifactSurfaceComponent, workspaceArtifactPreviewDescriptor, workspaceArtifactResourceUrl, WORKSPACE_ARTIFACT_ENTRY_KEY, WORKSPACE_ARTIFACT_OVERLAY_SLOT, WORKSPACE_ARTIFACT_SLOT_NAME, } from "./web/workspace-artifact-surface.ts";
 export type { WorkspaceArtifactDetail, WorkspaceArtifactDetailStatus, WorkspaceArtifactView, WorkspaceDeliverable, WorkspaceDeliverablePreview, WorkspaceDeliverableSource, WorkspaceDownloadResult, WorkspaceDownloadRuntime, WorkspaceDownloadStatus, WorkspaceFetchResponse, } from "./web/workspace-deliverables.ts";
 export type { WorkspaceArtifactRemote, WorkspaceArtifactSurfaceOptions } from "./web/workspace-artifact-surface.ts";
+export { createWorkspaceMemorySurfaceComponent, workspaceMemoryRecordSummary, workspaceMemoryRequest, WORKSPACE_MEMORY_ENTRY_KEY, WORKSPACE_MEMORY_OVERLAY_SLOT, workspaceMemoryTypes, } from "./web/workspace-memory-surface.ts";
+export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";

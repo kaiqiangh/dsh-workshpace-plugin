@@ -51,6 +51,12 @@ export interface MemoryStoreOptions extends MemoryStoreLocationOptions {
     readonly now?: () => number;
     readonly idFactory?: () => string;
     readonly maxContentBytes?: number;
+    readonly migrations?: readonly MemoryMigration[];
+}
+export interface MemoryMigration {
+    readonly from: number;
+    readonly to: number;
+    readonly migrate: (record: Record<string, unknown>) => Record<string, unknown>;
 }
 export interface MemoryStoreWarning {
     readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE";
@@ -85,7 +91,10 @@ export declare class MemoryStore {
     private readonly now;
     private readonly idFactory;
     private readonly maxContentBytes;
+    private readonly projectRoot?;
+    private readonly migrations;
     private records;
+    private foreignLines;
     private warnings;
     private readOnly;
     private opened;
@@ -105,5 +114,6 @@ export declare class MemoryStore {
     private ensureOpen;
     private ensureWritable;
     private append;
+    private withLock;
     private quarantine;
 }

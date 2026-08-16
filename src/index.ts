@@ -20,6 +20,7 @@ export {
   MemoryStoreError,
   type MemoryDraft,
   type MemoryListOptions,
+  type MemoryMigration,
   type MemoryProvenance,
   type MemoryReadState,
   type MemoryRecord,

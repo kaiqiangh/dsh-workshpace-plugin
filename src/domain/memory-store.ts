@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open as openFile, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open as openFile, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export const MEMORY_SCHEMA_VERSION = 1 as const;
@@ -61,6 +61,13 @@ export interface MemoryStoreOptions extends MemoryStoreLocationOptions {
   readonly now?: () => number;
   readonly idFactory?: () => string;
   readonly maxContentBytes?: number;
+  readonly migrations?: readonly MemoryMigration[];
+}
+
+export interface MemoryMigration {
+  readonly from: number;
+  readonly to: number;
+  readonly migrate: (record: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export interface MemoryStoreWarning {
@@ -211,7 +218,7 @@ function recordRank(record: MemoryRecord, query: string): number {
   const content = record.content.toLocaleLowerCase();
   const tags = record.tags.map((tag) => tag.toLocaleLowerCase());
   if (title === lower) return 0;
-  if (title.includes(lower) || tags.some((tag) => tag === lower)) return 1;
+  if (title.includes(lower) || content.includes(lower) || tags.some((tag) => tag === lower)) return 1;
   const tokens = lower.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   const haystack = `${title} ${content} ${tags.join(" ")}`;
   const overlap = tokens.filter((token) => haystack.includes(token)).length;
@@ -221,6 +228,21 @@ function recordRank(record: MemoryRecord, query: string): number {
   return 5;
 }
 
+function migrateValue(value: Record<string, unknown>, migrations: readonly MemoryMigration[]): Record<string, unknown> {
+  let current = value;
+  let version = typeof current.schemaVersion === "number" ? current.schemaVersion : NaN;
+  const seen = new Set<number>();
+  while (version !== MEMORY_SCHEMA_VERSION) {
+    if (!Number.isSafeInteger(version) || seen.has(version)) throw new MemoryStoreError("UNSUPPORTED_SCHEMA", "Memory record schema is unsupported");
+    seen.add(version);
+    const migration = migrations.find((candidate) => candidate.from === version);
+    if (!migration || migration.to <= migration.from) throw new MemoryStoreError("UNSUPPORTED_SCHEMA", "Memory record schema is unsupported");
+    current = migration.migrate(current);
+    version = typeof current.schemaVersion === "number" ? current.schemaVersion : NaN;
+  }
+  return current;
+}
+
 export class MemoryStore {
   readonly filePath: string;
   readonly scope: MemoryScope;
@@ -228,7 +250,10 @@ export class MemoryStore {
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private readonly maxContentBytes: number;
+  private readonly projectRoot?: string;
+  private readonly migrations: readonly MemoryMigration[];
   private records = new Map<string, MemoryRecord>();
+  private foreignLines: string[] = [];
   private warnings: MemoryStoreWarning[] = [];
   private readOnly = false;
   private opened = false;
@@ -239,6 +264,8 @@ export class MemoryStore {
     this.scope = options.scope;
     this.scopeKey = options.scopeKey;
     this.filePath = options.filePath ?? memoryStorePath(options);
+    this.projectRoot = options.projectRoot;
+    this.migrations = options.migrations ?? [];
     this.now = options.now ?? Date.now;
     this.idFactory = options.idFactory ?? (() => `memory:${randomUUID()}`);
     this.maxContentBytes = safeLimit(options.maxContentBytes, MEMORY_MAX_CONTENT_BYTES);
@@ -246,6 +273,14 @@ export class MemoryStore {
 
   async open(): Promise<MemoryReadState> {
     if (this.opened) return this.state();
+    if (this.scope === "project" || this.scope === "shared-project") {
+      if (!this.projectRoot) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Project Memory Root is unavailable");
+      try {
+        if (!(await stat(this.projectRoot)).isDirectory()) throw new Error("not-directory");
+      } catch {
+        throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Project Memory Root is unavailable");
+      }
+    }
     this.opened = true;
     let source: string;
     try {
@@ -255,22 +290,38 @@ export class MemoryStore {
       this.opened = false;
       throw new MemoryStoreError("STORE_UNAVAILABLE", "Memory store cannot be read");
     }
+    try {
+      await chmod(dirname(this.filePath), 0o700);
+      await chmod(this.filePath, 0o600);
+    } catch {
+      this.opened = false;
+      throw new MemoryStoreError("STORE_UNAVAILABLE", "Memory store permissions cannot be secured");
+    }
     const lines = source.split("\n");
+    let migrated = false;
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index]!.trim();
       if (!line) continue;
       try {
         const parsed = JSON.parse(line) as unknown;
-        const record = validateRecord(parsed, this.scope, this.scopeKey, this.maxContentBytes);
+        if (this.scope === "user" && parsed && typeof parsed === "object" && (parsed as Record<string, unknown>).scope === "user" && typeof (parsed as Record<string, unknown>).scopeKey === "string" && (parsed as Record<string, unknown>).scopeKey !== this.scopeKey) {
+          try { validateRecord(parsed, "user", (parsed as Record<string, unknown>).scopeKey as string, this.maxContentBytes); } catch { /* preserve another profile's line untouched */ }
+          this.foreignLines.push(line);
+          continue;
+        }
+        const migratedValue = parsed && typeof parsed === "object" ? migrateValue(parsed as Record<string, unknown>, this.migrations) : parsed;
+        migrated ||= migratedValue !== parsed;
+        const record = validateRecord(migratedValue, this.scope, this.scopeKey, this.maxContentBytes);
         this.records.set(record.id, record);
-        if (record.status === "forgotten") this.records.set(record.id, record);
       } catch (error) {
-        const code = error instanceof MemoryStoreError && error.code === "UNSUPPORTED_SCHEMA" ? "UNSUPPORTED_SCHEMA" : error instanceof MemoryStoreError && error.message.includes("hash") ? "BAD_HASH" : "CORRUPT_RECORD";
+        const truncated = index === lines.length - 1 && !source.endsWith("\n");
+        const code = error instanceof MemoryStoreError && error.code === "UNSUPPORTED_SCHEMA" ? "UNSUPPORTED_SCHEMA" : truncated ? "TRUNCATED_LINE" : error instanceof MemoryStoreError && error.message.includes("hash") ? "BAD_HASH" : "CORRUPT_RECORD";
         this.warnings.push({ code, line: index + 1, message: error instanceof Error ? error.message : "Memory record is invalid" });
         if (code === "UNSUPPORTED_SCHEMA") this.readOnly = true;
         else await this.quarantine(`${line}\n`, index + 1);
       }
     }
+    if (migrated && !this.readOnly) await this.compact();
     return this.state();
   }
 
@@ -344,22 +395,30 @@ export class MemoryStore {
 
   async compact(): Promise<void> {
     this.ensureWritable();
-    const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
-    const backup = `${this.filePath}.bak`;
-    const body = [...this.records.values()].map((record) => JSON.stringify(record)).join("\n") + (this.records.size ? "\n" : "");
-    try {
-      await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
-      await writeFile(temporary, body, { encoding: "utf8", mode: 0o600 });
-      const handle = await openFile(temporary, "r+");
-      await handle.sync();
-      await handle.close();
-      try { await rename(this.filePath, backup); } catch (error) { if ((error as { code?: string })?.code !== "ENOENT") throw error; }
-      await rename(temporary, this.filePath);
-      await chmod(this.filePath, 0o600);
-    } catch {
-      try { await rename(temporary, this.filePath); } catch { /* preserve the previous source */ }
-      throw new MemoryStoreError("SAVE_FAILURE", "Memory compaction failed");
-    }
+    return this.withLock(async () => {
+      const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
+      const backup = `${this.filePath}.bak`;
+      const lines = [...this.foreignLines, ...this.records.values()].map((record) => typeof record === "string" ? record : JSON.stringify(record));
+      const body = lines.join("\n") + (lines.length ? "\n" : "");
+      let backupCreated = false;
+      try {
+        await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+        await writeFile(temporary, body, { encoding: "utf8", mode: 0o600 });
+        const handle = await openFile(temporary, "r+");
+        await handle.sync();
+        await handle.close();
+        try { await rename(this.filePath, backup); backupCreated = true; } catch (error) { if ((error as { code?: string })?.code !== "ENOENT") throw error; }
+        await rename(temporary, this.filePath);
+        await chmod(this.filePath, 0o600);
+      } catch {
+        try { await unlink(temporary); } catch { /* no temporary remains */ }
+        if (backupCreated) {
+          try { await unlink(this.filePath); } catch { /* replacement was not installed */ }
+          try { await rename(backup, this.filePath); } catch { /* backup remains recoverable */ }
+        }
+        throw new MemoryStoreError("SAVE_FAILURE", "Memory compaction failed");
+      }
+    });
   }
 
   async close(): Promise<void> {
@@ -391,15 +450,46 @@ export class MemoryStore {
   }
 
   private async append(record: MemoryRecord): Promise<void> {
+    return this.withLock(async () => {
+      try {
+        await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+        const handle = await openFile(this.filePath, "a", 0o600);
+        await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
+        await handle.sync();
+        await handle.close();
+        await chmod(this.filePath, 0o600);
+      } catch {
+        throw new MemoryStoreError("SAVE_FAILURE", "Memory record could not be saved");
+      }
+    });
+  }
+
+  private async withLock<T>(operation: () => Promise<T>): Promise<T> {
+    const lockPath = `${this.filePath}.lock`;
+    let lock;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+        lock = await openFile(lockPath, "wx", 0o600);
+        await lock.writeFile(`${process.pid}\n`, "utf8");
+        await lock.close();
+        break;
+      } catch (error) {
+        try { await lock?.close(); } catch { /* lock acquisition failed */ }
+        if ((error as { code?: string })?.code !== "EEXIST" || attempt > 0) throw new MemoryStoreError("SAVE_FAILURE", "Memory store is busy");
+        try {
+          const info = await stat(lockPath);
+          if (Date.now() - info.mtimeMs < 30_000) throw new MemoryStoreError("SAVE_FAILURE", "Memory store is busy");
+          await unlink(lockPath);
+        } catch (staleError) {
+          if (staleError instanceof MemoryStoreError) throw staleError;
+        }
+      }
+    }
     try {
-      await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
-      const handle = await openFile(this.filePath, "a", 0o600);
-      await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
-      await handle.sync();
-      await handle.close();
-      await chmod(this.filePath, 0o600);
-    } catch {
-      throw new MemoryStoreError("SAVE_FAILURE", "Memory record could not be saved");
+      return await operation();
+    } finally {
+      try { await unlink(lockPath); } catch { /* another process may have repaired a stale lock */ }
     }
   }
 
