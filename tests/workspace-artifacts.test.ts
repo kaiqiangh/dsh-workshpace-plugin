@@ -45,3 +45,28 @@ test("rejects unknown artifact ids without touching the filesystem", async () =>
   assert.deepEqual(await carrier.previewArtifact("workspace:missing"), { type: "error", code: "RESOURCE_INVALID", message: "Artifact is unavailable" });
   carrier.dispose();
 });
+
+test("reuses the metadata resource for binary artifact previews", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  await writeFile(join(root, "chart.png"), Buffer.from("bounded"));
+  const workspace = startWorkspace({ sessionId: "session-3", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-3", name: "write_file", arguments: JSON.stringify({ path: "chart.png" }) } },
+    {
+      seq: 1,
+      time: 1,
+      type: "tool/result",
+      data: {
+        message: { source: { kind: "tool", callId: "call-3" }, content: [{ type: "tool-result", toolCallId: "call-3" }] },
+        meta: { diffs: [{ path: "chart.png", oldText: null, newText: "bounded" }] },
+      },
+    },
+  ] as const;
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => sessionToolRecords(events) });
+  const metadata = await carrier.metadata();
+  assert.equal(metadata[0]?.resourceId !== undefined, true);
+  const preview = await carrier.previewArtifact(metadata[0]!.id);
+  assert.equal(preview.type, "binary");
+  assert.equal(preview.type === "binary" ? preview.resourceId : undefined, metadata[0]!.resourceId);
+  carrier.dispose();
+});

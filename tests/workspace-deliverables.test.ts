@@ -46,6 +46,7 @@ test("keeps typed stale, unsupported, and identity-mismatch detail states local"
   assert.equal(stale.status, "stale");
   const mismatch = createWorkspaceArtifactDetail(markdown, { type: "binary", path: "report.md" as never, mediaType: "image/png", resourceId: "other", version: "v1", expiresAt: 1 });
   assert.equal(mismatch.status, "error");
+  assert.equal(mismatch.descriptor, undefined);
   assert.equal(mismatch.message, "Preview resource identity is invalid");
   const wrongType = createWorkspaceArtifactDetail({ ...markdown, mediaType: "image/png", version: "v1", altText: "Report" }, { type: "binary", path: "report.md" as never, mediaType: "image/png", resourceId: "resource-report", version: "v2", expiresAt: 1 });
   assert.equal(wrongType.status, "error");

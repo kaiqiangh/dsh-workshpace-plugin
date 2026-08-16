@@ -3,6 +3,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
 import { resolveWorkspaceRoot, startWorkspace } from "./domain/workspace.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
+import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
@@ -101,10 +102,17 @@ export class WorkspaceService extends TypertRemoteService {
   private snapshot: PinnedContextRemoteSnapshot = emptySnapshot;
   private artifactCarrier?: WorkspaceArtifactCarrier;
   private artifactAgentId?: string;
+  private artifactRouteDispose?: () => void | Promise<void>;
 
   constructor(ctx: Context) {
     super(ctx, "workspace");
-    ctx.effect(() => () => this.artifactCarrier?.dispose(), "workspace artifact carrier");
+    ctx.effect(() => () => {
+      this.artifactRouteDispose?.();
+      this.artifactRouteDispose = undefined;
+      this.artifactCarrier?.dispose();
+      this.artifactCarrier = undefined;
+      this.artifactAgentId = undefined;
+    }, "workspace artifact carrier");
   }
 
   @Remote
@@ -140,7 +148,7 @@ export class WorkspaceService extends TypertRemoteService {
   }
 
   private async carrier(): Promise<WorkspaceArtifactCarrier | undefined> {
-    const scoped = this.ctx as Context & {
+    const scoped = this.ctx as Context & { readonly webServer?: WebRouteRegistrar } & {
       readonly agent?: {
         readonly id: AgentId;
         readonly session?: { readonly header?: { readonly cwd?: string }; readonly events?: readonly {
@@ -155,6 +163,8 @@ export class WorkspaceService extends TypertRemoteService {
     const cwd = agent?.session?.header?.cwd;
     if (!agent || !cwd || typeof agent.id !== "string") return undefined;
     if (this.artifactCarrier && this.artifactAgentId === agent.id) return this.artifactCarrier;
+    this.artifactRouteDispose?.();
+    this.artifactRouteDispose = undefined;
     this.artifactCarrier?.dispose();
     try {
       const root = resolveWorkspaceRoot(cwd, ".");
@@ -170,11 +180,22 @@ export class WorkspaceService extends TypertRemoteService {
         }[]),
       });
       this.artifactAgentId = agent.id;
+      const webServer = scoped.webServer;
+      if (webServer?.register) {
+        const carrier = this.artifactCarrier;
+        this.artifactRouteDispose = this.ctx.effect(
+          () => registerWorkspaceResourceRoute(webServer, { preview: carrier.preview }),
+          "workspace opaque artifact route",
+        );
+      }
       return this.artifactCarrier;
-    } catch {
+    } catch (error) {
+      this.artifactRouteDispose?.();
+      this.artifactRouteDispose = undefined;
+      this.artifactCarrier?.dispose();
       this.artifactCarrier = undefined;
       this.artifactAgentId = undefined;
-      return undefined;
+      throw error;
     }
   }
 }

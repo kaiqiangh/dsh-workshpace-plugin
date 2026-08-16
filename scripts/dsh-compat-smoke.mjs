@@ -287,7 +287,7 @@ const contribution = {
   conversationEvents: { register: () => { surfaceRegistrations.push('conversation'); return () => surfaceRegistrations.push('conversation-dispose') } },
   slots: {
     inject: (key, callback) => { surfaceRegistrations.push('inject:' + key); const dispose = callback(); return () => { dispose(); surfaceRegistrations.push('inject-dispose:' + key) } },
-    register: (options) => { surfaceRegistrations.push('register:' + options.key); return () => surfaceRegistrations.push('register-dispose:' + options.key) },
+    register: (options) => { const id = options.id ?? options.key; surfaceRegistrations.push('register:' + id); return () => surfaceRegistrations.push('register-dispose:' + id) },
   },
   effect: (factory) => { surfaceDisposers.push(factory()) },
   remote: {
@@ -483,6 +483,7 @@ async function conversationSmoke(root, client, ctx) {
   const definitions = []
   const views = []
   const clientSlots = []
+  const overlaySlots = []
   let clientCleanup
   let clientRemoteMounted = 0
   let clientRemoteDisposed = false
@@ -492,15 +493,20 @@ async function conversationSmoke(root, client, ctx) {
     conversationViews: { register(view) { views.push(view); return () => views.splice(views.indexOf(view), 1) } },
     slots: {
       inject(key, callback) {
-        assert.equal(key, 'conversation.chat.node')
+        assert.ok(key === 'conversation.chat.node' || key === 'shell.overlay')
         const dispose = callback()
-        return () => { dispose(); clientSlots.splice(0) }
+        return () => { dispose(); (key === 'conversation.chat.node' ? clientSlots : overlaySlots).splice(0) }
       },
       register(options, component) {
-        assert.equal(options.name, 'conversation.chat.node')
-        assert.equal(options.key, 'dsh-workspace-summary')
-        clientSlots.push(component)
-        return () => clientSlots.splice(0)
+        if (options.name === 'conversation.chat.node') {
+          assert.equal(options.key, 'dsh-workspace-summary')
+          clientSlots.push(component)
+          return () => clientSlots.splice(0)
+        }
+        assert.equal(options.name, 'shell.overlay')
+        assert.equal(options.id, 'dsh-workspace-artifacts')
+        overlaySlots.push(component)
+        return () => overlaySlots.splice(0)
       },
     },
     effect(factory) { clientCleanup = factory() },
@@ -517,6 +523,7 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(definitions.length, 1)
   assert.equal(views.length, 0)
   assert.equal(clientSlots.length, 1)
+  assert.equal(overlaySlots.length, 1)
   assert.equal(clientRemoteMounted, 1)
   await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
   const clientNode = clientSlots[0]({ node: {
@@ -650,6 +657,8 @@ async function conversationSmoke(root, client, ctx) {
   await clientDispose()
   assert.equal(clientRemoteMounted, 0)
   assert.equal(clientRemoteDisposed, true)
+  assert.equal(clientSlots.length, 0)
+  assert.equal(overlaySlots.length, 0)
   workspaceCleanup?.()
   assert.equal(workspaceDefinitions.length, 0)
   assert.equal(workspaceViews.length, 0)

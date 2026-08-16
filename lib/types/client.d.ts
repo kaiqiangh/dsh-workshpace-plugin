@@ -7,6 +7,11 @@ interface ClientContributionContext {
     readonly slots: WorkspaceSlotRegistry;
     readonly effect: (factory: () => void | (() => void), label?: string) => void;
     readonly remote: TypertClientRemote;
+    readonly sessions?: {
+        readonly scope: (id: string) => {
+            readonly remote: TypertClientRemote;
+        } | undefined;
+    };
     readonly emit: (event: string, ...args: readonly unknown[]) => void;
 }
 declare module "@deepseek-ai/cordis" {
@@ -20,7 +25,7 @@ export interface WorkspaceClientSurface {
 }
 export declare const workspaceClient: WorkspaceClientSurface;
 export declare function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;
-export declare const inject: readonly ["conversationEvents", "slots", "remote"];
+export declare const inject: readonly ["conversationEvents", "slots", "remote", "sessions"];
 export declare function apply(ctx: ClientContributionContext): Promise<() => Promise<void>>;
 export { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, createWorkspaceDrawerController, workspaceConversationDefinition, workspaceConversationView, };
 export type { WorkspaceConversationContributionOptions };

@@ -15,6 +15,8 @@ export interface WorkspaceArtifactRemote {
 export interface WorkspaceArtifactSurfaceOptions {
     readonly runtime?: WorkspaceDownloadRuntime;
     readonly resourcePath?: string;
+    readonly refreshMs?: number;
+    readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceArtifactRemote | undefined;
 }
 /** Convert a path-free Host preview into the existing bounded renderer contract. */
 export declare function workspaceArtifactPreviewDescriptor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor;

@@ -123,7 +123,7 @@ export function createWorkspaceArtifactDetail(artifact: WorkspaceDeliverable, de
   if (descriptor.type === "binary" && (safeArtifact.resourceId !== descriptor.resourceId
     || safeArtifact.mediaType !== descriptor.mediaType
     || (safeArtifact.version !== undefined && safeArtifact.version !== descriptor.version))) {
-    return { artifact: safeArtifact, descriptor, status: "error", message: "Preview resource identity is invalid" };
+    return { artifact: safeArtifact, status: "error", message: "Preview resource identity is invalid" };
   }
   return {
     artifact: safeArtifact,

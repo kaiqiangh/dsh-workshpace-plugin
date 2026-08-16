@@ -27,12 +27,13 @@ interface ClientContributionContext {
   readonly slots: WorkspaceSlotRegistry;
   readonly effect: (factory: () => void | (() => void), label?: string) => void;
   readonly remote: TypertClientRemote;
+  readonly sessions?: { readonly scope: (id: string) => { readonly remote: TypertClientRemote } | undefined };
   readonly emit: (event: string, ...args: readonly unknown[]) => void;
 }
 
 interface WorkspaceOverlaySlotRegistry {
   readonly inject: (key: string, callback: () => () => void) => () => void;
-  readonly register: (options: { readonly name: string; readonly key: string; readonly priority?: number }, component: (props: Record<string, unknown>) => unknown) => () => void;
+  readonly register: (options: { readonly name: string; readonly id: string; readonly order?: number; readonly label?: string; readonly priority?: number }, component: (props: Record<string, unknown>) => unknown) => () => void;
 }
 
 declare module "@deepseek-ai/cordis" {
@@ -52,7 +53,7 @@ export function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: 
   return createWorkspacePreviewRenderer({ MarkdownText, CodeBlock, JsonTree }, descriptor, options);
 }
 
-export const inject = ["conversationEvents", "slots", "remote"] as const;
+export const inject = ["conversationEvents", "slots", "remote", "sessions"] as const;
 
 export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
   if (!ctx?.conversationEvents || !ctx.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount || typeof ctx.emit !== "function") {
@@ -79,14 +80,16 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       let disposed = false;
       let disposeOverlay = () => {};
       const overlay = ctx.slots as unknown as WorkspaceOverlaySlotRegistry;
-      const artifactRemote = (ctx.remote as unknown as { readonly workspace?: WorkspaceArtifactRemote }).workspace;
-      try {
+      if (typeof overlay.inject === "function" && typeof overlay.register === "function") {
         disposeOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
-          { name: WORKSPACE_ARTIFACT_SLOT_NAME, key: WORKSPACE_ARTIFACT_ENTRY_KEY },
-          createWorkspaceArtifactSurfaceComponent(artifactRemote, { MarkdownText, CodeBlock, JsonTree }),
+          { name: WORKSPACE_ARTIFACT_SLOT_NAME, id: WORKSPACE_ARTIFACT_ENTRY_KEY, order: 0 },
+          createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
+            resolveRemote: (sessionId) => {
+              const scoped = sessionId ? ctx.sessions?.scope(sessionId) : undefined;
+              return (scoped?.remote as unknown as { readonly workspace?: WorkspaceArtifactRemote } | undefined)?.workspace;
+            },
+          }),
         ));
-      } catch {
-        // The optional overlay declaration is absent on older Harness profiles.
       }
       disposeConversation = () => {
         if (disposed) return;

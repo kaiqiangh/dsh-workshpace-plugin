@@ -16,6 +16,7 @@ export declare class WorkspaceService extends TypertRemoteService {
     private snapshot;
     private artifactCarrier?;
     private artifactAgentId?;
+    private artifactRouteDispose?;
     constructor(ctx: Context);
     summary(agent: AgentId): {
         readonly ready: boolean;

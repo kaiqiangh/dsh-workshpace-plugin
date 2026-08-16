@@ -87,6 +87,7 @@ export interface WorkspaceArtifactCarrierOptions {
 interface ArtifactRecord {
   readonly path: string;
   readonly artifact: WorkspaceDeliverable;
+  readonly descriptor: PreviewDescriptor;
 }
 
 export interface SessionEventLike {
@@ -218,7 +219,7 @@ export class WorkspaceArtifactCarrier {
         sizeBytes,
         { name: item.path },
       );
-      next.set(artifact.id, { path: item.path, artifact });
+      next.set(artifact.id, { path: item.path, artifact, descriptor });
     }
     this.artifacts = next;
     return [...next.values()].map((entry) => entry.artifact);
@@ -229,7 +230,7 @@ export class WorkspaceArtifactCarrier {
     if (!this.artifacts.has(id)) await this.metadata();
     const entry = this.artifacts.get(id);
     if (!entry) return { type: "error", code: "RESOURCE_INVALID", message: "Artifact is unavailable" };
-    const descriptor = await this.preview.preview(entry.path);
+    const descriptor = entry.descriptor.type === "binary" ? entry.descriptor : await this.preview.preview(entry.path);
     return descriptorWithoutPath(artifactDescriptorPath(descriptor, entry.path));
   }
 
