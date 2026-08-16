@@ -30,5 +30,6 @@ export declare class WorkspaceMemoryDomain {
     import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
     close(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<void>;
     dispose(): Promise<void>;
+    private withConflictGroups;
     private store;
 }

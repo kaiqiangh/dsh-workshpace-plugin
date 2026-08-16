@@ -187,9 +187,10 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         for (const conflict of conflictingRecords) {
           const governance = displayGovernance(conflict);
           if (governance.verification === "unverified") valueOf(await remote.memoryGovern(request, conflict.id, "reject", governance.revision, conflict.contentHash));
+          else if (conflict.status === "active") valueOf(await remote.memoryGovern(request, conflict.id, "archive", governance.revision, conflict.contentHash));
         }
         await load("");
-        setMessage("Kept the selected Memory version and rejected unverified conflicts.");
+        setMessage("Kept the selected Memory version and resolved conflicting records.");
       } catch (error) { setMessage(errorMessage(error)); }
     };
 

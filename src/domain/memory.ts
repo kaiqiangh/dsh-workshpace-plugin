@@ -95,12 +95,13 @@ export class WorkspaceMemoryDomain {
       store = new MemoryStore(location.options);
       this.stores.set(location.key, store);
     }
-    return store.open();
+    const state = await store.open();
+    return Object.freeze({ ...state, records: Object.freeze(this.withConflictGroups(state.records)) });
   }
 
   async list(context: MemoryWorkspaceContext, request: MemoryScopeRequest, options: MemoryListOptions = {}): Promise<readonly MemoryRecord[]> {
     const store = await this.store(context, request);
-    return store.list(options);
+    return this.withConflictGroups(store.list(options));
   }
 
   async upsert(context: MemoryWorkspaceContext, request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord> {
@@ -174,7 +175,7 @@ export class WorkspaceMemoryDomain {
 
   async search(context: MemoryWorkspaceContext, request: MemoryScopeRequest, query: string, options: MemorySearchOptions = {}): Promise<readonly MemoryRecord[]> {
     const store = await this.store(context, request);
-    return store.search(query, options);
+    return this.withConflictGroups(store.search(query, options));
   }
 
   async markUsed(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord> {
@@ -218,7 +219,7 @@ export class WorkspaceMemoryDomain {
 
   async export(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string> {
     const store = await this.store(context, request);
-    return exportMemoryBundle(store.all());
+    return exportMemoryBundle(this.withConflictGroups(store.all()));
   }
 
   async import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {
@@ -256,6 +257,21 @@ export class WorkspaceMemoryDomain {
     const stores = [...this.stores.values()];
     this.stores.clear();
     await Promise.all(stores.map((store) => store.close()));
+  }
+
+  private withConflictGroups(records: readonly MemoryRecord[]): readonly MemoryRecord[] {
+    const groups = new Map<string, readonly MemoryRecord[]>();
+    for (const record of records) {
+      const key = `${record.type}:${record.title.trim().toLocaleLowerCase()}`;
+      groups.set(key, [...(groups.get(key) ?? []), record]);
+    }
+    return records.map((record) => {
+      const key = `${record.type}:${record.title.trim().toLocaleLowerCase()}`;
+      const group = groups.get(key) ?? [];
+      if (new Set(group.map((candidate) => candidate.contentHash)).size < 2) return record;
+      const governance = memoryGovernance(record);
+      return Object.freeze({ ...record, governance: Object.freeze({ ...governance, conflictGroup: governance.conflictGroup ?? conflictGroupFor(record.title) }) });
+    });
   }
 
   private async store(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<MemoryStore> {
