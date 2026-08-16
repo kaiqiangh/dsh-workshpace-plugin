@@ -6,6 +6,7 @@ import type { ToolExecution } from "@deepseek-ai/dsh-tools";
 import { deriveArtifacts } from "../domain/activity.ts";
 import { SessionActivityObserver } from "../domain/observation.ts";
 import { resolveWorkspaceRoot, startWorkspace } from "../domain/workspace.ts";
+import { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent } from "../domain/memory.ts";
 import { sessionToolRecords, type SessionEventLike } from "./workspace-artifacts.ts";
 
 /** Summary card payload; also carried by the durable `workspace/summary` event. */
@@ -14,6 +15,20 @@ export interface WorkspaceSummaryData {
   readonly changes: number;
   readonly artifacts: number;
   readonly workspaceName: string;
+  /** Files whose last observed activity was a create. */
+  readonly filesCreated: number;
+  /** Files whose last observed activity was an edit. */
+  readonly filesModified: number;
+  /** Files whose last observed activity was a delete. */
+  readonly filesDeleted: number;
+  /** Earliest observed activity timestamp in the session (0 when none). */
+  readonly firstObservedAt: number;
+  /** Latest observed activity timestamp in the session (0 when none). */
+  readonly lastObservedAt: number;
+  /** Active-scope Memory records (session scope), 0 when unavailable. */
+  readonly memoryCount: number;
+  /** Active-scope `decision` Memory records (session scope), 0 when unavailable. */
+  readonly decisionCount: number;
 }
 
 declare module "@deepseek-ai/dsh-session/types" {
@@ -60,28 +75,64 @@ export function workspaceSummaryFor(agent: SummaryAgent): WorkspaceSummaryData |
     file.current === "present"
     && (file.lastKind === "CREATED" || file.lastKind === "MODIFIED")
     && (file.attribution === "agent-evidenced" || file.attribution === "session-observed")).length;
+  const filesCreated = files.filter((file) => file.lastKind === "CREATED").length;
+  const filesModified = files.filter((file) => file.lastKind === "MODIFIED").length;
+  const filesDeleted = files.filter((file) => file.lastKind === "DELETED").length;
+  const observedAts = files.flatMap((file) => [file.firstObservedAt, file.lastObservedAt]);
+  const firstObservedAt = observedAts.length ? Math.min(...observedAts) : 0;
+  const lastObservedAt = observedAts.length ? Math.max(...observedAts) : 0;
   return Object.freeze({
     filesTouched: files.length,
     changes,
     artifacts: deriveArtifacts(observer.projection).length,
     workspaceName: basename(root),
+    filesCreated,
+    filesModified,
+    filesDeleted,
+    firstObservedAt,
+    lastObservedAt,
+    // Memory/decision counts are attached by the emitter when a Memory domain
+    // is available; the pure summary defaults them to 0 so the payload shape
+    // is always complete and the web card can render without a host seam.
+    memoryCount: 0,
+    decisionCount: 0,
   });
 }
 
 /**
  * Observe final tool outcomes through the public `tools/result` seam,
  * debounce a per-session summary, and append a durable `workspace/summary`
- * event on the owning session. Returns a disposer.
+ * event on the owning session. When `memoryDomain` is supplied, the summary
+ * is augmented with active-scope (session) Memory and decision counts. Returns
+ * a disposer.
  */
-export function attachWorkspaceSummaryEmitter(ctx: Context): () => void {
+export function attachWorkspaceSummaryEmitter(ctx: Context, memoryDomain?: WorkspaceMemoryDomain): () => void {
   const emitted = new Set<string>();
   const pending = new Map<string, SummaryAgent>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  const flush = (agent: SummaryAgent): void => {
+  const withMemoryCounts = async (agent: SummaryAgent, base: WorkspaceSummaryData): Promise<WorkspaceSummaryData> => {
+    const cwd = agent.session?.header?.cwd;
+    if (!cwd) return base;
+    try {
+      const hostAgent: MemoryHostAgent = { id: agent.id, session: { header: { cwd } } };
+      const context = workspaceMemoryContextFor(hostAgent);
+      const records = await memoryDomain!.list(context, { scope: "session" }, { limit: 100, status: "active" });
+      return Object.freeze({
+        ...base,
+        memoryCount: records.length,
+        decisionCount: records.filter((record) => record.type === "decision").length,
+      });
+    } catch {
+      return base;
+    }
+  };
+
+  const flush = async (agent: SummaryAgent): Promise<void> => {
     timers.delete(agent.id);
-    const summary = workspaceSummaryFor(agent);
-    if (!summary) return;
+    const base = workspaceSummaryFor(agent);
+    if (!base) return;
+    const summary = memoryDomain ? await withMemoryCounts(agent, base) : base;
     const phase = emitted.has(agent.id) ? "update" : "start";
     emitted.add(agent.id);
     agent.session?.append?.("workspace/summary", { id: agent.id, phase, summary });
@@ -93,7 +144,7 @@ export function attachWorkspaceSummaryEmitter(ctx: Context): () => void {
     pending.set(agent.id, agent);
     const existing = timers.get(agent.id);
     if (existing !== undefined) clearTimeout(existing);
-    timers.set(agent.id, setTimeout(() => flush(pending.get(agent.id)!), SUMMARY_DEBOUNCE_MS));
+    timers.set(agent.id, setTimeout(() => { void flush(pending.get(agent.id)!).catch(() => {}); }, SUMMARY_DEBOUNCE_MS));
     return undefined;
   };
 
