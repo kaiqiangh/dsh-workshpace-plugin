@@ -61,7 +61,54 @@ test("derives artifacts from the Harness write result envelope", async () => {
   const metadata = await carrier.metadata();
   assert.equal(metadata.length, 1);
   assert.equal(metadata[0]?.name, "browser-artifact.md");
+  assert.equal((sessionToolRecords(events)[0]?.data?.result as { readonly operation?: string })?.operation, "create");
   assert.equal((await carrier.previewArtifact(metadata[0]!.id)).type, "markdown");
+  carrier.dispose();
+});
+
+test("does not derive Harness write updates as new artifacts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  await writeFile(join(root, "browser-artifact.md"), "# Updated artifact\n", "utf8");
+  const workspace = startWorkspace({ sessionId: "session-write-update", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-update", name: "write", arguments: JSON.stringify({ file_path: "browser-artifact.md", content: "# Updated artifact\n" }) } },
+    {
+      seq: 1,
+      time: 1,
+      type: "tool/result",
+      data: {
+        message: {
+          source: { kind: "tool", callId: "call-update" },
+          content: [{ type: "tool-result", toolCallId: "call-update", content: [{ type: "text", text: "Updated file" }] }],
+        },
+        meta: { diffs: [{ path: "browser-artifact.md", oldText: "# Original artifact\n", newText: "# Updated artifact\n" }] },
+      },
+    },
+  ] as const;
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => sessionToolRecords(events) });
+  assert.equal((sessionToolRecords(events)[0]?.data?.result as { readonly operation?: string })?.operation, "update");
+  assert.deepEqual(await carrier.metadata(), []);
+  carrier.dispose();
+});
+
+test("fails closed when a replayed write result has no operation evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  await writeFile(join(root, "browser-artifact.md"), "# Browser artifact\n", "utf8");
+  const workspace = startWorkspace({ sessionId: "session-write-unknown", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-unknown", name: "write", arguments: JSON.stringify({ file_path: "browser-artifact.md", content: "# Browser artifact\n" }) } },
+    {
+      seq: 1,
+      time: 1,
+      type: "tool/result",
+      data: {
+        message: { source: { kind: "tool", callId: "call-unknown" }, content: [{ type: "tool-result", toolCallId: "call-unknown", content: [] }] },
+        meta: { diffs: [] },
+      },
+    },
+  ] as const;
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => sessionToolRecords(events) });
+  assert.deepEqual(await carrier.metadata(), []);
   carrier.dispose();
 });
 

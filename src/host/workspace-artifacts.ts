@@ -101,7 +101,8 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
 }
 
-function operationFromResult(content: readonly unknown[]): "create" | "update" | undefined {
+function operationFromResult(tool: string | undefined, content: readonly unknown[]): "create" | "update" | undefined {
+  if (tool === undefined || !/^(?:write|write[-_]file|file[-_]write|create[-_]file)$/i.test(tool)) return undefined;
   const textParts: string[] = [];
   const collectText = (items: readonly unknown[]): void => {
     for (const item of items) {
@@ -144,7 +145,7 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
     if (!callId) continue;
     const call = calls.get(callId);
     const meta = record(data.meta) ?? { locations: [] };
-    const operation = operationFromResult(content);
+    const operation = operationFromResult(call?.name, content);
     records.push({
       seq: event.seq,
       time: event.time,
