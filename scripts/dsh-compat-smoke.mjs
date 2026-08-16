@@ -256,7 +256,7 @@ const clientTypert = await import('dsh-workspace-plugin/client/typert')
 const remote = await import('dsh-workspace-plugin/remote')
 const clientSource = await readFile(new URL('./node_modules/dsh-workspace-plugin/lib/client.js', import.meta.url), 'utf8')
 let handoff
-const sandbox = { console, Symbol, URL, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
+const sandbox = { console, Symbol, URL, AbortController, setTimeout, clearTimeout, document: { createElement() { return { innerHTML: '', textContent: '' } } } }
 sandbox.globalThis = sandbox
 sandbox.window = { __ModuleLoader__: { load(value) { handoff = value } } }
 runInNewContext(clientSource, sandbox)
@@ -288,6 +288,20 @@ const artifact = { id: 'workspace:smoke', name: 'smoke.md', mediaType: 'text/mar
 if (client.createWorkspaceArtifactView([artifact], artifact.id).selected?.id !== artifact.id) throw new Error('packed client artifact view did not select')
 if (client.buildWorkspaceResourceUrl(artifact) !== '/workspace/resource?id=resource-smoke&type=text%2Fmarkdown&download=1') throw new Error('packed client artifact resource URL did not build')
 if (!client.renderWorkspacePreview({ type: 'text', path: 'smoke.txt', renderer: 'ui-primitives', content: 'bounded', language: 'text', truncated: false })) throw new Error('packed client preview renderer did not render')
+let downloadSignal
+const downloadController = client.createWorkspaceDownloadController({
+  fetch: async (_url, { signal }) => {
+    downloadSignal = signal
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true }))
+    throw new Error('download should have been cancelled')
+  },
+  createObjectURL: () => 'blob:smoke',
+  revokeObjectURL: () => {},
+})
+const pendingDownload = downloadController.start(artifact)
+downloadController.cancel()
+const downloadResult = await pendingDownload
+if (!downloadSignal?.aborted || downloadResult.status !== 'cancelled') throw new Error('packed client download cancellation did not settle: ' + JSON.stringify(downloadResult))
 if (hostTypert.TYPERT.face !== 'host' || clientTypert.TYPERT.face !== 'client') throw new Error('generated face mismatch')
 if (hostTypert.TYPERT.package !== 'dsh-workspace-plugin' || clientTypert.TYPERT.package !== 'dsh-workspace-plugin') throw new Error('generated package identity mismatch')
 if (remote.TYPERT_REMOTE.package !== 'dsh-workspace-plugin' || remote.TYPERT_REMOTE.descriptors.length === 0) throw new Error('missing remote contribution')
