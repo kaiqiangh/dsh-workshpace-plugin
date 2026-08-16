@@ -38,6 +38,33 @@ test("derives path-free session artifact metadata and typed previews", async () 
   carrier.dispose();
 });
 
+test("derives artifacts from the Harness write result envelope", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  await writeFile(join(root, "browser-artifact.md"), "# Browser artifact\n", "utf8");
+  const workspace = startWorkspace({ sessionId: "session-write-envelope", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-write", name: "write", arguments: JSON.stringify({ file_path: "browser-artifact.md", content: "# Browser artifact\n" }) } },
+    {
+      seq: 1,
+      time: 1,
+      type: "tool/result",
+      data: {
+        message: {
+          source: { kind: "tool", callId: "call-write" },
+          content: [{ type: "tool-result", toolCallId: "call-write", content: [{ type: "text", text: "<path>/private/tmp/browser-artifact.md</path>\n<type>file</type>\n<content>\nCreated file\n</content>" }] }],
+        },
+        meta: { diffs: [] },
+      },
+    },
+  ] as const;
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => sessionToolRecords(events) });
+  const metadata = await carrier.metadata();
+  assert.equal(metadata.length, 1);
+  assert.equal(metadata[0]?.name, "browser-artifact.md");
+  assert.equal((await carrier.previewArtifact(metadata[0]!.id)).type, "markdown");
+  carrier.dispose();
+});
+
 test("rejects unknown artifact ids without touching the filesystem", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
   const workspace = startWorkspace({ sessionId: "session-2", processCwd: root });

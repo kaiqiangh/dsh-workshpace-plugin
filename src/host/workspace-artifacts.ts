@@ -101,6 +101,23 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
 }
 
+function operationFromResult(content: readonly unknown[]): "create" | "update" | undefined {
+  const textParts: string[] = [];
+  const collectText = (items: readonly unknown[]): void => {
+    for (const item of items) {
+      const block = record(item);
+      if (!block) continue;
+      if (typeof block.text === "string") textParts.push(block.text);
+      if (Array.isArray(block.content)) collectText(block.content);
+    }
+  };
+  collectText(content);
+  const text = textParts.join("\n");
+  if (/\bCreated file\b/i.test(text)) return "create";
+  if (/\bUpdated file\b/i.test(text)) return "update";
+  return undefined;
+}
+
 function toSessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[] {
   const calls = new Map<string, { readonly name: string; readonly arguments: unknown }>();
   const records: NativeDurableToolRecord[] = [];
@@ -126,7 +143,8 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
     const callId = typeof source?.callId === "string" ? source.callId : typeof block?.toolCallId === "string" ? block.toolCallId : undefined;
     if (!callId) continue;
     const call = calls.get(callId);
-    const result = data.meta ?? { locations: [] };
+    const meta = record(data.meta) ?? { locations: [] };
+    const operation = operationFromResult(content);
     records.push({
       seq: event.seq,
       time: event.time,
@@ -135,7 +153,7 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
         tool: call?.name ?? "tool",
         callId,
         arguments: call?.arguments ?? {},
-        result,
+        result: operation === undefined ? meta : { ...meta, operation },
         ok: block?.isError !== true,
       },
     });
