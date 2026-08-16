@@ -120,7 +120,9 @@ export function createWorkspaceArtifactDetail(artifact: WorkspaceDeliverable, de
       return { artifact: safeArtifact, status: "error", message: "Preview path is invalid" };
     }
   }
-  if (descriptor.type === "binary" && safeArtifact.resourceId !== descriptor.resourceId) {
+  if (descriptor.type === "binary" && (safeArtifact.resourceId !== descriptor.resourceId
+    || safeArtifact.mediaType !== descriptor.mediaType
+    || (safeArtifact.version !== undefined && safeArtifact.version !== descriptor.version))) {
     return { artifact: safeArtifact, descriptor, status: "error", message: "Preview resource identity is invalid" };
   }
   return {
