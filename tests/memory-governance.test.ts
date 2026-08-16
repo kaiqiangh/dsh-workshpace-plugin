@@ -54,7 +54,6 @@ test("requires explicit verification before pinning and keeps stale records inel
   assert.equal(transitionMemoryGovernance(restored, "restore", "user", 15).status, "active");
   assert.equal(transitionMemoryGovernance(restored, "forget", "user", 16).status, "forgotten");
 });
-
 test("preserves optimistic conflicts and remaps imported IDs into quarantine state", () => {
   const current = record();
   assert.doesNotThrow(() => assertMemoryRevision(current, 1, current.contentHash));
@@ -65,4 +64,3 @@ test("preserves optimistic conflicts and remaps imported IDs into quarantine sta
   assert.equal(imported[0]!.governance?.origin, "imported");
   assert.equal(imported[0]!.governance?.verification, "unverified");
 });
-
