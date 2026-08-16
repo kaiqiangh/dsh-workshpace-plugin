@@ -30,3 +30,6 @@ pnpm-debug.log*
 .vscode/
 .idea/
 .DS_Store
+
+# fixture workspace
+packages/
