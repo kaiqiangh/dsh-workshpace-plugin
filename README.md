@@ -62,6 +62,7 @@ npm run smoke:compat
 - **The panel is missing:** rebuild the plugin, restart `dsh web`, and add the plugin again if the local profile was created before the build.
 - **The old overlapping layout is still visible:** an older Web process is serving a cached bundle; stop it and run `npx @deepseek-ai/dsh web` again.
 - **Artifacts or Memory are empty:** open Workspace from an active Harness session; the panel reads session-scoped data rather than a global file list.
+- **Memory Export downloads an empty bundle (`"records":[]`):** that is expected when the store is empty. Memory is only created manually in the UI today (records start `unverified` until you Verify them); the Agent does not propose Memory yet. Create or verify a record first, then export again.
 - **The command cannot find the plugin:** run the add command from the Harness project and use the correct relative path to this repository.
 
 Project terms are defined in [`CONTEXT.md`](CONTEXT.md), and architecture decisions are recorded in [`docs/adr/`](docs/adr/).
