@@ -537,6 +537,12 @@ async function gatewaySmoke(root, host, hostTypert) {
   assert.ok(conflictSecond.governance?.conflictGroup)
   const rejectedConflict = await govern(conflictSecond, 'reject')
   assert.equal(rejectedConflict.governance?.verification, 'rejected')
+  const conflictVersions = (await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: memoryRequest },
+  })).filter(record => record.id === conflictFirst.id || record.id === conflictSecond.id)
+  assert.equal(conflictVersions.length, 2, 'same-title conflicts must preserve both versions')
+  assert.ok(conflictVersions.every(record => record.governance?.conflictGroup === conflictSecond.governance?.conflictGroup), 'conflict versions must share one auditable conflict group')
+  assert.equal(conflictVersions.find(record => record.id === conflictSecond.id)?.governance?.verification, 'rejected')
   const sharedReadRequest = { scope: 'shared-project', sharedProject: true }
   await ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sharedReadRequest } })
   let sharedWriteError
