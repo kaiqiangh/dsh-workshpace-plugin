@@ -3,9 +3,11 @@
 Run date: 2026-08-16
 
 This record closes the installed artifact-gate gap documented on Wayfinder
-issues [#63](https://github.com/kaiqiangh/dsh-workshpace-plugin/issues/63) and
-[#51](https://github.com/kaiqiangh/dsh-workshpace-plugin/issues/51) after the
-Harness durable `write` result replay fix.
+issue [#63](https://github.com/kaiqiangh/dsh-workshpace-plugin/issues/63) after
+the Harness durable `write` result replay fix. The final mounted integration
+evidence for [#51](https://github.com/kaiqiangh/dsh-workshpace-plugin/issues/51)
+is recorded separately in
+[`dsh-v03-mounted-integration-evidence.md`](./dsh-v03-mounted-integration-evidence.md).
 
 ## Pinned identity
 
