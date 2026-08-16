@@ -26,10 +26,11 @@ export interface WorkspaceViewSlotRegistry {
 export interface WorkspaceConversationViewOptions {
     readonly artifacts: WorkspaceSurfaceComponent;
     readonly memory: WorkspaceSurfaceComponent;
+    readonly changes: WorkspaceSurfaceComponent;
 }
 /**
- * Conversation view tab body: the Artifacts/Memory switch rendered in the
- * tab row's body, reusing the existing surfaces unchanged. Session-scoped
+ * Conversation view tab body: the Artifacts/Memory/Changes switch rendered in
+ * the tab row's body, reusing the existing surfaces unchanged. Session-scoped
  * slot components receive the global `useSessions` seat, which the surfaces
  * already read, so no remote-resolution changes are needed.
  */

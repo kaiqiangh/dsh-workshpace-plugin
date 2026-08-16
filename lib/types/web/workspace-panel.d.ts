@@ -5,6 +5,7 @@ export type WorkspaceSurfaceComponent = (props: Record<string, unknown>) => Reac
 export interface WorkspacePanelOptions {
     readonly artifacts: WorkspaceSurfaceComponent;
     readonly memory: WorkspaceSurfaceComponent;
+    readonly changes: WorkspaceSurfaceComponent;
 }
 export declare function installWorkspacePanelStyles(): () => void;
 export declare function createWorkspacePanelComponent(options: WorkspacePanelOptions): WorkspaceSurfaceComponent;

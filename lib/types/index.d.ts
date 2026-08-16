@@ -4,11 +4,13 @@ import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, Wo
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
+import { type GitChange, type GitDiffResult } from "./domain/git.ts";
 export { MEMORY_MAX_CONTENT_BYTES, MEMORY_MAX_FILE_BYTES, MEMORY_MAX_QUERY_BYTES, MEMORY_MAX_RESULTS, MEMORY_MAX_TAGS, MEMORY_MAX_TAG_BYTES, MEMORY_MAX_TITLE_BYTES, MEMORY_SCHEMA_VERSION, memoryStorePath, MemoryStore, MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryMigration, type MemoryConfidence, type MemoryGovernance, type MemoryOrigin, type MemoryRetention, type MemorySourceRef, type MemoryVerification, type MemoryProvenance, type MemoryReadState, type MemoryRecord, type MemoryScope, type MemorySearchOptions, type MemoryStatus, type MemoryStoreErrorCode, type MemoryStoreLocationOptions, type MemoryStoreOptions, type MemoryStoreWarning, type MemoryType, type MemoryContentHash, } from "./domain/memory-store.ts";
 export { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
 export { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, memoryGovernance, memoryGovernanceEligible, MemoryGovernanceError, sourceRef, transitionMemoryGovernance, } from "./domain/memory-governance.ts";
 export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { MEMORY_TYPES } from "./types.ts";
+export { GitError, gitDiff, gitStatus, isGitRepository, parsePorcelain, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitDiffResult, type GitErrorCode } from "./domain/git.ts";
 export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export { PreviewPanelError, PreviewService, type BinaryPreviewDescriptor, type BoundedTextRead, type CsvPreviewDescriptor, type JsonPreviewDescriptor, type MarkdownPreviewDescriptor, type OpenedResource, type PreviewDescriptor, type PreviewErrorCode, type PreviewErrorDescriptor, type PreviewLimits, type ResourceRequest, type TextPreviewDescriptor, type UnsupportedPreviewDescriptor, } from "./domain/preview.ts";
 export { createWorkspaceDeliverable, deliverableResourceId, safeDownloadName, WorkspaceDeliverableError, type WorkspaceDeliverable, type WorkspaceDeliverableOptions, type WorkspaceDeliverablePreview, type WorkspaceDeliverableSource, } from "./domain/deliverable.ts";
@@ -55,6 +57,9 @@ export declare class WorkspaceService extends TypertRemoteService {
     memoryExport(agentId: AgentId, request: MemoryScopeRequest): Promise<string>;
     memoryImport(agentId: AgentId, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
     memoryClose(agentId: AgentId, request: MemoryScopeRequest): Promise<void>;
+    gitStatus(agentId: AgentId): Promise<readonly GitChange[]>;
+    gitDiff(agentId: AgentId, path?: string): Promise<GitDiffResult>;
+    private rootFor;
     private agent;
     private memoryContext;
     private carrier;
