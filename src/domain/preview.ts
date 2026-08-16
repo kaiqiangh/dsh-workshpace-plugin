@@ -419,6 +419,10 @@ export class PreviewService {
       if (info.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
       const read = await readBounded(resolved.canonicalPath, limit, resolved.canonicalPath, resource.version);
       if (read.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
+      if (this.disposed || this.resources.get(resourceId) !== resource || this.now() >= resource.expiresAt) {
+        this.resources.delete(resourceId);
+        throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+      }
       return { mediaType: resource.mediaType, version: resource.version, downloadName: resource.downloadName, bytes: read.bytes };
     } catch (error) {
       throw safeError(error);

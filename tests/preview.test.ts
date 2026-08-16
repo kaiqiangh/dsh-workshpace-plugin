@@ -144,3 +144,19 @@ test("revalidates resource version, type, expiry, and replacement containment", 
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test("does not complete an opaque read after service disposal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-preview-dispose-"));
+  try {
+    await writeFile(join(root, "image.png"), Buffer.alloc(4 * 1024 * 1024, 7));
+    const service = new PreviewService(root, identity);
+    const descriptor = await service.preview("image.png");
+    assert.equal(descriptor.type, "binary");
+    if (descriptor.type !== "binary") return;
+    const pending = service.openResource(descriptor.resourceId, { identity, mediaType: "image/png" });
+    service.dispose();
+    await assert.rejects(pending, (error) => error instanceof PreviewPanelError && error.code === "RESOURCE_EXPIRED");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
