@@ -189,7 +189,7 @@ function descriptorWithoutPath(descriptor: PreviewDescriptor): WorkspaceArtifact
   }
 }
 
-async function fileSize(root: string, path: string): Promise<number> {
+async function statArtifact(root: string, path: string): Promise<{ readonly size: number; readonly mtimeMs: number }> {
   const normalized = normalizeWorkspacePath(path);
   const canonicalRoot = await realpath(root);
   const canonicalPath = await realpath(join(canonicalRoot, normalized));
@@ -197,11 +197,17 @@ async function fileSize(root: string, path: string): Promise<number> {
   if (relativePath === ".." || relativePath.startsWith(`..${sep}`)) throw new PreviewPanelError("SYMLINK_ESCAPE", "Workspace Path escapes its root");
   const info = await stat(canonicalPath);
   if (!info.isFile()) throw new PreviewPanelError("PROVIDER_UNAVAILABLE", "Artifact is not a file");
-  return info.size;
+  return { size: info.size, mtimeMs: info.mtimeMs };
 }
 
 function artifactDescriptorPath(descriptor: PreviewDescriptor, path: string): PreviewDescriptor {
   return "path" in descriptor ? descriptor : ({ ...descriptor, path } as PreviewDescriptor);
+}
+
+interface CachedArtifactDescriptor {
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly descriptor: PreviewDescriptor;
 }
 
 /**
@@ -215,6 +221,7 @@ export class WorkspaceArtifactCarrier {
   private readonly root: string;
   private readonly records: () => readonly NativeDurableToolRecord[];
   private artifacts = new Map<string, ArtifactRecord>();
+  private readonly descriptorCache = new Map<string, CachedArtifactDescriptor>();
 
   constructor(options: WorkspaceArtifactCarrierOptions) {
     if (!options?.workspace || !options.root || typeof options.records !== "function") throw new Error("Workspace artifact carrier options are invalid");
@@ -229,16 +236,28 @@ export class WorkspaceArtifactCarrier {
     const projection = this.projection();
     const next = new Map<string, ArtifactRecord>();
     for (const item of deriveArtifacts(projection)) {
-      const descriptor = await this.preview.preview(item.path);
-      let sizeBytes = 0;
-      try { sizeBytes = await fileSize(this.root, item.path); } catch { continue; }
-      const artifact = createWorkspaceDeliverable(
-        descriptor,
-        { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
-        sizeBytes,
-        { name: item.path },
-      );
-      next.set(artifact.id, { path: item.path, artifact, descriptor });
+      try {
+        const info = await statArtifact(this.root, item.path);
+        const cached = this.descriptorCache.get(item.path);
+        let descriptor: PreviewDescriptor;
+        if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
+          descriptor = cached.descriptor;
+        } else {
+          descriptor = await this.preview.preview(item.path);
+          this.descriptorCache.set(item.path, { size: info.size, mtimeMs: info.mtimeMs, descriptor });
+        }
+        const artifact = createWorkspaceDeliverable(
+          descriptor,
+          { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
+          info.size,
+          { name: item.path },
+        );
+        next.set(artifact.id, { path: item.path, artifact, descriptor });
+      } catch {
+        // A deleted/moved artifact is dropped from this snapshot; the projection
+        // decides what remains in scope, not a transient stat failure.
+        continue;
+      }
     }
     this.artifacts = next;
     return [...next.values()].map((entry) => entry.artifact);
@@ -256,6 +275,7 @@ export class WorkspaceArtifactCarrier {
   dispose(): void {
     this.preview.dispose();
     this.artifacts.clear();
+    this.descriptorCache.clear();
   }
 
   private projection(): ActivityProjection {
