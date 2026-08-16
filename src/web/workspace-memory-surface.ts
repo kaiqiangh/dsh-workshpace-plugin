@@ -296,6 +296,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("button", { ref: confirmButton, type: "button", onClick: () => { setForgetPending(false); void mutate("forget"); } }, "Forget record"),
       createElement("button", { type: "button", onClick: () => { setForgetPending(false); forgetTrigger.current?.focus(); } }, "Cancel"),
     );
+    if (!sessionId) return null;
     return createElement("section", { role: "region", "aria-label": "Workspace Memory", "data-dsh-workspace": "memory" }, createElement("h2", null, "Workspace Memory"), body, confirmation);
   };
 }

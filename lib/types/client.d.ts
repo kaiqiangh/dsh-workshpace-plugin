@@ -6,10 +6,14 @@ interface ClientContributionContext {
     readonly conversationEvents: WorkspaceConversationEventRegistry;
     readonly slots: WorkspaceSlotRegistry;
     readonly effect: (factory: () => void | (() => void), label?: string) => void;
+    readonly inject?: (dependencies: readonly string[], callback: (scope: ClientContributionContext) => void | (() => void)) => {
+        readonly dispose: () => Promise<void>;
+    };
     readonly remote: TypertClientRemote;
     readonly sessions?: {
         readonly scope: (id: string) => {
-            readonly remote: TypertClientRemote;
+            readonly get?: (key: string) => unknown;
+            readonly remote?: TypertClientRemote;
         } | undefined;
     };
     readonly emit: (event: string, ...args: readonly unknown[]) => void;

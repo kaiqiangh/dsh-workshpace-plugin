@@ -266,6 +266,7 @@ export function createWorkspaceArtifactSurfaceComponent(
           artifacts.length === 0 && createElement("p", { role: "status" }, "No session artifacts yet."),
           selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
         );
+    if (!sessionId) return null;
     return createElement("section", { "data-dsh-workspace": "artifacts", role: "region", "aria-label": "Workspace artifacts" }, createElement("h2", null, "Workspace artifacts"), body);
   };
 }

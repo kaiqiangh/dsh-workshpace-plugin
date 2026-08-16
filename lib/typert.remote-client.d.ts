@@ -8,31 +8,45 @@ import type { AgentId, MemoryDraft, MemoryGovernanceAction, MemoryListOptions, M
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$776f726b7370616365 {
+    artifactMetadata: (agentId: AgentId) => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
+    contextSnapshot: (agentId: AgentId) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
+    focus: (agentId: AgentId) => Promise<RemoteResult<{ readonly focused: boolean; }>>
+    memoryArchive: (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
+    memoryClose: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<void>>
+    memoryExport: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
+    memoryForget: (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
+    memoryGovern: (agentId: AgentId, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
+    memoryImport: (agentId: AgentId, request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    memoryList: (agentId: AgentId, request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    memoryMarkUsed: (agentId: AgentId, request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    memoryOpen: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>
+    memorySearch: (agentId: AgentId, request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    memoryUpsert: (agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
+    previewArtifact: (agentId: AgentId, id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
+    replaceContext: (agentId: AgentId, snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     summary: (agent: AgentId) => Promise<RemoteResult<{ readonly ready: boolean; readonly agent: AgentId; }>>
   }
   interface TypertRemoteMap {
+    'workspace/artifactMetadata': (agentId: AgentId) => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
+    'workspace/contextSnapshot': (agentId: AgentId) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
+    'workspace/focus': (agentId: AgentId) => Promise<RemoteResult<{ readonly focused: boolean; }>>
+    'workspace/memoryArchive': (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
+    'workspace/memoryClose': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<void>>
+    'workspace/memoryExport': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
+    'workspace/memoryForget': (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
+    'workspace/memoryGovern': (agentId: AgentId, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
+    'workspace/memoryImport': (agentId: AgentId, request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    'workspace/memoryList': (agentId: AgentId, request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    'workspace/memoryMarkUsed': (agentId: AgentId, request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
+    'workspace/memoryOpen': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>
+    'workspace/memorySearch': (agentId: AgentId, request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    'workspace/memoryUpsert': (agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
+    'workspace/previewArtifact': (agentId: AgentId, id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
+    'workspace/replaceContext': (agentId: AgentId, snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
     'workspace/summary': (agent: AgentId) => Promise<RemoteResult<{ readonly ready: boolean; readonly agent: AgentId; }>>
   }
   interface TypertRemoteNamespaceMap {
     'workspace': TypertRemoteNamespace$776f726b7370616365
-  }
-  interface TypertRemoteScopeMap {
-    'agent:workspace/artifactMetadata': () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
-    'agent:workspace/contextSnapshot': () => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
-    'agent:workspace/focus': () => Promise<RemoteResult<{ readonly focused: boolean; }>>
-    'agent:workspace/memoryArchive': (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
-    'agent:workspace/memoryClose': (request: MemoryScopeRequest) => Promise<RemoteResult<void>>
-    'agent:workspace/memoryExport': (request: MemoryScopeRequest) => Promise<RemoteResult<string>>
-    'agent:workspace/memoryForget': (request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
-    'agent:workspace/memoryGovern': (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
-    'agent:workspace/memoryImport': (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
-    'agent:workspace/memoryList': (request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
-    'agent:workspace/memoryMarkUsed': (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
-    'agent:workspace/memoryOpen': (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>
-    'agent:workspace/memorySearch': (request: MemoryScopeRequest, query: string, options?: MemorySearchOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
-    'agent:workspace/memoryUpsert': (request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
-    'agent:workspace/previewArtifact': (id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
-    'agent:workspace/replaceContext': (snapshot: PinnedContextRemoteSnapshot) => Promise<RemoteResult<PinnedContextRemoteSnapshot>>
   }
 }
 

@@ -19,6 +19,7 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
     }
 }
 export declare class WorkspaceService extends TypertRemoteService {
+    static inject: readonly ["agents"];
     private snapshot;
     private readonly memoryDomain;
     private readonly memoryWorkspaceSnapshots;
@@ -30,24 +31,25 @@ export declare class WorkspaceService extends TypertRemoteService {
         readonly ready: boolean;
         readonly agent: AgentId;
     };
-    focus(): {
+    focus(agentId: AgentId): {
         readonly focused: boolean;
     };
-    contextSnapshot(): PinnedContextRemoteSnapshot;
-    replaceContext(snapshot: PinnedContextRemoteSnapshot): PinnedContextRemoteSnapshot;
-    artifactMetadata(): Promise<readonly WorkspaceDeliverable[]>;
-    previewArtifact(id: string): Promise<WorkspaceArtifactPreview>;
-    memoryOpen(request: MemoryScopeRequest): Promise<MemoryReadState>;
-    memoryList(request: MemoryScopeRequest, options?: MemoryListOptions): Promise<readonly MemoryRecord[]>;
-    memoryUpsert(request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord>;
-    memoryArchive(request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
-    memoryForget(request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
-    memorySearch(request: MemoryScopeRequest, query: string, options?: MemorySearchOptions): Promise<readonly MemoryRecord[]>;
-    memoryMarkUsed(request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
-    memoryGovern(request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
-    memoryExport(request: MemoryScopeRequest): Promise<string>;
-    memoryImport(request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
-    memoryClose(request: MemoryScopeRequest): Promise<void>;
+    contextSnapshot(agentId: AgentId): PinnedContextRemoteSnapshot;
+    replaceContext(agentId: AgentId, snapshot: PinnedContextRemoteSnapshot): PinnedContextRemoteSnapshot;
+    artifactMetadata(agentId: AgentId): Promise<readonly WorkspaceDeliverable[]>;
+    previewArtifact(agentId: AgentId, id: string): Promise<WorkspaceArtifactPreview>;
+    memoryOpen(agentId: AgentId, request: MemoryScopeRequest): Promise<MemoryReadState>;
+    memoryList(agentId: AgentId, request: MemoryScopeRequest, options?: MemoryListOptions): Promise<readonly MemoryRecord[]>;
+    memoryUpsert(agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft): Promise<MemoryRecord>;
+    memoryArchive(agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
+    memoryForget(agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
+    memorySearch(agentId: AgentId, request: MemoryScopeRequest, query: string, options?: MemorySearchOptions): Promise<readonly MemoryRecord[]>;
+    memoryMarkUsed(agentId: AgentId, request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
+    memoryGovern(agentId: AgentId, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
+    memoryExport(agentId: AgentId, request: MemoryScopeRequest): Promise<string>;
+    memoryImport(agentId: AgentId, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
+    memoryClose(agentId: AgentId, request: MemoryScopeRequest): Promise<void>;
+    private agent;
     private memoryContext;
     private carrier;
 }

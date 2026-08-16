@@ -32,8 +32,9 @@ interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
   readonly slots: WorkspaceSlotRegistry;
   readonly effect: (factory: () => void | (() => void), label?: string) => void;
+  readonly inject?: (dependencies: readonly string[], callback: (scope: ClientContributionContext) => void | (() => void)) => { readonly dispose: () => Promise<void> };
   readonly remote: TypertClientRemote;
-  readonly sessions?: { readonly scope: (id: string) => { readonly remote: TypertClientRemote } | undefined };
+  readonly sessions?: { readonly scope: (id: string) => { readonly get?: (key: string) => unknown; readonly remote?: TypertClientRemote } | undefined };
   readonly emit: (event: string, ...args: readonly unknown[]) => void;
 }
 
@@ -87,23 +88,53 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       let disposeOverlay = () => {};
       const overlay = ctx.slots as unknown as WorkspaceOverlaySlotRegistry;
       if (typeof overlay.inject === "function" && typeof overlay.register === "function") {
-        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote | undefined => {
-          const scoped = sessionId ? ctx.sessions?.scope(sessionId) : undefined;
-          return (scoped?.remote as unknown as { readonly workspace?: WorkspaceArtifactRemote & WorkspaceMemoryRemote } | undefined)?.workspace;
+        const registerOverlay = (scope: ClientContributionContext): (() => void) => {
+          const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
+          const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote>();
+          const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote | undefined => {
+            if (!sessionId || !workspace) return undefined;
+            const cached = remotes.get(sessionId);
+            if (cached) return cached;
+            const call = <T>(method: string, ...args: readonly unknown[]): Promise<T> => workspace[method]!(sessionId, ...args) as Promise<T>;
+            const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote = {
+              artifactMetadata: () => call("artifactMetadata"),
+              previewArtifact: (id: Parameters<WorkspaceArtifactRemote["previewArtifact"]>[0]) => call("previewArtifact", id),
+              memoryOpen: (request: Parameters<WorkspaceMemoryRemote["memoryOpen"]>[0]) => call("memoryOpen", request),
+              memoryList: (request: Parameters<WorkspaceMemoryRemote["memoryList"]>[0], options: Parameters<WorkspaceMemoryRemote["memoryList"]>[1]) => call("memoryList", request, options),
+              memorySearch: (request: Parameters<WorkspaceMemoryRemote["memorySearch"]>[0], query: Parameters<WorkspaceMemoryRemote["memorySearch"]>[1], options: Parameters<WorkspaceMemoryRemote["memorySearch"]>[2]) => call("memorySearch", request, query, options),
+              memoryUpsert: (request: Parameters<WorkspaceMemoryRemote["memoryUpsert"]>[0], draft: Parameters<WorkspaceMemoryRemote["memoryUpsert"]>[1]) => call("memoryUpsert", request, draft),
+              memoryArchive: (request: Parameters<WorkspaceMemoryRemote["memoryArchive"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryArchive"]>[1], revision: Parameters<WorkspaceMemoryRemote["memoryArchive"]>[2], hash: Parameters<WorkspaceMemoryRemote["memoryArchive"]>[3]) => call("memoryArchive", request, id, revision, hash),
+              memoryForget: (request: Parameters<WorkspaceMemoryRemote["memoryForget"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryForget"]>[1], revision: Parameters<WorkspaceMemoryRemote["memoryForget"]>[2], hash: Parameters<WorkspaceMemoryRemote["memoryForget"]>[3]) => call("memoryForget", request, id, revision, hash),
+              memoryGovern: (request: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[1], action: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[2], revision: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[3], hash: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[4]) => call("memoryGovern", request, id, action, revision, hash),
+              memoryExport: (request: Parameters<WorkspaceMemoryRemote["memoryExport"]>[0]) => call("memoryExport", request),
+              memoryImport: (request: Parameters<WorkspaceMemoryRemote["memoryImport"]>[0], serialized: Parameters<WorkspaceMemoryRemote["memoryImport"]>[1]) => call("memoryImport", request, serialized),
+            };
+            remotes.set(sessionId, adapted);
+            return adapted;
+          };
+          const disposeArtifactOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
+            { name: WORKSPACE_ARTIFACT_SLOT_NAME, id: WORKSPACE_ARTIFACT_ENTRY_KEY, order: 0 },
+            createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
+              resolveRemote,
+            }),
+          ));
+          const disposeMemoryOverlay = overlay.inject(WORKSPACE_MEMORY_OVERLAY_SLOT, () => overlay.register(
+            { name: WORKSPACE_MEMORY_OVERLAY_SLOT, id: WORKSPACE_MEMORY_ENTRY_KEY, order: 1 },
+            createWorkspaceMemorySurfaceComponent({
+              resolveRemote,
+            }),
+          ));
+          return () => { remotes.clear(); disposeArtifactOverlay(); disposeMemoryOverlay(); };
         };
-        const disposeArtifactOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
-          { name: WORKSPACE_ARTIFACT_SLOT_NAME, id: WORKSPACE_ARTIFACT_ENTRY_KEY, order: 0 },
-          createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
-            resolveRemote,
-          }),
-        ));
-        const disposeMemoryOverlay = overlay.inject(WORKSPACE_MEMORY_OVERLAY_SLOT, () => overlay.register(
-          { name: WORKSPACE_MEMORY_OVERLAY_SLOT, id: WORKSPACE_MEMORY_ENTRY_KEY, order: 1 },
-          createWorkspaceMemorySurfaceComponent({
-            resolveRemote,
-          }),
-        ));
-        disposeOverlay = () => { disposeArtifactOverlay(); disposeMemoryOverlay(); };
+        let directWorkspace = false;
+        try { directWorkspace = Boolean((ctx.remote as unknown as { readonly workspace?: unknown }).workspace); } catch {}
+        if (directWorkspace) {
+          disposeOverlay = registerOverlay(ctx);
+        } else {
+          const remoteScope = ctx.inject?.(["remote.workspace"], registerOverlay);
+          if (remoteScope) disposeOverlay = () => { void remoteScope.dispose(); };
+          else disposeOverlay = registerOverlay(ctx);
+        }
       }
       disposeConversation = () => {
         if (disposed) return;

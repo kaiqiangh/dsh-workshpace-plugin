@@ -18,7 +18,11 @@ async function wrapWebClient(file) {
   const match = source.match(/export \{ ([^}]+) \};\n?$/)
   if (!match) throw new Error("client bundle must end with named exports")
   const exports = match[1]
-  const body = source.slice(0, match.index)
+  let body = source.slice(0, match.index)
+  body = body.replace(/^import \{ ([^}]+) \} from ["']([^"']+)["'];?$/gm, (_, names, id) => `const { ${names} } = require("${id}");`)
+  body = body.replace(/^import \* as ([A-Za-z_$][\w$]*) from ["']([^"']+)["'];?$/gm, (_, name, id) => `const ${name} = require("${id}");`)
+  body = body.replace(/^import ([A-Za-z_$][\w$]*) from ["']([^"']+)["'];?$/gm, (_, name, id) => `const ${name} = require("${id}").default ?? require("${id}");`)
+  body = body.replace(/^import ["']([^"']+)["'];?$/gm, (_, id) => `require("${id}");`)
   if (/^\s*(?:import|export)\b/m.test(body)) throw new Error("client bundle must be self-contained")
   await writeFile(file, `window.__ModuleLoader__.load({
   id: "dsh-workspace-plugin",
@@ -69,7 +73,7 @@ try {
   await writeJson(join(root, "tsconfig.bundle.json"), { compilerOptions: { target: "ES2024", module: "ESNext", moduleResolution: "Bundler", strict: true, allowImportingTsExtensions: true, skipLibCheck: true, types: ["node"] } })
   await writeJson(join(root, "tsconfig.declarations.json"), { extends: "./tsconfig.base.json", compilerOptions: { rootDir: "packages/plugin/src", outDir: "packages/plugin/lib/types", declaration: true, emitDeclarationOnly: true, noEmit: false }, include: ["packages/plugin/src"] })
   await writeFile(join(root, "tsdown.host.config.mjs"), `import { defineConfig } from 'tsdown'\nimport { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'\nexport default defineConfig({ entry: ['packages/plugin/src/index.ts'], outDir: 'packages/plugin/lib', format: ['esm'], platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false, external: [/^@deepseek-ai\\//], plugins: [typertPlugin({ mode: 'workspace', faces: ['host', 'client'] })] })\n`)
-  await writeFile(join(root, "tsdown.client.config.mjs"), `import { defineConfig } from 'tsdown'\nexport default defineConfig({ entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib', format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false, dts: false, clean: false, outputOptions: { codeSplitting: false }, external: ['@deepseek-ai/cordis', /^@deepseek-ai\\/(?!dsh-client-ui-primitives(?:\\/|$))/], deps: { alwaysBundle: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'zod', '@deepseek-ai/dsh-client-ui-primitives'] } })\n`)
+  await writeFile(join(root, "tsdown.client.config.mjs"), `import { defineConfig } from 'tsdown'\nexport default defineConfig({ entry: { client: 'packages/plugin/src/client.ts' }, outDir: 'packages/plugin/lib', format: ['esm'], platform: 'browser', target: 'es2024', fixedExtension: false, dts: false, clean: false, outputOptions: { codeSplitting: false }, external: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', /^@deepseek-ai\\//], deps: { alwaysBundle: ['zod'] } })\n`)
   const node = process.execPath
   const tsdown = join(repo, "node_modules/tsdown/dist/run.mjs")
   const tsc = join(repo, "node_modules/typescript/bin/tsc")
@@ -78,6 +82,7 @@ try {
   await cp(join(plugin, "lib/typert.remote-client.js"), join(plugin, "src/typert.remote-client.js"))
   await run([tsdown, "--config", "tsdown.client.config.mjs", "--tsconfig", "tsconfig.bundle.json", "--no-report"])
   await run([tsc, "-p", "tsconfig.declarations.json", "--pretty", "false"])
+  try { await cp(join(repo, "lib/style.css"), join(plugin, "lib/style.css")) } catch {}
   await rm(join(repo, "lib"), { recursive: true, force: true })
   await cp(join(plugin, "lib"), join(repo, "lib"), { recursive: true })
   await wrapWebClient(join(repo, "lib/client.js"))

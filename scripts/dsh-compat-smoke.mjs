@@ -56,7 +56,11 @@ async function wrapWebClient(file) {
   const source = (await readFile(file, 'utf8')).replace(/[ \t]+$/gm, '')
   const match = source.match(/export \{ ([^}]+) \};\n?$/)
   if (!match) throw new Error('client bundle must end with named exports')
-  const body = source.slice(0, match.index)
+  let body = source.slice(0, match.index)
+  body = body.replace(/^import \{ ([^}]+) \} from ["']([^"']+)["'];?$/gm, (_, names, id) => `const { ${names} } = require("${id}");`)
+  body = body.replace(/^import \* as ([A-Za-z_$][\w$]*) from ["']([^"']+)["'];?$/gm, (_, name, id) => `const ${name} = require("${id}");`)
+  body = body.replace(/^import ([A-Za-z_$][\w$]*) from ["']([^"']+)["'];?$/gm, (_, name, id) => `const ${name} = require("${id}").default ?? require("${id}");`)
+  body = body.replace(/^import ["']([^"']+)["'];?$/gm, (_, id) => `require("${id}");`)
   const esmLine = body.split('\n').find(line => /^\s*(?:import|export)\b/.test(line))
   if (esmLine) throw new Error(`client bundle must be self-contained: ${esmLine}`)
   await writeText(file, `window.__ModuleLoader__.load({
@@ -257,7 +261,15 @@ sandbox.globalThis = sandbox
 sandbox.window = { __ModuleLoader__: { load(value) { handoff = value } } }
 runInNewContext(clientSource, sandbox)
 if (handoff?.id !== 'dsh-workspace-plugin' || typeof handoff.factory !== 'function') throw new Error('packed client did not register with the public module loader')
-const client = handoff.factory(() => { throw new Error('packed client requested an unexpected dependency') })
+const react = await import('react')
+const jsxRuntime = await import('react/jsx-runtime')
+const primitives = { CodeBlock: () => null, JsonTree: () => null, MarkdownText: () => null }
+const client = handoff.factory((id) => {
+  if (id === 'react') return react
+  if (id === 'react/jsx-runtime') return jsxRuntime
+  if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitives
+  throw new Error('packed client requested an unexpected dependency: ' + id)
+})
 export { manifest, host, client, hostTypert, clientTypert, remote }
 `)
   await writeText(join(consumer, 'check.mjs'), `
@@ -351,7 +363,9 @@ async function gatewaySmoke(root, host, hostTypert) {
   const TypertRegistry = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-typert-registry/lib/index.js')).href)).default
   const TypertGatewayService = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js')).href)).default
   const ctx = new Context()
-  const disposeAgent = ctx.provide('agent', { id: 'agent-1', session: { header: { cwd: root }, events: [] } })
+  const agent = { id: 'agent-1', session: { header: { cwd: root }, events: [] } }
+  const disposeAgent = ctx.provide('agent', agent)
+  const disposeAgents = ctx.provide('agents', { get: id => id === agent.id ? agent : undefined })
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(host.WorkspaceService)
@@ -467,6 +481,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   assert.equal(registrations.length, 0)
   assert.ok(ctx.typert.local.list().length > 0)
   disposeAgent()
+  disposeAgents()
   return { ctx, registry: ctx.typert, host }
 }
 
@@ -559,6 +574,10 @@ async function conversationSmoke(root, client, ctx) {
         assert.equal(remoteContribution.package, 'dsh-workspace-plugin')
         clientRemoteMounted += 1
         return async () => { clientRemoteMounted -= 1; clientRemoteDisposed = true }
+      },
+      workspace: {
+        artifactMetadata: async () => ({ ok: true, value: [] }),
+        previewArtifact: async () => ({ ok: false, error: { code: 'missing', message: 'missing', details: {} } }),
       },
     },
     emit(event) { if (event === 'workspace/open') clientOpened += 1 },
