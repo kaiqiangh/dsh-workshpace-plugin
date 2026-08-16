@@ -112,11 +112,6 @@ export class WorkspaceMemoryDomain {
       if (draft.expectedRevision === undefined || draft.expectedHash === undefined) throw new MemoryGovernanceError("CONFLICT", `Memory ${previous.id} requires a revision and content hash`);
       assertMemoryRevision(previous, draft.expectedRevision, draft.expectedHash);
     }
-    if (draft.id === undefined) {
-      const contentHash = hashMemoryContent(draft.content);
-      const exact = store.all({ type: draft.type }).find((record) => record.contentHash === contentHash);
-      if (exact) return exact;
-    }
     const duplicate = draft.id === undefined && store.all({ type: draft.type }).find((record) => record.title.trim().toLocaleLowerCase() === draft.title.trim().toLocaleLowerCase() && record.contentHash !== hashMemoryContent(draft.content));
     const currentGovernance = previous ? memoryGovernance(previous) : undefined;
     const changed = previous !== undefined && (previous.title !== draft.title || previous.content !== draft.content || previous.type !== draft.type || JSON.stringify(previous.tags) !== JSON.stringify(draft.tags) || JSON.stringify(previous.provenance) !== JSON.stringify(draft.provenance));
@@ -219,7 +214,7 @@ export class WorkspaceMemoryDomain {
 
   async export(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string> {
     const store = await this.store(context, request);
-    return exportMemoryBundle(this.withConflictGroups(store.all()));
+    return exportMemoryBundle(this.withConflictGroups(store.all().filter((record) => record.status !== "forgotten")));
   }
 
   async import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {

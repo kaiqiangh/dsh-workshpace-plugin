@@ -448,6 +448,117 @@ async function gatewaySmoke(root, host, hostTypert) {
     },
   })
   assert.equal(memoryRecord.title, 'Packed memory')
+  const duplicateMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed memory', content: 'compatibility', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.equal(duplicateMemory.id, memoryRecord.id, 'exact Memory duplicates must be idempotent')
+  const mergedDuplicate = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: {
+        scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Packed memory', content: 'compatibility', tags: [], provenance: { kind: 'user' },
+        governance: { origin: 'user-authored', sourceRefs: [{ kind: 'session', id: 'provenance-session-2' }], verification: 'unverified', revision: 1, retention: 'project-delete' },
+      },
+    },
+  })
+  assert.equal(mergedDuplicate.id, memoryRecord.id)
+  assert.ok(mergedDuplicate.governance?.sourceRefs.some(source => source.kind === 'session' && source.id === 'provenance-session-2'), 'exact duplicates must merge distinct provenance references')
+  let staleRevisionError
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({
+      namespace: 'workspace', method: 'memoryUpsert', args: {
+        agentId: 'agent-1', request: memoryRequest,
+        draft: { scope: 'project', scopeKey: memoryState.scopeKey, id: memoryRecord.id, type: 'fact', title: 'Packed memory', content: 'changed without current revision', tags: [], provenance: { kind: 'user' }, expectedRevision: 99, expectedHash: memoryRecord.contentHash },
+      },
+    }),
+    error => { staleRevisionError = error; return error?.code === 'CONFLICT' },
+    'stale revisions must fail closed',
+  )
+  const usedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryMarkUsed', args: { agentId: 'agent-1', request: memoryRequest, id: memoryRecord.id },
+  })
+  assert.equal(usedMemory.useCount, memoryRecord.useCount + 1)
+  const govern = async (record, action) => ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryGovern', args: {
+      agentId: 'agent-1', request: memoryRequest, id: record.id, action,
+      expectedRevision: record.governance?.revision ?? 1, expectedHash: record.contentHash,
+    },
+  })
+  const governanceRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'decision', title: 'Governed release memory', content: 'explicit review', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  let governedRecord = await govern(governanceRecord, 'verify')
+  assert.equal(governedRecord.governance?.verification, 'verified')
+  governedRecord = await govern(governedRecord, 'pin')
+  assert.equal(governedRecord.governance?.pinnedBy, 'user')
+  governedRecord = await govern(governedRecord, 'unpin')
+  assert.equal(governedRecord.governance?.pinnedAt, undefined)
+  governedRecord = await govern(governedRecord, 'stale')
+  assert.equal(governedRecord.governance?.verification, 'stale')
+  governedRecord = await govern(governedRecord, 'reverify')
+  assert.equal(governedRecord.governance?.verification, 'verified')
+  governedRecord = await govern(governedRecord, 'archive')
+  assert.equal(governedRecord.status, 'archived')
+  governedRecord = await govern(governedRecord, 'restore')
+  assert.equal(governedRecord.status, 'active')
+  governedRecord = await govern(governedRecord, 'archive')
+  governedRecord = await govern(governedRecord, 'forget')
+  assert.equal(governedRecord.status, 'forgotten')
+  const forgottenSearch = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Governed release', options: { limit: 10 } },
+  })
+  assert.equal(forgottenSearch.some(record => record.id === governedRecord.id), false)
+  const forgottenList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.equal(forgottenList.some(record => record.id === governedRecord.id), false)
+  const forgottenState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.equal(forgottenState.records.find(record => record.id === governedRecord.id)?.status, 'forgotten')
+  const conflictFirst = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Conflict release memory', content: 'first version', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const conflictSecond = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Conflict release memory', content: 'second version', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.ok(conflictSecond.governance?.conflictGroup)
+  const rejectedConflict = await govern(conflictSecond, 'reject')
+  assert.equal(rejectedConflict.governance?.verification, 'rejected')
+  const sharedReadRequest = { scope: 'shared-project', sharedProject: true }
+  await ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sharedReadRequest } })
+  let sharedWriteError
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({
+      namespace: 'workspace', method: 'memoryUpsert', args: {
+        agentId: 'agent-1', request: sharedReadRequest,
+        draft: { scope: 'shared-project', scopeKey: 'root:shared', type: 'fact', title: 'Unauthorized shared write', content: 'blocked', tags: [], provenance: { kind: 'user' } },
+      },
+    }),
+    error => { sharedWriteError = error; return error?.code === 'UNAUTHORIZED' },
+    'Shared Project writes require explicit acknowledgement',
+  )
+  const assertSharedUnauthorized = (method, methodArgs) => assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method, args: { agentId: 'agent-1', request: sharedReadRequest, ...methodArgs } }),
+    error => error?.code === 'UNAUTHORIZED',
+    `Shared Project ${method} requires explicit acknowledgement`,
+  )
+  await assertSharedUnauthorized('memoryGovern', { id: 'missing', action: 'archive', expectedRevision: 1, expectedHash: memoryRecord.contentHash })
+  await assertSharedUnauthorized('memoryMarkUsed', { id: 'missing' })
+  await assertSharedUnauthorized('memoryArchive', { id: 'missing', expectedRevision: 1, expectedHash: memoryRecord.contentHash })
+  await assertSharedUnauthorized('memoryForget', { id: 'missing', expectedRevision: 1, expectedHash: memoryRecord.contentHash })
   const sessionState = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sessionRequest },
   })
@@ -478,6 +589,10 @@ async function gatewaySmoke(root, host, hostTypert) {
   assert.equal(sessionRecord.scope, 'session')
   assert.equal(userRecord.scope, 'user')
   assert.equal(sharedRecord.scope, 'shared-project')
+  assert.equal(memoryRecord.governance?.retention, 'project-delete')
+  assert.equal(sessionRecord.governance?.retention, 'session-end')
+  assert.equal(userRecord.governance?.retention, 'user-managed')
+  assert.equal(sharedRecord.governance?.retention, 'project-delete')
   const projectSearch = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Packed', options: { limit: 1 } },
   })
@@ -509,11 +624,7 @@ async function gatewaySmoke(root, host, hostTypert) {
     'a Session rebound to another Workspace Root must fail closed',
   )
   agent.session.header.cwd = originalCwd
-  const governedMemory = await ctx.typertGateway.invoke({
-    namespace: 'workspace', method: 'memoryGovern', args: {
-      agentId: 'agent-1', request: memoryRequest, id: memoryRecord.id, action: 'archive', expectedRevision: memoryRecord.governance?.revision ?? 1, expectedHash: memoryRecord.contentHash,
-    },
-  })
+  const governedMemory = await govern(mergedDuplicate, 'archive')
   assert.equal(governedMemory.status, 'archived')
   const legacyRecord = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryUpsert', args: {
@@ -537,11 +648,46 @@ async function gatewaySmoke(root, host, hostTypert) {
     namespace: 'workspace', method: 'memoryExport', args: { agentId: 'agent-1', request: memoryRequest },
   })
   assert.match(memoryExport, /Packed memory/u)
+  const exportedBundle = JSON.parse(memoryExport)
+  const exportedIds = new Set(exportedBundle.records.map(record => record.id))
+  const exportedHashes = new Map(exportedBundle.records.map(record => [record.contentHash, record.id]))
+  assert.equal(exportedBundle.schemaVersion, 1)
+  assert.equal(exportedIds.has(forgottenMemory.id), false, 'forgotten Memory must remain a local tombstone and stay out of exports')
+  assert.ok(exportedBundle.records.every(record => record.scope && record.contentHash && record.governance?.retention && record.governance?.sourceRefs), 'exports must retain governance, scope, hash, and retention metadata')
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: 'not-json' } }),
+    error => error?.code === 'INVALID_SOURCE',
+    'invalid imports must fail closed',
+  )
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: 'x'.repeat(8 * 1024 * 1024 + 1) } }),
+    error => error?.code === 'INVALID_SOURCE',
+    'oversized imports must fail closed',
+  )
   const importedMemory = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: memoryExport },
   })
   assert.ok(importedMemory.length > 0)
   assert.ok(importedMemory.every(record => record.provenance.kind === 'import'))
+  assert.ok(importedMemory.every(record => record.governance?.origin === 'imported' && record.governance?.verification === 'unverified' && record.status === 'active' && !exportedIds.has(record.id) && exportedHashes.has(record.contentHash) && record.governance.sourceRefs.some(source => source.kind === 'import' && source.contentHash === record.contentHash)), 'imports must remap ids and remain active, unverified, source-linked quarantine records')
+  await assertSharedUnauthorized('memoryImport', { serialized: memoryExport })
+
+  const expiringRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: memoryRequest,
+      draft: { scope: 'project', scopeKey: memoryState.scopeKey, type: 'fact', title: 'Expiring release memory', content: 'expired verification', tags: [], provenance: { kind: 'user' }, governance: { origin: 'user-authored', sourceRefs: [], verification: 'unverified', revision: 1, expiresAt: Date.now() - 1, retention: 'project-delete' } },
+    },
+  })
+  const expiredVerified = await govern(expiringRecord, 'verify')
+  const expiredList = await ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: memoryRequest } })
+  const expiredCurrent = expiredList.find(record => record.id === expiredVerified.id)
+  assert.equal(expiredCurrent?.governance?.verification, 'stale')
+  let expiryPinError
+  await assert.rejects(() => govern(expiredCurrent, 'pin'), error => { expiryPinError = error; return error?.code === 'INELIGIBLE' })
+
+  const packedEnvelope = JSON.stringify({ memoryState, memoryRecord, sessionRecord, userRecord, sharedRecord, memoryExport, importedMemory })
+  assert.equal(/(?:^|["'\s])\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*(?=["'\s]|$)|(?:^|["'\s])[A-Za-z]:[\\/][^\s"']*|(?:^|["'\s])\\\\[A-Za-z0-9]/u.test(packedEnvelope), false, 'packed Memory envelopes must not expose absolute host filesystem paths')
+  for (const fixturePath of [root, dshHome, otherRoot]) assert.equal(packedEnvelope.includes(fixturePath), false, 'packed Memory envelopes must not expose disposable fixture paths')
   await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryClose', args: { agentId: 'agent-1', request: memoryRequest },
   })
@@ -674,7 +820,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   assert.ok(ctx.typert.local.list().length > 0)
   disposeAgent()
   disposeAgents()
-  return { ctx, registry: ctx.typert, host, memoryRelease: { dshHome: 'disposable-profile', scopes: [sessionRecord.scope, memoryRecord.scope, userRecord.scope, sharedRecord.scope], restartRecord: memoryRecord.id, corruptionWarnings: recoveredState.warnings.map(warning => warning.code), migrationSchema: host.MEMORY_SCHEMA_VERSION, unavailableProject: 'PROJECT_UNAVAILABLE', unknownSchemaReadOnly: unknownSchemaState.readOnly, oversizedReadOnly: oversizedState.readOnly, agentWakeups, modelRequests, contextInjections } }
+  return { ctx, registry: ctx.typert, host, memoryRelease: { dshHome: 'disposable-profile', scopes: [sessionRecord.scope, memoryRecord.scope, userRecord.scope, sharedRecord.scope], restartRecord: memoryRecord.id, corruptionWarnings: recoveredState.warnings.map(warning => warning.code), migrationSchema: host.MEMORY_SCHEMA_VERSION, unavailableProject: 'PROJECT_UNAVAILABLE', unknownSchemaReadOnly: unknownSchemaState.readOnly, oversizedReadOnly: oversizedState.readOnly, agentWakeups, modelRequests, contextInjections }, governanceRelease: { duplicateIdempotent: duplicateMemory.id === memoryRecord.id, provenanceMerged: mergedDuplicate.governance?.sourceRefs.some(source => source.id === 'provenance-session-2'), staleRevisionError: staleRevisionError?.code, lastUsedCount: usedMemory.useCount, transitions: ['verify', 'pin', 'unpin', 'stale', 'reverify', 'archive', 'restore', 'archive', 'forget'], conflictRejected: rejectedConflict.governance?.verification, sharedWriteError: sharedWriteError?.code, invalidImport: 'INVALID_SOURCE', importQuarantine: importedMemory.every(record => record.status === 'active' && record.governance?.origin === 'imported' && record.governance?.verification === 'unverified'), expiryVerification: expiredCurrent?.governance?.verification, expiryPinError: expiryPinError?.code, exportSchemaVersion: exportedBundle.schemaVersion } }
 }
 
 async function webSmoke(root, host, ctx) {
@@ -930,7 +1076,7 @@ async function main() {
     await buildFixture(root)
     const { consumer, lockfileSha256: consumerLockfileSha256, tarballSha256 } = await installPackedBundle(root, pluginRoot)
     const { host, client, hostTypert, profileRoot } = await publicBundleSmoke(consumer)
-    const { ctx, registry, memoryRelease } = await gatewaySmoke(profileRoot, host, hostTypert)
+    const { ctx, registry, memoryRelease, governanceRelease } = await gatewaySmoke(profileRoot, host, hostTypert)
     let endpoint
     let preview
     let conversation
@@ -958,6 +1104,7 @@ async function main() {
       consumerLockfileSha256,
       packedTarballSha256: tarballSha256,
       memoryRelease,
+      governanceRelease,
       packages: PACKAGE_VERSIONS,
     }))
   } finally {

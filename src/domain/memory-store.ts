@@ -478,14 +478,13 @@ export class MemoryStore {
   private expiredView(record: MemoryRecord): MemoryRecord {
     const governance = record.governance;
     if (!governance || governance.verification !== "verified" || governance.expiresAt === undefined || governance.expiresAt > this.now()) return record;
+    const { pinnedAt: _pinnedAt, pinnedBy: _pinnedBy, ...withoutPin } = governance;
     return Object.freeze({
       ...record,
       governance: Object.freeze({
-        ...governance,
+        ...withoutPin,
         verification: "stale" as const,
         revision: governance.revision + 1,
-        pinnedAt: undefined,
-        pinnedBy: undefined,
       }),
     });
   }
