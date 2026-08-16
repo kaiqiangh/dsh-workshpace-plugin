@@ -16,17 +16,18 @@ import { createWorkspacePreviewRenderer, type WorkspacePreviewRenderOptions } fr
 import type { PreviewDescriptor } from "./domain/preview.ts";
 import {
   createWorkspaceArtifactSurfaceComponent,
-  WORKSPACE_ARTIFACT_ENTRY_KEY,
-  WORKSPACE_ARTIFACT_OVERLAY_SLOT,
-  WORKSPACE_ARTIFACT_SLOT_NAME,
   type WorkspaceArtifactRemote,
 } from "./web/workspace-artifact-surface.ts";
 import {
   createWorkspaceMemorySurfaceComponent,
-  WORKSPACE_MEMORY_ENTRY_KEY,
-  WORKSPACE_MEMORY_OVERLAY_SLOT,
   type WorkspaceMemoryRemote,
 } from "./web/workspace-memory-surface.ts";
+import {
+  createWorkspacePanelComponent,
+  installWorkspacePanelStyles,
+  WORKSPACE_PANEL_ENTRY_KEY,
+  WORKSPACE_PANEL_OVERLAY_SLOT,
+} from "./web/workspace-panel.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -112,19 +113,19 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             remotes.set(sessionId, adapted);
             return adapted;
           };
-          const disposeArtifactOverlay = overlay.inject(WORKSPACE_ARTIFACT_OVERLAY_SLOT, () => overlay.register(
-            { name: WORKSPACE_ARTIFACT_SLOT_NAME, id: WORKSPACE_ARTIFACT_ENTRY_KEY, order: 0 },
-            createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
-              resolveRemote,
+          const disposeStyles = installWorkspacePanelStyles();
+          const disposeWorkspaceOverlay = overlay.inject(WORKSPACE_PANEL_OVERLAY_SLOT, () => overlay.register(
+            { name: WORKSPACE_PANEL_OVERLAY_SLOT, id: WORKSPACE_PANEL_ENTRY_KEY, label: "Workspace", order: 0, priority: 100 },
+            createWorkspacePanelComponent({
+              artifacts: createWorkspaceArtifactSurfaceComponent(undefined, { MarkdownText, CodeBlock, JsonTree }, {
+                resolveRemote,
+              }),
+              memory: createWorkspaceMemorySurfaceComponent({
+                resolveRemote,
+              }),
             }),
           ));
-          const disposeMemoryOverlay = overlay.inject(WORKSPACE_MEMORY_OVERLAY_SLOT, () => overlay.register(
-            { name: WORKSPACE_MEMORY_OVERLAY_SLOT, id: WORKSPACE_MEMORY_ENTRY_KEY, order: 1 },
-            createWorkspaceMemorySurfaceComponent({
-              resolveRemote,
-            }),
-          ));
-          return () => { remotes.clear(); disposeArtifactOverlay(); disposeMemoryOverlay(); };
+          return () => { remotes.clear(); disposeStyles(); disposeWorkspaceOverlay(); };
         };
         let directWorkspace = false;
         try { directWorkspace = Boolean((ctx.remote as unknown as { readonly workspace?: unknown }).workspace); } catch {}
@@ -205,3 +206,10 @@ export {
   workspaceMemoryTypes,
 } from "./web/workspace-memory-surface.ts";
 export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";
+export {
+  createWorkspacePanelComponent,
+  installWorkspacePanelStyles,
+  WORKSPACE_PANEL_ENTRY_KEY,
+  WORKSPACE_PANEL_OVERLAY_SLOT,
+} from "./web/workspace-panel.ts";
+export type { WorkspacePanelOptions, WorkspaceSurfaceComponent } from "./web/workspace-panel.ts";

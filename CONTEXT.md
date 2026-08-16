@@ -8,6 +8,10 @@ DSH Workspace is a read-only, session-aware inspection surface over the files an
 The read-only inspection surface for one Harness Session and one Workspace Root. It exposes file state, session activity, changes, artifacts, previews, and a user-controlled Working Set.
 _Avoid_: file explorer, IDE, memory browser
 
+**Workspace Panel**:
+The compact Harness Web UI surface that presents Workspace Artifacts and governed local Memory in one responsive, user-opened panel. It is a presentation surface; it does not widen the Workspace Root or inject Memory into Agent context.
+_Avoid_: global overlay, second app shell, file explorer
+
 **Workspace Root**:
 The canonical filesystem directory that bounds a Workspace. The configured root is resolved from the Harness process working directory and is never widened by a browser or event path; client and durable identity use an opaque root identifier rather than the host path.
 _Avoid_: project root, host path

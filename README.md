@@ -1,34 +1,67 @@
 # DSH Workspace Plugin
 
-DSH Workspace is a session-scoped inspection surface for the files an agent works with. It keeps one canonical Workspace Root per Harness Session and exposes activity, changes, bounded previews, artifacts, a user-controlled Working Set, and governed local Memory without turning the product into a file explorer or IDE.
+DSH Workspace adds a focused Workspace panel to the local DeepSeek Harness Web UI. It lets you inspect the files an agent touched, review session artifacts, preview bounded content, and manage local Workspace Memory without leaving the conversation.
 
-## Compatibility
+## What it is for
 
-Releases are verified against an exact DeepSeek Harness source revision and pinned `0.1.0-rc.6` packages. The supported carrier is the DeepSeek Harness Web host with its supported local operating systems. Remote workspaces, alternate client carriers, and a broader browser/OS matrix are outside this release boundary.
+Harness sessions can produce useful files and state while an agent is working, but that information should not take over the chat layout. This plugin keeps the Workspace experience compact and session-aware:
 
-The current compatibility evidence is recorded in [`docs/research/dsh-v05-final-release-evidence.md`](docs/research/dsh-v05-final-release-evidence.md). Domain terms and support boundaries are defined in [`CONTEXT.md`](CONTEXT.md); the architecture decisions live in [`docs/adr/`](docs/adr/).
+- one collapsed `Workspace` entry keeps the main UI clear;
+- a responsive side panel groups `Artifacts` and `Memory` in tabs;
+- artifact previews, Working Set actions, and Memory controls stay inside the panel;
+- the panel uses scoped styles so it does not change the Harness shell globally.
 
-## Development
+## Install the plugin
+
+Build the plugin from this repository:
 
 ```sh
 npm install
+npm run build
+```
+
+Register the built plugin with a local Harness checkout. Run this from the Harness project directory, or adjust the relative path to where this repository is checked out:
+
+```sh
+npx @deepseek-ai/dsh plugin --profile web add ../dsh-workshpace-plugin
+```
+
+The command stores the Web plugin registration in the local Harness profile.
+
+## Start the Web UI
+
+```sh
+npx @deepseek-ai/dsh web
+```
+
+Open [http://127.0.0.1:3080/](http://127.0.0.1:3080/) in a browser. Restart the Web UI after rebuilding the plugin so it loads the latest bundle.
+
+## Use Workspace
+
+1. Open the Harness Web UI and select a model.
+2. Choose or create a Workspace-backed session.
+3. Start the conversation and let the agent create or inspect files.
+4. Select `Workspace` in the lower-right corner.
+5. Use `Artifacts` to inspect session outputs and `Memory` to review or edit local notes.
+
+The panel opens as a desktop drawer and uses the full available width on a narrow screen. Select the close button or the browser disclosure control to return to the compact entry.
+
+## Develop and verify locally
+
+```sh
 npm test
 npm run check
 npm run build
 npm run smoke:compat
-npm pack --dry-run
 ```
 
-`npm run smoke:compat` validates the packed consumer against the pinned Harness compatibility baseline. The package exports the host entrypoint (`dsh-workspace-plugin`), web client (`dsh-workspace-plugin/client`), host Typert surface (`dsh-workspace-plugin/typert`), browser Typert client (`dsh-workspace-plugin/client/typert`), and remote client (`dsh-workspace-plugin/remote`).
+`npm run build` writes the runnable package bundle to `lib/`. The Web profile loads that bundle when the plugin is registered.
 
-## Safety boundaries
+## Troubleshooting
 
-- Workspace paths are normalized and root-bound; host filesystem paths are not exposed to the browser.
-- Preview work is type-, size-, and content-bounded. Binary previews use short-lived opaque resources.
-- Session Activity records evidence and attribution separately; observation is not treated as proof of agent causality.
-- Working Set continuation sends a scope hint to the owning Harness Session and does not inject file contents.
-- Memory writes are session-scoped and governed by validation, provenance, expiry, conflicts, and local-only export rules.
+- **The panel is missing:** rebuild the plugin, restart `dsh web`, and add the plugin again if the local profile was created before the build.
+- **The old overlapping layout is still visible:** an older Web process is serving a cached bundle; stop it and run `npx @deepseek-ai/dsh web` again.
+- **Artifacts or Memory are empty:** open Workspace from an active Harness session; the panel reads session-scoped data rather than a global file list.
+- **The command cannot find the plugin:** run the add command from the Harness project and use the correct relative path to this repository.
 
-## Release evidence
-
-The release evidence document captures the exact source/package baseline, packed-consumer hashes, browser smoke run, governance/security assertions, and deterministic test, type-check, build, pack, smoke, and diff gates.
+Project terms are defined in [`CONTEXT.md`](CONTEXT.md), and architecture decisions are recorded in [`docs/adr/`](docs/adr/).

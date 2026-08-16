@@ -41,3 +41,5 @@ export type { WorkspaceArtifactDetail, WorkspaceArtifactDetailStatus, WorkspaceA
 export type { WorkspaceArtifactRemote, WorkspaceArtifactSurfaceOptions } from "./web/workspace-artifact-surface.ts";
 export { createWorkspaceMemorySurfaceComponent, workspaceMemoryRecordSummary, workspaceMemoryRequest, WORKSPACE_MEMORY_ENTRY_KEY, WORKSPACE_MEMORY_OVERLAY_SLOT, workspaceMemoryTypes, } from "./web/workspace-memory-surface.ts";
 export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";
+export { createWorkspacePanelComponent, installWorkspacePanelStyles, WORKSPACE_PANEL_ENTRY_KEY, WORKSPACE_PANEL_OVERLAY_SLOT, } from "./web/workspace-panel.ts";
+export type { WorkspacePanelOptions, WorkspaceSurfaceComponent } from "./web/workspace-panel.ts";

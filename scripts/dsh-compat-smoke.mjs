@@ -345,9 +345,9 @@ const contribution = {
 }
 const disposeSurface = await client.apply(contribution)
 if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
-if (surfaceRegistrations.filter((value) => value === 'register:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not register the artifact surface exactly once')
+if (surfaceRegistrations.filter((value) => value === 'register:dsh-workspace-panel').length !== 1) throw new Error('packed client did not register the Workspace panel exactly once')
 await disposeSurface()
-if (surfaceRegistrations.filter((value) => value === 'register-dispose:dsh-workspace-artifacts').length !== 1) throw new Error('packed client did not dispose the artifact surface exactly once')
+if (surfaceRegistrations.filter((value) => value === 'register-dispose:dsh-workspace-panel').length !== 1) throw new Error('packed client did not dispose the Workspace panel exactly once')
 console.log('installed-bundle-ok')
 `)
   const check = await exec(process.execPath, ['check.mjs'], { cwd: consumer })
@@ -907,7 +907,7 @@ async function conversationSmoke(root, client, ctx) {
           return () => clientSlots.splice(0)
         }
         assert.equal(options.name, 'shell.overlay')
-        assert.ok(options.id === 'dsh-workspace-artifacts' || options.id === 'dsh-workspace-memory')
+        assert.equal(options.id, 'dsh-workspace-panel')
         overlaySlots.push(component)
         return () => overlaySlots.splice(0)
       },
@@ -930,7 +930,7 @@ async function conversationSmoke(root, client, ctx) {
   assert.equal(definitions.length, 1)
   assert.equal(views.length, 0)
   assert.equal(clientSlots.length, 1)
-  assert.equal(overlaySlots.length, 2)
+  assert.equal(overlaySlots.length, 1)
   assert.equal(clientRemoteMounted, 1)
   await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
   const clientNode = clientSlots[0]({ node: {
