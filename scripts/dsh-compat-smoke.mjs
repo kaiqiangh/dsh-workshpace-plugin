@@ -233,6 +233,7 @@ async function installPackedBundle(root, pluginRoot) {
   ]) assert.ok(packedFiles.has(file), `packed bundle must include ${file}`)
   assert.equal([...packedFiles].some(file => file.startsWith('src/')), false, 'packed bundle must not fall back to source files')
   const tarball = join(packDir, packed[0].filename)
+  const tarballSha256 = createHash('sha256').update(await readFile(tarball)).digest('hex')
   const consumer = join(root, 'consumer')
   await writeJson(join(consumer, 'package.json'), { name: 'dsh-compat-consumer', private: true, type: 'module' })
   await exec('npm', [
@@ -353,7 +354,10 @@ console.log('installed-bundle-ok')
   assert.match(check.stdout, /installed-bundle-ok/)
   return {
     consumer,
-    lockfileSha256: createHash('sha256').update(lockText).digest('hex'),
+    // The npm lock embeds the disposable fixture root in the local tarball URL.
+    // Normalize that one transient path before recording the reproducible digest.
+    lockfileSha256: createHash('sha256').update(lockText.replaceAll(root, '<fixture-root>')).digest('hex'),
+    tarballSha256,
   }
 }
 
@@ -394,10 +398,19 @@ async function gatewaySmoke(root, host, hostTypert) {
   const { Context } = await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/cordis/lib/index.js')).href)
   const TypertRegistry = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-typert-registry/lib/index.js')).href)).default
   const TypertGatewayService = (await import(pathToFileURL(join(root, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js')).href)).default
+  const dshHome = join(root, 'dsh-home')
+  process.env.DSH_HOME = dshHome
   const ctx = new Context()
-  const agent = { id: 'agent-1', session: { header: { cwd: root }, events: [] } }
+  let agentWakeups = 0
+  let modelRequests = 0
+  let contextInjections = 0
+  const agent = { id: 'agent-1', session: { header: { cwd: root }, events: [] }, followup() { agentWakeups += 1 }, model: { request() { modelRequests += 1 } }, ctx: { systemPrompt: { context() { contextInjections += 1; return () => {} } } } }
+  const otherRoot = join(root, 'other-workspace')
+  await mkdir(otherRoot, { recursive: true })
+  const otherAgent = { id: 'agent-2', session: { header: { cwd: otherRoot }, events: [] }, followup() { agentWakeups += 1 }, model: { request() { modelRequests += 1 } } }
+  const agents = new Map([[agent.id, agent], [otherAgent.id, otherAgent]])
   const disposeAgent = ctx.provide('agent', agent)
-  const disposeAgents = ctx.provide('agents', { get: id => id === agent.id ? agent : undefined })
+  const disposeAgents = ctx.provide('agents', { get: id => agents.get(id) })
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(host.WorkspaceService)
@@ -405,7 +418,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   ctx.typert.contexts.registerHost('agent', {
     wire: 'agentId',
     wireTypeSymbol: 'dsh-workspace-plugin/types#AgentId',
-    resolve: id => id === 'agent-1' ? scoped : undefined,
+    resolve: id => id === 'agent-1' ? scoped : id === 'agent-2' ? ctx.extend({ fixtureScope: 'agent-2' }) : undefined,
   })
   ctx.typert.register(hostTypert.TYPERT)
   const result = await ctx.typertGateway.invoke({
@@ -421,6 +434,9 @@ async function gatewaySmoke(root, host, hostTypert) {
   })
   assert.equal(unavailableArtifactPreview.type, 'error')
   const memoryRequest = { scope: 'project' }
+  const sessionRequest = { scope: 'session' }
+  const userRequest = { scope: 'user', userId: 'profile-alpha' }
+  const sharedRequest = { scope: 'shared-project', sharedProject: true, sharedWriteAcknowledged: true }
   const memoryState = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
   })
@@ -432,6 +448,67 @@ async function gatewaySmoke(root, host, hostTypert) {
     },
   })
   assert.equal(memoryRecord.title, 'Packed memory')
+  const sessionState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sessionRequest },
+  })
+  const sessionRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: sessionRequest,
+      draft: { scope: 'session', scopeKey: sessionState.scopeKey, type: 'fact', title: 'Session memory', content: 'session-only', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const userState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: userRequest },
+  })
+  const userRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: userRequest,
+      draft: { scope: 'user', scopeKey: userState.scopeKey, type: 'preference', title: 'User memory', content: 'user-only', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  const sharedState = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: sharedRequest },
+  })
+  const sharedRecord = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryUpsert', args: {
+      agentId: 'agent-1', request: sharedRequest,
+      draft: { scope: 'shared-project', scopeKey: sharedState.scopeKey, type: 'decision', title: 'Shared memory', content: 'shared-only', tags: [], provenance: { kind: 'user' } },
+    },
+  })
+  assert.equal(sessionRecord.scope, 'session')
+  assert.equal(userRecord.scope, 'user')
+  assert.equal(sharedRecord.scope, 'shared-project')
+  const projectSearch = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Packed', options: { limit: 1 } },
+  })
+  assert.equal(projectSearch.length, 1)
+  assert.equal(projectSearch[0].provenance.kind, 'user')
+  const sessionList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: sessionRequest },
+  })
+  const userList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: userRequest },
+  })
+  const sharedList = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-1', request: sharedRequest },
+  })
+  assert.ok(sessionList.some(record => record.id === sessionRecord.id))
+  assert.equal(sessionList.some(record => record.id === userRecord.id), false)
+  assert.ok(userList.some(record => record.id === userRecord.id))
+  assert.equal(userList.some(record => record.id === sessionRecord.id), false)
+  assert.ok(sharedList.some(record => record.id === sharedRecord.id))
+  const otherProject = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryList', args: { agentId: 'agent-2', request: memoryRequest },
+  })
+  assert.equal(otherProject.length, 0, 'a different Workspace Root must not read this Project Memory')
+  const originalCwd = agent.session.header.cwd
+  agent.session.header.cwd = otherRoot
+  await assert.rejects(
+    () => ctx.typertGateway.invoke({ namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest } }),
+    error => error?.code === 'PROJECT_UNAVAILABLE',
+    'a Session rebound to another Workspace Root must fail closed',
+  )
+  agent.session.header.cwd = originalCwd
   const governedMemory = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'memoryGovern', args: {
       agentId: 'agent-1', request: memoryRequest, id: memoryRecord.id, action: 'archive', expectedRevision: memoryRecord.governance?.revision ?? 1, expectedHash: memoryRecord.contentHash,
@@ -460,6 +537,89 @@ async function gatewaySmoke(root, host, hostTypert) {
     namespace: 'workspace', method: 'memoryExport', args: { agentId: 'agent-1', request: memoryRequest },
   })
   assert.match(memoryExport, /Packed memory/u)
+  const importedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryImport', args: { agentId: 'agent-1', request: sessionRequest, serialized: memoryExport },
+  })
+  assert.ok(importedMemory.length > 0)
+  assert.ok(importedMemory.every(record => record.provenance.kind === 'import'))
+  await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryClose', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  const reopenedMemory = await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.ok(reopenedMemory.records.some(record => record.id === memoryRecord.id), 'Project Memory must survive close/reopen')
+  await ctx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryClose', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  const restartCtx = new Context()
+  const restartAgents = new Map([[agent.id, agent]])
+  const disposeRestartAgents = restartCtx.provide('agents', { get: id => restartAgents.get(id) })
+  await restartCtx.plugin(TypertRegistry)
+  await restartCtx.plugin(TypertGatewayService)
+  await restartCtx.plugin(host.WorkspaceService)
+  const restartScoped = restartCtx.extend({ fixtureScope: 'agent-1-restart' })
+  restartCtx.typert.contexts.registerHost('agent', {
+    wire: 'agentId',
+    wireTypeSymbol: 'dsh-workspace-plugin/types#AgentId',
+    resolve: id => id === 'agent-1' ? restartScoped : undefined,
+  })
+  restartCtx.typert.register(hostTypert.TYPERT)
+  const restartedMemory = await restartCtx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memoryOpen', args: { agentId: 'agent-1', request: memoryRequest },
+  })
+  assert.ok(restartedMemory.records.some(record => record.id === memoryRecord.id), 'Project Memory must survive a fresh packed service lifecycle')
+  const restartedSearch = await restartCtx.typertGateway.invoke({
+    namespace: 'workspace', method: 'memorySearch', args: { agentId: 'agent-1', request: memoryRequest, query: 'Packed', options: { limit: 1, status: 'archived' } },
+  })
+  assert.equal(restartedSearch.length, 1)
+  assert.equal(restartedSearch[0].provenance.kind, 'user')
+  await restartCtx.fiber.dispose()
+  disposeRestartAgents()
+  assert.equal(agentWakeups, 0)
+  assert.equal(modelRequests, 0)
+  assert.equal(contextInjections, 0)
+  const corruptionRoot = join(root, 'corruption-fixture')
+  const corruptionFile = join(corruptionRoot, '.dsh', 'workspace-memory', 'records.jsonl')
+  const corruptionStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:corruption', projectRoot: corruptionRoot, filePath: corruptionFile, idFactory: () => 'memory:corrupt', now: () => 10 })
+  await mkdir(corruptionRoot, { recursive: true })
+  await corruptionStore.open()
+  const corruptionRecord = await corruptionStore.upsert({ scope: 'project', scopeKey: 'root:corruption', type: 'fact', title: 'Valid', content: 'kept', tags: [], provenance: { kind: 'user' } })
+  await corruptionStore.close()
+  const badHash = { ...corruptionRecord, contentHash: `sha256:${'0'.repeat(64)}` }
+  await writeFile(corruptionFile, `${JSON.stringify(corruptionRecord)}\n${JSON.stringify(badHash)}\nnot-json\n`, 'utf8')
+  const recoveredStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:corruption', projectRoot: corruptionRoot, filePath: corruptionFile })
+  const recoveredState = await recoveredStore.open()
+  assert.equal(recoveredState.records.length, 1)
+  assert.deepEqual(recoveredState.warnings.map(warning => warning.code).sort(), ['BAD_HASH', 'CORRUPT_RECORD'])
+  assert.match(await readFile(`${corruptionFile}.corrupt`, 'utf8'), /not-json/u)
+  const migratedRoot = join(root, 'migration-fixture')
+  const migratedFile = join(migratedRoot, '.dsh', 'workspace-memory', 'records.jsonl')
+  const migrationSource = new host.MemoryStore({ scope: 'project', scopeKey: 'root:migration', projectRoot: migratedRoot, filePath: migratedFile, idFactory: () => 'memory:migrate', now: () => 10 })
+  await mkdir(migratedRoot, { recursive: true })
+  await migrationSource.open()
+  const migrationRecord = await migrationSource.upsert({ scope: 'project', scopeKey: 'root:migration', type: 'fact', title: 'Migrated', content: 'kept', tags: [], provenance: { kind: 'import' } })
+  await migrationSource.close()
+  await writeFile(migratedFile, `${JSON.stringify({ ...migrationRecord, schemaVersion: 0 })}\n`, 'utf8')
+  const migratedStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:migration', projectRoot: migratedRoot, filePath: migratedFile, migrations: [{ from: 0, to: host.MEMORY_SCHEMA_VERSION, migrate: value => ({ ...value, schemaVersion: host.MEMORY_SCHEMA_VERSION }) }] })
+  const migratedState = await migratedStore.open()
+  assert.equal(migratedState.records[0].title, 'Migrated')
+  await readFile(`${migratedFile}.bak`, 'utf8')
+  const unavailableStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:missing', projectRoot: join(root, 'missing-project') })
+  await assert.rejects(() => unavailableStore.open(), error => error?.code === 'PROJECT_UNAVAILABLE')
+  const unknownSchemaFile = join(root, 'unknown-schema.jsonl')
+  await writeFile(unknownSchemaFile, `${JSON.stringify({ schemaVersion: 99, id: 'future' })}\n`, 'utf8')
+  const unknownSchemaStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:unknown', projectRoot: root, filePath: unknownSchemaFile })
+  const unknownSchemaState = await unknownSchemaStore.open()
+  assert.equal(unknownSchemaState.readOnly, true)
+  const oversizedRoot = join(root, 'oversized-fixture')
+  const oversizedFile = join(oversizedRoot, '.dsh', 'workspace-memory', 'records.jsonl')
+  await mkdir(dirname(oversizedFile), { recursive: true })
+  await writeFile(oversizedFile, Buffer.alloc(host.MEMORY_MAX_FILE_BYTES + 1, 0x20))
+  const oversizedStore = new host.MemoryStore({ scope: 'project', scopeKey: 'root:oversized', projectRoot: oversizedRoot, filePath: oversizedFile })
+  const oversizedState = await oversizedStore.open()
+  assert.equal(oversizedState.readOnly, true)
+  assert.equal(oversizedState.warnings[0].code, 'STORE_TOO_LARGE')
   const initialContext = await ctx.typertGateway.invoke({
     namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
   })
@@ -514,7 +674,7 @@ async function gatewaySmoke(root, host, hostTypert) {
   assert.ok(ctx.typert.local.list().length > 0)
   disposeAgent()
   disposeAgents()
-  return { ctx, registry: ctx.typert, host }
+  return { ctx, registry: ctx.typert, host, memoryRelease: { dshHome: 'disposable-profile', scopes: [sessionRecord.scope, memoryRecord.scope, userRecord.scope, sharedRecord.scope], restartRecord: memoryRecord.id, corruptionWarnings: recoveredState.warnings.map(warning => warning.code), migrationSchema: host.MEMORY_SCHEMA_VERSION, unavailableProject: 'PROJECT_UNAVAILABLE', unknownSchemaReadOnly: unknownSchemaState.readOnly, oversizedReadOnly: oversizedState.readOnly, agentWakeups, modelRequests, contextInjections } }
 }
 
 async function webSmoke(root, host, ctx) {
@@ -768,9 +928,9 @@ async function main() {
     const lockfileSha256 = await installProfile(root)
     const { pluginRoot } = await createFixture(root)
     await buildFixture(root)
-    const { consumer, lockfileSha256: consumerLockfileSha256 } = await installPackedBundle(root, pluginRoot)
+    const { consumer, lockfileSha256: consumerLockfileSha256, tarballSha256 } = await installPackedBundle(root, pluginRoot)
     const { host, client, hostTypert, profileRoot } = await publicBundleSmoke(consumer)
-    const { ctx, registry } = await gatewaySmoke(profileRoot, host, hostTypert)
+    const { ctx, registry, memoryRelease } = await gatewaySmoke(profileRoot, host, hostTypert)
     let endpoint
     let preview
     let conversation
@@ -796,6 +956,8 @@ async function main() {
       sourceBaseline: SOURCE_BASELINE_NOTE,
       profileLockfileSha256: lockfileSha256,
       consumerLockfileSha256,
+      packedTarballSha256: tarballSha256,
+      memoryRelease,
       packages: PACKAGE_VERSIONS,
     }))
   } finally {
