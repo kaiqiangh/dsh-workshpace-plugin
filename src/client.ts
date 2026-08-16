@@ -1,7 +1,6 @@
 import {
   applyWorkspaceConversationContribution,
   createWorkspaceChatNodeComponent,
-  createWorkspaceDrawerController,
   type WorkspaceConversationEventRegistry,
   type WorkspaceConversationContributionOptions,
   type WorkspaceSlotRegistry,
@@ -195,7 +194,6 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
 export {
   applyWorkspaceConversationContribution,
   createWorkspaceChatNodeComponent,
-  createWorkspaceDrawerController,
   workspaceConversationDefinition,
   workspaceConversationView,
 };

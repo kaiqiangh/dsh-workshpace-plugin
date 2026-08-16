@@ -1,7 +1,7 @@
 import { Remote, TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { AgentId, PinnedContextRemoteSnapshot, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
+import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
 import { resolveWorkspaceRoot, resumeWorkspace, startWorkspace, type WorkspaceSnapshot } from "./domain/workspace.ts";
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
@@ -59,10 +59,8 @@ export {
   transitionMemoryGovernance,
 } from "./domain/memory-governance.ts";
 
-export { createPinnedContext, pinContextPath, setContextCapacity, updateContextPath } from "./domain/context.ts";
 export { MEMORY_TYPES } from "./types.ts";
 export { GitError, gitDiff, gitStatus, isGitRepository, parsePorcelain, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitDiffResult, type GitErrorCode } from "./domain/git.ts";
-export { registerPinnedContextCarrier } from "./domain/context-carrier.ts";
 export {
   PreviewPanelError,
   PreviewService,
@@ -125,56 +123,12 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
   }
 }
 
-const emptySnapshot: PinnedContextRemoteSnapshot = Object.freeze({
-  version: 0,
-  contentHash: "sha256:" + "0".repeat(64),
-  estimatedTokens: 0,
-  capacityTokens: 0,
-  admittedTokens: 0,
-  availableBudgetTokens: 0,
-  remainingTokens: 0,
-  status: "omitted",
-  omissionReason: "empty",
-});
-
-function validateSnapshot(snapshot: PinnedContextRemoteSnapshot): PinnedContextRemoteSnapshot {
-  if (!snapshot || typeof snapshot !== "object"
-    || !Number.isSafeInteger(snapshot.version) || snapshot.version < 0
-    || typeof snapshot.contentHash !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(snapshot.contentHash)
-    || !Number.isSafeInteger(snapshot.estimatedTokens) || snapshot.estimatedTokens < 0
-    || !Number.isSafeInteger(snapshot.capacityTokens) || snapshot.capacityTokens < 0
-    || !Number.isSafeInteger(snapshot.admittedTokens) || snapshot.admittedTokens < 0
-    || !Number.isSafeInteger(snapshot.availableBudgetTokens) || snapshot.availableBudgetTokens < 0
-    || !Number.isSafeInteger(snapshot.remainingTokens) || snapshot.remainingTokens < 0
-    || (snapshot.status !== "ready" && snapshot.status !== "omitted")
-    || typeof snapshot.omissionReason !== "string" || /[\u0000-\u001f\u007f]/u.test(snapshot.omissionReason)
-    || snapshot.availableBudgetTokens > snapshot.capacityTokens
-    || snapshot.admittedTokens > snapshot.availableBudgetTokens
-    || snapshot.remainingTokens !== snapshot.availableBudgetTokens - snapshot.admittedTokens
-    || snapshot.estimatedTokens < snapshot.admittedTokens
-    || (snapshot.status === "ready" && snapshot.omissionReason !== "")) {
-    throw new Error("Pinned Context snapshot is invalid");
-  }
-  return Object.freeze({
-    version: snapshot.version,
-    contentHash: snapshot.contentHash,
-    estimatedTokens: snapshot.estimatedTokens,
-    capacityTokens: snapshot.capacityTokens,
-    admittedTokens: snapshot.admittedTokens,
-    availableBudgetTokens: snapshot.availableBudgetTokens,
-    remainingTokens: snapshot.remainingTokens,
-    status: snapshot.status,
-    omissionReason: snapshot.omissionReason,
-  });
-}
-
 export interface WorkspaceServiceConfig {
   readonly memoryDomain?: WorkspaceMemoryDomain;
 }
 
 export class WorkspaceService extends TypertRemoteService {
   static inject = ["agents"] as const;
-  private snapshot: PinnedContextRemoteSnapshot = emptySnapshot;
   private readonly memoryDomain: WorkspaceMemoryDomain;
   private readonly memoryWorkspaceSnapshots = new Map<string, WorkspaceSnapshot>();
   private artifactCarrier?: WorkspaceArtifactCarrier;
@@ -203,17 +157,6 @@ export class WorkspaceService extends TypertRemoteService {
   @Remote("focus")
   focus(agentId: AgentId): { readonly focused: boolean } {
     return { focused: true };
-  }
-
-  @Remote("contextSnapshot")
-  contextSnapshot(agentId: AgentId): PinnedContextRemoteSnapshot {
-    return this.snapshot;
-  }
-
-  @Remote("replaceContext")
-  replaceContext(agentId: AgentId, snapshot: PinnedContextRemoteSnapshot): PinnedContextRemoteSnapshot {
-    this.snapshot = validateSnapshot(snapshot);
-    return this.snapshot;
   }
 
   @Remote("artifactMetadata")

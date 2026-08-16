@@ -772,57 +772,6 @@ async function gatewaySmoke(root, host, hostTypert) {
   const oversizedState = await oversizedStore.open()
   assert.equal(oversizedState.readOnly, true)
   assert.equal(oversizedState.warnings[0].code, 'STORE_TOO_LARGE')
-  const initialContext = await ctx.typertGateway.invoke({
-    namespace: 'workspace', method: 'contextSnapshot', args: { agentId: 'agent-1' },
-  })
-  assert.equal(initialContext.status, 'omitted')
-  assert.equal(initialContext.capacityTokens, 0)
-  const replacedContext = await ctx.typertGateway.invoke({
-    namespace: 'workspace', method: 'replaceContext',
-    args: {
-      agentId: 'agent-1',
-      snapshot: {
-        version: 1,
-        contentHash: `sha256:${'c'.repeat(64)}`,
-        estimatedTokens: 12,
-        capacityTokens: 512,
-        admittedTokens: 12,
-        availableBudgetTokens: 480,
-        remainingTokens: 468,
-        status: 'ready',
-        omissionReason: '',
-      },
-    },
-  })
-  assert.equal(replacedContext.version, 1)
-  assert.equal(replacedContext.remainingTokens, 468)
-  assert.equal(typeof host.registerPinnedContextCarrier, 'function')
-  assert.equal(typeof host.createPinnedContext, 'function')
-  const registrations = []
-  const carrierAgent = {
-    id: 'agent-1',
-    ctx: {
-      systemPrompt: {
-        context(registration) {
-          registrations.push(registration)
-          return () => registrations.splice(registrations.indexOf(registration), 1)
-        },
-      },
-    },
-  }
-  let contextState = host.createPinnedContext({ sessionId: 'agent-1', rootId: 'root-1' }, { maxItemBytes: 64, reservedOutputTokens: 4 })
-  contextState = host.setContextCapacity(contextState, 256)
-  contextState = host.pinContextPath(contextState, 'src/auth.py')
-  const readyState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'alpha', loadedAt: 1 })
-  const omittedState = host.updateContextPath(contextState, { path: 'src/auth.py', status: 'ready', content: 'x'.repeat(80), loadedAt: 2 })
-  assert.equal(omittedState.entries[0].status, 'over-budget')
-  const carrier = host.registerPinnedContextCarrier(carrierAgent, readyState)
-  const firstText = registrations[0].text()
-  const changedState = host.updateContextPath(readyState, { path: 'src/auth.py', status: 'ready', content: 'beta', loadedAt: 3 })
-  carrier.update(changedState)
-  assert.notEqual(registrations[0].text(), firstText)
-  carrier.dispose()
-  assert.equal(registrations.length, 0)
   assert.ok(ctx.typert.local.list().length > 0)
   disposeAgent()
   disposeAgents()
@@ -976,7 +925,6 @@ async function conversationSmoke(root, client, ctx) {
   assert.deepEqual([...first.nodes.values()].map(node => node.data), [...replayed.nodes.values()].map(node => node.data))
 
   assert.equal(typeof workspace.applyWorkspaceConversationContribution, 'function', 'packed Client must export the Workspace Web contribution')
-  assert.equal(typeof workspace.createWorkspaceDrawerController, 'function', 'packed Client must export typed Workspace operations')
   const workspaceDefinitions = []
   const workspaceViews = []
   const workspaceSlots = []
@@ -1024,51 +972,6 @@ async function conversationSmoke(root, client, ctx) {
   assert.deepEqual(rendered.summary, summary)
   rendered.openWorkspace.action()
   assert.equal(opened, true)
-  const typedClient = {
-    async listDirectory() { return [] },
-    async stat() { return { path: 'src/auth.py', kind: 'file' } },
-    async preview() { previewCalls += 1; return { type: 'text', path: 'src/auth.py', renderer: 'ui-primitives', content: 'ok', truncated: false } },
-    async readResource() { return new Uint8Array() },
-    async gitStatus() { return [] },
-    async diff() { return '' },
-    async sessionFiles() { return [] },
-    async workingSet() { return { entries: [], summary: { count: 0, unresolvedCount: 0 } } },
-    async pinWorkingSet() {},
-    async unpinWorkingSet() {},
-    async clearWorkingSet() {},
-    async sendWorkingSet() { sendCalls += 1 },
-    async pinnedContext() {
-      contextCalls += 1
-      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
-    },
-    async pinContext(path) {
-      contextCalls += 1
-      return {
-        count: 1, capacity: 'available', capacityTokens: 500, admittedTokens: 12, availableBudgetTokens: 488, remainingTokens: 488,
-        entries: [{ path, order: 0, sourceStatus: 'ready', status: 'ready', contentHash: `sha256:${'b'.repeat(64)}`, bytes: 48, estimatedTokens: 12, loadedAt: 1 }],
-      }
-    },
-    async unpinContext() {
-      contextCalls += 1
-      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
-    },
-    async clearContext() {
-      contextCalls += 1
-      return { count: 0, capacity: 'available', capacityTokens: 500, admittedTokens: 0, availableBudgetTokens: 500, remainingTokens: 500, entries: [] }
-    },
-  }
-  const controller = workspace.createWorkspaceDrawerController(typedClient)
-  await controller.dispatch({ type: 'select-file', path: 'src/auth.py' })
-  await controller.dispatch({ type: 'send-working-set' })
-  await controller.dispatch({ type: 'inspect-pinned-context' })
-  await controller.dispatch({ type: 'pin-context', path: 'src/auth.py' })
-  assert.equal(controller.getState().pinnedContext.count, 1)
-  assert.equal('content' in controller.getState().pinnedContext.entries[0], false)
-  await controller.dispatch({ type: 'clear-context' })
-  assert.equal(previewCalls, 1)
-  assert.equal(sendCalls, 1)
-  assert.equal(contextCalls, 3)
-  assert.equal(controller.getState().pinnedContext.count, 0)
   await clientDispose()
   assert.equal(clientRemoteMounted, 0)
   assert.equal(clientRemoteDisposed, true)

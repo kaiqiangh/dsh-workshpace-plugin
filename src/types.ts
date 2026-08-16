@@ -57,14 +57,3 @@ export const MEMORY_TYPES: readonly MemoryType[] = ["decision", "preference", "c
 
 export type AgentId = SessionId;
 
-export interface PinnedContextRemoteSnapshot {
-  readonly version: number;
-  readonly contentHash: string;
-  readonly estimatedTokens: number;
-  readonly capacityTokens: number;
-  readonly admittedTokens: number;
-  readonly availableBudgetTokens: number;
-  readonly remainingTokens: number;
-  readonly status: "ready" | "omitted";
-  readonly omissionReason: string;
-}
