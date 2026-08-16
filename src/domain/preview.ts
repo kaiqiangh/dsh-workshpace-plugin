@@ -484,10 +484,20 @@ export class PreviewService {
     const limit = mediaType === "application/pdf" ? this.limits.maxPdfBytes : this.limits.maxImageBytes;
     if (info.size > limit) throw new PreviewPanelError("FILE_TOO_LARGE", "Preview exceeds its safety limit");
     if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+    const version = versionFor(info);
+    for (const [resourceId, resource] of this.resources) {
+      if (this.now() >= resource.expiresAt) {
+        this.resources.delete(resourceId);
+        continue;
+      }
+      if (sameIdentity(resource.identity, this.identity) && resource.path === resolved.path && resource.mediaType === mediaType && resource.version === version) {
+        return { type: "binary", path: resolved.path, mediaType, resourceId, version, expiresAt: resource.expiresAt };
+      }
+    }
     const resourceId = randomBytes(18).toString("base64url");
     const expiresAt = this.now() + this.resourceTtlMs;
-    this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version: versionFor(info), expiresAt, downloadName: resourceName(resolved.path, mediaType) });
-    return { type: "binary", path: resolved.path, mediaType, resourceId, version: versionFor(info), expiresAt };
+    this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version, expiresAt, downloadName: resourceName(resolved.path, mediaType) });
+    return { type: "binary", path: resolved.path, mediaType, resourceId, version, expiresAt };
   }
 
   private async json(resolved: ResolvedPath): Promise<JsonPreviewDescriptor> {

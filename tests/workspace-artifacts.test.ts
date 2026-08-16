@@ -65,6 +65,9 @@ test("reuses the metadata resource for binary artifact previews", async () => {
   const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => sessionToolRecords(events) });
   const metadata = await carrier.metadata();
   assert.equal(metadata[0]?.resourceId !== undefined, true);
+  const refreshed = await carrier.metadata();
+  assert.equal(refreshed[0]?.id, metadata[0]?.id);
+  assert.equal(refreshed[0]?.resourceId, metadata[0]?.resourceId);
   const preview = await carrier.previewArtifact(metadata[0]!.id);
   assert.equal(preview.type, "binary");
   assert.equal(preview.type === "binary" ? preview.resourceId : undefined, metadata[0]!.resourceId);

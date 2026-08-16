@@ -75,9 +75,9 @@ export function createWorkspaceArtifactSurfaceComponent(
   options: WorkspaceArtifactSurfaceOptions = {},
 ): (props: Record<string, unknown>) => ReactNode {
   return function WorkspaceArtifactSurface(props: Record<string, unknown>): ReactNode {
-    const useSessions = props.useSessions as (() => { readonly current?: string }) | undefined;
-    const sessionState = useSessions?.();
-    const activeRemote = options.resolveRemote ? options.resolveRemote(sessionState?.current) : remote;
+    const useSessions = props.useSessions as ((selector: (state: { readonly current?: string }) => string | undefined) => string | undefined) | undefined;
+    const sessionId = useSessions?.((state) => state.current);
+    const activeRemote = options.resolveRemote ? options.resolveRemote(sessionId) : remote;
     const [status, setStatus] = useState<"loading" | "ready" | "degraded">("loading");
     const [artifacts, setArtifacts] = useState<readonly WorkspaceDeliverable[]>([]);
     const [selectedId, setSelectedId] = useState<string | undefined>();
@@ -89,6 +89,7 @@ export function createWorkspaceArtifactSurfaceComponent(
     const downloadController = useRef<ReturnType<typeof createWorkspaceDownloadController> | undefined>();
     const request = useRef(0);
     const detailArtifact = useRef<string | undefined>();
+    const refreshRequest = useRef(0);
     const downloadRequest = useRef(0);
     const runtime = options.runtime ?? defaultRuntime();
 
@@ -100,15 +101,23 @@ export function createWorkspaceArtifactSurfaceComponent(
         return () => { active = false; };
       }
       const refresh = async (): Promise<void> => {
+        const token = ++refreshRequest.current;
         try {
           const items = normalizeWorkspaceArtifacts(remoteValue(await activeRemote.artifactMetadata()));
-          if (!active) return;
+          if (!active || token !== refreshRequest.current) return;
           setArtifacts(items);
           setSelectedId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id);
+          request.current += 1;
+          detailArtifact.current = undefined;
+          setDetail(undefined);
+          setDetailStatus("idle");
+          downloadRequest.current += 1;
+          downloadController.current?.cancel();
+          setDownload({});
           setStatus("ready");
           setMessage(undefined);
         } catch {
-          if (!active) return;
+          if (!active || token !== refreshRequest.current) return;
           setStatus((current) => current === "loading" ? "degraded" : current);
           setMessage("Workspace artifacts are unavailable in this Web scope.");
         }
@@ -116,7 +125,7 @@ export function createWorkspaceArtifactSurfaceComponent(
       void refresh();
       const refreshMs = options.refreshMs ?? 5_000;
       const timer = Number.isFinite(refreshMs) && refreshMs > 0 ? setInterval(() => { void refresh(); }, refreshMs) : undefined;
-      return () => { active = false; if (timer !== undefined) clearInterval(timer); };
+      return () => { active = false; refreshRequest.current += 1; if (timer !== undefined) clearInterval(timer); };
     }, [activeRemote, options.refreshMs]);
 
     useEffect(() => {
@@ -144,6 +153,9 @@ export function createWorkspaceArtifactSurfaceComponent(
       setDetail(undefined);
       setDetailStatus("idle");
       setMessage(undefined);
+      downloadRequest.current += 1;
+      downloadController.current?.cancel();
+      setDownload({});
     }, [activeRemote]);
     const select = (artifact: WorkspaceDeliverable): void => {
       downloadRequest.current += 1;
@@ -153,6 +165,7 @@ export function createWorkspaceArtifactSurfaceComponent(
       setDetail(undefined);
       setDetailStatus("loading");
       setMessage(undefined);
+      setDownload({});
       const token = ++request.current;
       activeRemote?.previewArtifact(artifact.id).then((result) => {
         if (token !== request.current) return;
