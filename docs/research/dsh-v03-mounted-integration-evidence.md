@@ -12,6 +12,12 @@ v0.3 mounted deliverable surface](https://github.com/kaiqiangh/dsh-workshpace-pl
 - Harness baseline: `@deepseek-ai/dsh@0.1.0-rc.6`
 - Packed plugin: `dsh-workspace-plugin@0.2.0`
 - Packed tar SHA-256: `688f179f6cddaa94dbdf8541cde7e5a5f27464a789716c44057f81e74115ff77`
+- Profile lockfile (v3) SHA-256: `7db66e8384a3abab222525769c97fddf6bd30bbb18a76dd42d4d2c8e41feea2c`
+- Packed-consumer lockfile (v3) SHA-256: `dda7633430b751f63741df934a30c61e3a5fb1eb25c0f7049b502321e76217ec`
+- Runtime: Node `v22.23.2`, npm `10.9.8`, pnpm `11.21.0`
+- Exact resolved package versions: the `PACKAGE_VERSIONS` map in
+  [`scripts/dsh-compat-smoke.mjs`](../../scripts/dsh-compat-smoke.mjs),
+  exercised by the run below.
 
 ## Installed Web run
 
@@ -31,7 +37,9 @@ created `browser-image.png`.
   safe name, media type, size, version, session/root identity, preview state,
   resource id, and alt text; it contained no absolute host path.
 - Keyboard focus moved from the artifact control to Download with the browser's
-  visible `outline: auto` focus indication.
+  visible `outline: auto` focus indication. Focus return on the surrounding
+  Workspace drawer close remains covered by the existing
+  `keeps selections while closing and returns focus to the opener` test.
 - The existing Files, Session, Changes, Context, and Memory regions remained
   available. No `/private/` or `/Users/` path appeared in the browser envelope.
 - `agent-browser errors` was empty.
