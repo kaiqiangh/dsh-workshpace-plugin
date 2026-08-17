@@ -4,6 +4,7 @@ import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 
 import { createWorkspaceChangesSurfaceComponent, matchesFilter } from "../src/web/workspace-changes-surface.ts";
+import { twoHunkDiffText } from "./fixtures.ts";
 
 test("matchesFilter selects the right changes for each filter", () => {
   const change = (path: string, status: string, staged: boolean) => ({ path, status, staged });
@@ -180,4 +181,176 @@ test("copy button copies the selected diff to the clipboard", async () => {
   } finally {
     delete (globalThis as { navigator?: unknown }).navigator;
   }
+});
+
+test("renders inter-hunk context as an expander and reveals lines on click", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteForDiff(twoHunkDiffText()), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const expander = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-expander");
+  assert.ok(expander, "a collapsed gap renders an expander");
+  const button = expander.find((node) => node.type === "button");
+  assert.ok(button.children.join("").includes("1 hidden line"), "the hidden middle is the hunk header");
+  const before = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code-line").length;
+  await act(async () => { button.props.onClick(); });
+  const after = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code-line").length;
+  assert.ok(after > before, "expanding reveals the hunk header");
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-expander").length, 0, "the 1-unit middle is fully revealed by the 20-line step");
+});
+
+test("sticky file header carries collapse chevron, stats, and prev/next navigation", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteFor([
+    { path: "a.ts", status: "modified", staged: false },
+    { path: "b.ts", status: "modified", staged: false },
+  ]), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const header = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-file-header");
+  assert.ok(header, "sticky file header exists");
+  assert.ok(header.find((node) => node.props["data-dsh-workspace"] === "diff-collapse"), "collapse chevron exists");
+  assert.ok(header.find((node) => node.props["data-dsh-workspace"] === "diff-prev"), "prev button exists");
+  assert.ok(header.find((node) => node.props["data-dsh-workspace"] === "diff-next"), "next button exists");
+  assert.ok(header.find((node) => node.props["data-dsh-workspace"] === "diff-stats"), "stats exist");
+});
+
+test("chevron collapses and re-expands the file diff", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteForDiff(twoHunkDiffText()), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const chevron = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-collapse");
+  await act(async () => { chevron.props.onClick(); });
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code").length, 0, "diff body hidden when collapsed");
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "empty-state").length >= 1, "collapsed notice shown");
+  const chevronAgain = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-collapse");
+  await act(async () => { chevronAgain.props.onClick(); });
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code").length >= 1, "diff body returns after re-expanding");
+});
+
+test("prev/next buttons step through files in the active filter and wrap", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteFor([
+    { path: "a.ts", status: "modified", staged: false },
+    { path: "b.ts", status: "modified", staged: false },
+    { path: "c.ts", status: "modified", staged: false },
+  ]), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const click = async (node: () => TestRenderer.ReactTestInstance | undefined): Promise<void> => {
+    // The diff header unmounts briefly while the next file's diff loads, so
+    // re-resolve the button after every action instead of holding a stale node.
+    const button = node();
+    assert.ok(button, "nav button present");
+    await act(async () => { button!.props.onClick(); });
+    await act(async () => {});
+  };
+  await click(() => tree.root.findAll((n) => n.props["data-dsh-workspace"] === "diff-next")[0]);
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("b.ts")).length >= 1, "next selects b.ts");
+  await click(() => tree.root.findAll((n) => n.props["data-dsh-workspace"] === "diff-next")[0]);
+  await click(() => tree.root.findAll((n) => n.props["data-dsh-workspace"] === "diff-next")[0]);
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("a.ts")).length >= 1, "navigation wraps to a.ts");
+  await click(() => tree.root.findAll((n) => n.props["data-dsh-workspace"] === "diff-prev")[0]);
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("c.ts")).length >= 1, "prev wraps back to c.ts");
+});
+
+test("bracket keys navigate files only when the surface has focus", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteFor([
+    { path: "a.ts", status: "modified", staged: false },
+    { path: "b.ts", status: "modified", staged: false },
+  ]), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const section = tree.root.find((node) => node.props["data-dsh-workspace"] === "changes");
+  const prevented: string[] = [];
+  await act(async () => { section.props.onKeyDown({ key: "]", preventDefault: () => prevented.push("]") }); });
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("b.ts")).length >= 1, "] moves to b.ts");
+  assert.deepEqual(prevented, ["]"], "the host never sees the key");
+  await act(async () => { section.props.onKeyDown({ key: "[", preventDefault: () => prevented.push("[") }); });
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("a.ts")).length >= 1, "[ moves back to a.ts");
+  const before = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("a.ts")).length;
+  await act(async () => { section.props.onKeyDown({ key: "ArrowDown", preventDefault: () => prevented.push("ArrowDown") }); });
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-diff" && node.props["aria-label"]?.includes("a.ts")).length, before, "unrelated keys pass through");
+  assert.ok(!prevented.includes("ArrowDown"));
+});
+
+test("split toggle appears only on wide carriers and switches the diff layout", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteForDiff(twoHunkDiffText()), { refreshMs: 0, carrierWidth: 1000 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const toggle = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-mode-toggle");
+  assert.ok(toggle, "toggle visible above the breakpoint");
+  // Auto mode on a wide carrier is split (VS Code-style); the toggle lets the
+  // user override toward unified.
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-split").length, 1, "wide carriers default to split");
+  const unifiedBtn = toggle.find((node) => node.children?.join("") === "Unified");
+  await act(async () => { unifiedBtn.props.onClick(); });
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-split").length, 0, "back to unified");
+});
+
+test("split toggle is hidden on narrow carriers", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteForDiff(twoHunkDiffText()), { refreshMs: 0, carrierWidth: 500 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-mode-toggle").length, 0, "no toggle below the breakpoint");
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-split").length, 0, "diff stays unified");
+});
+
+test("changed diff on refresh stashes behind a pill instead of reflowing", async () => {
+  let diffText = [
+    "diff --git a/file.ts b/file.ts",
+    "@@ -1,1 +1,1 @@",
+    "-old",
+    "+new",
+  ].join("\n");
+  const remote = {
+    gitStatus: async () => ({ ok: true, value: [{ path: "example.md", status: "modified", staged: false }] }),
+    gitDiff: async () => ({ ok: true, value: { path: "example.md", staged: diffText, unstaged: "", truncated: false } }),
+  };
+  const render = createWorkspaceChangesSurfaceComponent(remote, { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-refresh-pill").length, 0, "no pill initially");
+  const initialLines = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code-line").length;
+  // The diff changed on the next poll.
+  diffText = [
+    "diff --git a/file.ts b/file.ts",
+    "@@ -1,2 +1,2 @@",
+    "-old",
+    "+old but different",
+    "-extra",
+    "+new",
+  ].join("\n");
+  const refresh = tree.root.find((node) => node.children?.join("") === "Refresh");
+  await act(async () => { refresh.props.onClick(); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-refresh-pill").length, 1, "pill appears on changed content");
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code-line").length, initialLines, "stale diff is not reflowed");
+  const pill = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-refresh-pill");
+  await act(async () => { pill.props.onClick(); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-refresh-pill").length, 0, "pill dismisses after applying");
+  assert.ok(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code-line").length > initialLines, "the new diff renders");
+});
+
+test("identical diff on refresh stays silent without a pill", async () => {
+  const diff = [
+    "diff --git a/file.ts b/file.ts",
+    "@@ -1,1 +1,1 @@",
+    "-old",
+    "+new",
+  ].join("\n");
+  const render = createWorkspaceChangesSurfaceComponent(remoteForDiff(diff), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const refresh = tree.root.find((node) => node.children?.join("") === "Refresh");
+  await act(async () => { refresh.props.onClick(); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-refresh-pill").length, 0, "no pill when the diff is unchanged");
 });
