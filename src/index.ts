@@ -1,17 +1,17 @@
 import { Remote, TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
+import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable, WorkspaceSummaryData } from "./types.ts";
 import { resolveWorkspaceRoot, resumeWorkspace, startWorkspace, type WorkspaceSnapshot } from "./domain/workspace.ts";
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
 import { gitDiff as gitDiffForRoot, gitStatus as gitStatusForRoot, GitError, type GitChange, type GitDiffResult } from "./domain/git.ts";
-import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
+import { sessionToolRecords, WorkspaceArtifactCarrier, type SessionEventLike } from "./host/workspace-artifacts.ts";
 import { registerMemoryPropose } from "./host/workspace-memory-propose.ts";
-import { attachWorkspaceSummaryEmitter } from "./host/workspace-summary.ts";
+import { attachWorkspaceSummaryEmitter, workspaceSummaryWithMemory, type SummaryAgent } from "./host/workspace-summary.ts";
 import { attachWorkspaceMemoryAutoWriter } from "./host/workspace-memory-auto-write.ts";
-import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
+import { registerWorkspaceResourceRoute, registerWorkspaceVendorRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
 export {
   MEMORY_MAX_CONTENT_BYTES,
@@ -91,10 +91,13 @@ export {
 } from "./domain/deliverable.ts";
 export {
   installWorkspaceResourceRoute,
+  installWorkspaceVendorRoute,
   registerWorkspaceResourceRoute,
+  registerWorkspaceVendorRoute,
   type WebRouteRegistrar,
   type WorkspaceEffectRegistrar,
   type WorkspaceResourceRouteOptions,
+  type WorkspaceVendorRouteOptions,
 } from "./host/workspace-resource.ts";
 export {
   WorkspaceArtifactCarrier,
@@ -114,6 +117,7 @@ export {
 export {
   attachWorkspaceSummaryEmitter,
   workspaceSummaryFor,
+  workspaceSummaryWithMemory,
   type SummaryAgent,
   type WorkspaceSummaryData,
 } from "./host/workspace-summary.ts";
@@ -161,6 +165,26 @@ export class WorkspaceService extends TypertRemoteService {
   @Remote
   summary(agent: AgentId): { readonly ready: boolean; readonly agent: AgentId } {
     return { ready: true, agent };
+  }
+
+  /**
+   * Derive the current session summary from allow-listed durable tool records
+   * (tool/call + tool/result). Never writes a custom event to the session log:
+   * persisting `workspace/summary` made the whole log unloadable after a
+   * restart (cold-read rejects unknown non-ignorable event types).
+   */
+  @Remote("workspaceSummary")
+  async workspaceSummary(agentId: AgentId): Promise<WorkspaceSummaryData | undefined> {
+    const agent = this.ctx.agents.get(agentId) as (Agent & { readonly session?: { readonly header?: { readonly cwd?: string }; readonly events?: readonly { readonly seq: number; readonly type: string; readonly data?: Record<string, unknown> }[] } }) | undefined;
+    if (!agent?.session) return undefined;
+    const summaryAgent: SummaryAgent = {
+      id: agentId,
+      session: {
+        header: { cwd: agent.session.header?.cwd },
+        events: agent.session.events as readonly SessionEventLike[] | undefined,
+      },
+    };
+    return workspaceSummaryWithMemory(summaryAgent, this.memoryDomain);
   }
 
   @Remote("focus")
@@ -312,8 +336,12 @@ export class WorkspaceService extends TypertRemoteService {
       if (webServer?.register) {
         const carrier = this.artifactCarrier;
         this.artifactRouteDispose = this.ctx.effect(
-          () => registerWorkspaceResourceRoute(webServer, { preview: carrier.preview }),
-          "workspace opaque artifact route",
+          () => {
+            const disposeResource = registerWorkspaceResourceRoute(webServer, { preview: carrier.preview });
+            const disposeVendor = registerWorkspaceVendorRoute(webServer);
+            return () => { disposeVendor(); disposeResource(); };
+          },
+          "workspace opaque artifact + vendor routes",
         );
       }
       return this.artifactCarrier;

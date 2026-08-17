@@ -7,7 +7,7 @@ import {
   workspaceConversationDefinition,
   workspaceConversationView,
 } from "./web/workspace-conversation.ts";
-import { createElement } from "react";
+import { createElement, useEffect, useState } from "react";
 import { CodeBlock, JsonTree, MarkdownText } from "@deepseek-ai/dsh-client-ui-primitives";
 import { TYPERT_REMOTE } from "./typert.remote-client.js";
 import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
@@ -33,6 +33,8 @@ import {
   WORKSPACE_VIEW_SLOT,
   type WorkspaceViewSlotRegistry,
 } from "./web/workspace-view.ts";
+import { workspaceSummaryBlockComponent } from "./web/workspace-summary-block.ts";
+import type { WorkspaceSummaryData } from "./host/workspace-summary.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -61,18 +63,6 @@ export function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: 
   return createWorkspacePreviewRenderer({ MarkdownText, CodeBlock, JsonTree }, descriptor, options);
 }
 
-/** Compact human-readable session activity span derived from host timestamps. */
-function formatActiveSpan(firstObservedAt: number, lastObservedAt: number): string {
-  if (!firstObservedAt || !lastObservedAt || lastObservedAt <= firstObservedAt) return "just now";
-  const seconds = Math.round((lastObservedAt - firstObservedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}m` : `${hours}h`;
-}
-
 export const inject = ["conversationEvents", "slots", "remote", "sessions"] as const;
 
 export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
@@ -83,25 +73,12 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
   let disposeConversation: (() => void) | undefined;
   try {
     ctx.effect(() => {
-      const disposeEvent = ctx.conversationEvents.register(workspaceConversationDefinition);
-      const disposeSlot = ctx.slots.inject("conversation.chat.node", () => ctx.slots.register(
-        { name: "conversation.chat.node", key: "dsh-workspace-summary" },
-        createWorkspaceChatNodeComponent(
-          (model) => {
-            const summary = model.summary;
-            return createElement(
-              "section",
-              { "data-dsh-workspace": "summary" },
-              createElement("strong", null, summary.workspaceName),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.filesTouched} files`),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.filesCreated} new · ${summary.filesModified} edited · ${summary.filesDeleted} deleted`),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.artifacts} artifacts`),
-              summary.memoryCount > 0 && createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.memoryCount} memory · ${summary.decisionCount} decisions`),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `active ${formatActiveSpan(summary.firstObservedAt, summary.lastObservedAt)}`),
-            );
-          },
-        ),
-      ));
+      // v0.6: the summary is derived on demand and rendered as a block in the
+      // Workspace conversation tab (workspaceSummaryBlockComponent). The old
+      // conversation.chat.node registration is gone: persisting a
+      // workspace/summary custom event made the whole session log unloadable
+      // after a restart (cold-read rejects unknown non-ignorable types), so
+      // no chat-node event can be emitted anymore (wayfinder #112).
       let disposed = false;
       let disposeSurfaces = () => {};
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
@@ -118,6 +95,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             previewArtifact: (id: Parameters<WorkspaceArtifactRemote["previewArtifact"]>[0]) => call("previewArtifact", id),
             gitStatus: () => call("gitStatus"),
             gitDiff: (path: Parameters<WorkspaceChangesRemote["gitDiff"]>[0]) => call("gitDiff", path),
+            workspaceSummary: () => call<WorkspaceSummaryData | undefined>("workspaceSummary"),
             memoryOpen: (request: Parameters<WorkspaceMemoryRemote["memoryOpen"]>[0]) => call("memoryOpen", request),
             memoryList: (request: Parameters<WorkspaceMemoryRemote["memoryList"]>[0], options: Parameters<WorkspaceMemoryRemote["memoryList"]>[1]) => call("memoryList", request, options),
             memorySearch: (request: Parameters<WorkspaceMemoryRemote["memorySearch"]>[0], query: Parameters<WorkspaceMemoryRemote["memorySearch"]>[1], options: Parameters<WorkspaceMemoryRemote["memorySearch"]>[2]) => call("memorySearch", request, query, options),
@@ -147,7 +125,12 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         if (typeof viewSlots.inject === "function" && typeof viewSlots.register === "function") {
           disposers.push(viewSlots.inject(WORKSPACE_VIEW_SLOT, () => viewSlots.register(
             workspaceConversationViewRegistration(),
-            createWorkspaceConversationViewComponent({ artifacts, memory, changes }),
+            createWorkspaceConversationViewComponent({
+              artifacts,
+              memory,
+              changes,
+              summary: workspaceSummaryBlockComponent({ resolveRemote: resolveRemote as (sessionId: string | undefined) => import("./web/workspace-summary-block.ts").WorkspaceSummaryRemote | undefined }),
+            }),
           )));
         }
         return () => {
@@ -168,8 +151,6 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         if (disposed) return;
         disposed = true;
         disposeSurfaces();
-        disposeSlot();
-        disposeEvent();
       };
       return disposeConversation;
     }, "dsh Workspace client contribution");

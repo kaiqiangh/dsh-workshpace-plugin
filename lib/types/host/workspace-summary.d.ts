@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { WorkspaceMemoryDomain } from "../domain/memory.ts";
 import { type SessionEventLike } from "./workspace-artifacts.ts";
-/** Summary card payload; also carried by the durable `workspace/summary` event. */
+/** Summary card payload. */
 export interface WorkspaceSummaryData {
     readonly filesTouched: number;
     readonly changes: number;
@@ -49,10 +49,23 @@ export interface SummaryAgent {
  */
 export declare function workspaceSummaryFor(agent: SummaryAgent): WorkspaceSummaryData | undefined;
 /**
- * Observe final tool outcomes through the public `tools/result` seam,
- * debounce a per-session summary, and append a durable `workspace/summary`
- * event on the owning session. When `memoryDomain` is supplied, the summary
- * is augmented with active-scope (session) Memory and decision counts. Returns
- * a disposer.
+ * Derive a summary augmented with active-scope (session) Memory and decision
+ * counts when a Memory domain is available. Pure wrapper over
+ * `workspaceSummaryFor`; never writes to the session log.
  */
-export declare function attachWorkspaceSummaryEmitter(ctx: Context, memoryDomain?: WorkspaceMemoryDomain): () => void;
+export declare function workspaceSummaryWithMemory(agent: SummaryAgent, memoryDomain?: WorkspaceMemoryDomain): Promise<WorkspaceSummaryData | undefined>;
+/**
+ * Observe final tool outcomes through the public `tools/result` seam.
+ *
+ * v0.6 change: this emitter NO LONGER appends a durable `workspace/summary`
+ * event to the session log. Research (wayfinder #110) proved that DSH's cold
+ * persistence path rejects unknown non-ignorable event types, so any session
+ * whose log contains `workspace/summary` refuses to load after a restart
+ * (openState=error — missing chat card and empty tab data). The summary is now
+ * derived on demand from allow-listed `tool/call` + `tool/result` records via
+ * `workspaceSummaryFor` / `workspaceSummaryWithMemory`, exposed to the web
+ * client through the `workspaceSummary` remote. This disposer is retained for
+ * API compatibility and to keep the tools/result observation seam warm; it
+ * performs no log writes.
+ */
+export declare function attachWorkspaceSummaryEmitter(_ctx: Context, _memoryDomain?: WorkspaceMemoryDomain): () => void;

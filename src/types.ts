@@ -42,6 +42,7 @@ export type {
   MemoryStoreWarning,
 } from "./domain/memory-store.ts";
 export type { MemoryScopeRequest, MemoryWorkspaceContext } from "./domain/memory.ts";
+export type { WorkspaceSummaryData } from "./host/workspace-summary.ts";
 export type {
   MemoryGovernanceAction,
   MemoryGovernanceErrorCode,

@@ -174,3 +174,25 @@ test("does not complete an opaque read after service disposal", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("resolves markdown relative images to opaque resource URLs (v0.6)", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-preview-md-"));
+  const identity = { sessionId: "session-md", rootId: "root:preview-md" };
+  await mkdir(join(root, "docs"), { recursive: true });
+  await writeFile(join(root, "docs", "img.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const service = new PreviewService(root, identity);
+  // A markdown file in docs/ referencing ./img.png resolves inside the root.
+  const url = await service.markdownImageUrl("docs/readme.md" as WorkspacePath, "./img.png");
+  assert.ok(url, "a relative image inside the root resolves");
+  assert.ok(url!.startsWith("/workspace/resource?id="), "opaque resource URL shape");
+  assert.ok(url!.includes("type=image%2Fpng"));
+  // The URL is openable through the same identity.
+  const id = new URL(url!, "http://x").searchParams.get("id")!;
+  const opened = await service.openResource(id, { identity, mediaType: "image/png" });
+  assert.equal(opened.mediaType, "image/png");
+  // Escaping the root is refused.
+  assert.equal(await service.markdownImageUrl("docs/readme.md" as WorkspacePath, "../../outside.png"), undefined);
+  // Absolute remote images are refused (remote images stay dropped).
+  assert.equal(await service.markdownImageUrl("docs/readme.md" as WorkspacePath, "https://remote.invalid/a.png"), undefined);
+  service.dispose();
+});

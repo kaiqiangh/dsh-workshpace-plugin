@@ -7,7 +7,7 @@ import type { WorkspaceDeliverable } from "../domain/deliverable.ts";
 import { createWorkspaceDeliverable } from "../domain/deliverable.ts";
 import { PreviewPanelError, PreviewService, type PreviewDescriptor } from "../domain/preview.ts";
 import { SessionActivityObserver, type NativeDurableToolRecord } from "../domain/observation.ts";
-import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspaceSnapshot } from "../domain/workspace.ts";
+import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspacePath, type WorkspaceSnapshot } from "../domain/workspace.ts";
 
 export interface WorkspaceArtifactTextPreview {
   readonly type: "text";
@@ -27,6 +27,14 @@ export interface WorkspaceArtifactMarkdownPreview {
     readonly allowRemoteImages: false;
     readonly allowedLinkSchemes: readonly ["http", "https", "mailto"];
   };
+  /**
+   * Same-origin opaque resource URLs for the markdown's relative images,
+   * keyed by the raw src (e.g. "./img.png" -> "/workspace/resource?id=..").
+   * Images whose relative path escaped the root, or that failed to resolve,
+   * are absent — the renderer then drops them (alt text only). A plain
+   * object so it crosses the Typert remote boundary (no Map/symbol keys).
+   */
+  readonly imageUrls?: Readonly<Record<string, string>>;
 }
 
 export interface WorkspaceArtifactJsonPreview {
@@ -269,7 +277,22 @@ export class WorkspaceArtifactCarrier {
     const entry = this.artifacts.get(id);
     if (!entry) return { type: "error", code: "RESOURCE_INVALID", message: "Artifact is unavailable" };
     const descriptor = entry.descriptor.type === "binary" ? entry.descriptor : await this.preview.preview(entry.path);
-    return descriptorWithoutPath(artifactDescriptorPath(descriptor, entry.path));
+    const preview = descriptorWithoutPath(artifactDescriptorPath(descriptor, entry.path));
+    if (preview.type === "markdown") {
+      // Resolve same-origin opaque URLs for every relative image in the
+      // markdown (v0.6, dsh-web-ui port): the client renderer rewrites the
+      // srcs so images beside the file display in the preview.
+      const imageUrls: Record<string, string> = {};
+      const srcPattern = /!\[[^\]]*\]\(([^)]+)\)/gu;
+      for (const match of preview.content.matchAll(srcPattern)) {
+        const src = match[1]?.trim();
+        if (!src || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(src)) continue;
+        const url = await this.preview.markdownImageUrl(entry.path as WorkspacePath, src);
+        if (url) imageUrls[src] = url;
+      }
+      return Object.keys(imageUrls).length > 0 ? { ...preview, imageUrls } : preview;
+    }
+    return preview;
   }
 
   dispose(): void {

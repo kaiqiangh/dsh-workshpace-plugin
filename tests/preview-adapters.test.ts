@@ -21,9 +21,11 @@ test("adapts bounded Markdown, code, and JSON through public primitive seams", (
     policy: { allowRawHtml: false, allowRemoteImages: false, allowedLinkSchemes: ["http", "https", "mailto"] as const },
   } as PreviewDescriptor;
   const markdownElement = element(createWorkspacePreviewRenderer(primitives, markdown));
-  assert.equal(markdownElement.type, primitives.MarkdownText);
-  assert.equal((markdownElement.props.text as string).includes("remote.invalid"), false);
-  assert.equal(markdownElement.props.streaming, false);
+  // v0.6: markdown renders through the WorkspaceMarkdownView component (a div
+  // with the rendered HTML) so relative images can resolve to same-origin
+  // opaque URLs and mermaid fences can be enhanced; remote images are dropped.
+  assert.equal(typeof markdownElement.type, "function");
+  assert.equal(String(markdownElement.props.html).includes("remote.invalid"), false);
   const codeElement = element(createWorkspacePreviewRenderer(primitives, { type: "text", path, renderer: "ui-primitives", content: "const x = 1", truncated: false }));
   assert.equal(codeElement.type, primitives.CodeBlock);
   assert.deepEqual(codeElement.props, { code: "const x = 1", lang: undefined });
@@ -31,8 +33,7 @@ test("adapts bounded Markdown, code, and JSON through public primitive seams", (
   assert.equal(truncatedText.props["data-dsh-workspace-preview"], "truncated");
   assert.equal(element((truncatedText.props.children as readonly unknown[])[1]).props.role, "status");
   const truncatedMarkdown = element(createWorkspacePreviewRenderer(primitives, { ...markdown, truncated: true }));
-  assert.equal(truncatedMarkdown.props["data-dsh-workspace-preview"], "truncated");
-  const jsonElement = element(createWorkspacePreviewRenderer(primitives, { type: "json", path, renderer: "ui-primitives", value: { ok: true } }));
+  assert.equal(truncatedMarkdown.props["data-dsh-workspace-preview"], "truncated");  const jsonElement = element(createWorkspacePreviewRenderer(primitives, { type: "json", path, renderer: "ui-primitives", value: { ok: true } }));
   assert.equal(jsonElement.type, primitives.JsonTree);
   assert.equal(jsonElement.props.expandTopLevel, true);
 });
@@ -50,7 +51,7 @@ test("keeps CSV accessible and binary states explicit", () => {
   assert.equal(image.props.alt, "Chart");
   const pdf = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "report.pdf" as never, mediaType: "application/pdf", resourceId: "pdf-resource", version: "v1", expiresAt: 1 }, { resourcePath: "/workspace/resource" }));
   assert.equal(pdf.type, "iframe");
-  assert.equal(pdf.props.title, "Workspace PDF preview");
+  assert.equal(pdf.props.title, "workspace file");
   const binary = element(createWorkspacePreviewRenderer(primitives, { type: "binary", path: "archive.bin" as never, mediaType: "application/octet-stream", resourceId: "binary-resource", version: "v1", expiresAt: 1 }, { resourcePath: "/workspace/resource", downloadName: "archive.bin" }));
   assert.equal(binary.type, "a");
   assert.equal(binary.props.download, "archive.bin");

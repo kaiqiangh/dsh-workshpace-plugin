@@ -34,6 +34,7 @@ test("renders one Workspace conversation view with artifact, memory, and changes
 
   assert.equal(root.type, "section");
   assert.equal(root.props["data-dsh-workspace"], "view");
+  // Without a summary option, the first child is the artifacts tab input.
   assert.equal(children[0].props.id, "dsh-workspace-view-tab-artifacts");
   assert.equal(children[0].props.defaultChecked, true);
   assert.equal(children[1].props.id, "dsh-workspace-view-tab-memory");
@@ -44,6 +45,23 @@ test("renders one Workspace conversation view with artifact, memory, and changes
   assert.equal(content[0].props["data-dsh-workspace-tab"], "artifacts");
   assert.equal(content[1].props["data-dsh-workspace-tab"], "memory");
   assert.equal(content[2].props["data-dsh-workspace-tab"], "changes");
+});
+
+test("renders the summary block above the tabs when provided", () => {
+  const summary = () => ({ type: "summary" });
+  const render = createWorkspaceConversationViewComponent({
+    artifacts: () => ({ type: "artifacts" }),
+    memory: () => ({ type: "memory" }),
+    changes: () => ({ type: "changes" }),
+    summary,
+  });
+  const root = render({}) as { readonly props: Record<string, any> };
+  const children = root.props.children as readonly { readonly type: string; readonly props: Record<string, any> }[];
+
+  // First child is now the summary block element; the tabs shift by one.
+  assert.equal(children[0].type, summary);
+  assert.equal(children[1].props.id, "dsh-workspace-view-tab-artifacts");
+  assert.equal(children[4].props["data-dsh-workspace"], "panel-tabs");
 });
 
 test("passes props through to all surfaces", () => {

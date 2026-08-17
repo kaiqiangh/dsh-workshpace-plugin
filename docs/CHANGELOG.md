@@ -2,7 +2,67 @@
 
 All notable changes to this plugin are recorded here, newest first.
 
-## v0.3.0 (2026-08-16) — Surface UX & hygiene
+## v0.6.0 (2026-08-17) — history-resume fix, dsh-web-ui preview port, full i18n
+
+**History-resume bug fix (the headline)**
+
+- **Fixed: reopened historical sessions were unloadable.** The host used to
+  persist a custom `workspace/summary` event via `session.append`; DSH's cold
+  persistence path rejects unknown non-ignorable event types, so any restarted
+  session whose log contained it refused to load (`openState=error` — missing
+  chat card and empty tab data). v0.6 **stops persisting the event entirely**
+  (wayfinder #110/#112): the summary is derived on demand from allow-listed
+  durable tool records (`tool/call` + `tool/result`) through the existing pure
+  `workspaceSummaryFor` and a new `workspaceSummary` remote. Historical
+  sessions created before v0.6 whose logs already contain the event remain
+  unloadable by the DSH persistence layer (no safe in-place log rewrite);
+  new sessions are clean. See README troubleshooting.
+- The chat summary card (event-driven `conversation.chat.node`) is replaced by
+  a **summary block at the top of the Workspace tab**, polling the
+  `workspaceSummary` remote — identical for live and resumed sessions.
+
+**dsh-web-ui preview port (read-only, ADR 0014)**
+
+- **Markdown previews render through a self-contained Workspace renderer**
+  (GFM subset: headings, paragraphs, code, bold/italic/strike, links, images,
+  lists, blockquotes, hr, tables) instead of `MarkdownText`. Relative images
+  resolve to same-origin opaque resource URLs (`PreviewService.markdownImageUrl`),
+  so images beside the file display in the preview; remote images stay dropped.
+- **Mermaid fences render as diagrams** via a same-origin vendor bundle
+  (`/workspace/vendor/mermaid.js`, shipped in `lib/assets/` at build time —
+  zero runtime npm dependency) that follows the shell light/dark theme.
+- **PDF previews stream with Range/ETag**: `/workspace/resource` answers
+  206/416 byte ranges and 304 revalidation (no-cache), so large PDFs can seek.
+
+**Artifacts**
+
+- **Read-only multi-tab preview** (dsh-web-ui PreviewTabs pattern, minus
+  editing): open several artifacts as tabs, switch/close, per-tab cached
+  descriptors. No editor/split/save (read-only stance preserved).
+- Full English/Chinese copy.
+
+**Changes**
+
+- **Grouped SCM display**: staged / unstaged / untracked section headers
+  (dsh-web-ui ScmPanel grouping) alongside the existing filter chips; the
+  untracked "stage it to see a diff" notice is kept. Still read-only.
+- Full English/Chinese copy.
+
+**Memory**
+
+- Full English/Chinese copy.
+
+**i18n**
+
+- A zero-dependency dictionary (`workspace-i18n.ts`) covers every surface and
+  remote error message; the locale follows the browser language.
+
+**Documentation**
+
+- ADR 0014 records the v0.6 decisions.
+- README updated (summary block replaces the chat card; history-resume
+  troubleshooting note; mermaid/PDF/multi-tab/grouped-changes features).
+
 
 **Workspace tab chrome**
 

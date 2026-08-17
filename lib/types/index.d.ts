@@ -1,6 +1,6 @@
 import { TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
-import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
+import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable, WorkspaceSummaryData } from "./types.ts";
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
@@ -12,10 +12,10 @@ export { MEMORY_TYPES } from "./types.ts";
 export { GitError, gitDiff, gitStatus, isGitRepository, parsePorcelain, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitDiffResult, type GitErrorCode } from "./domain/git.ts";
 export { PreviewPanelError, PreviewService, type BinaryPreviewDescriptor, type BoundedTextRead, type CsvPreviewDescriptor, type JsonPreviewDescriptor, type MarkdownPreviewDescriptor, type OpenedResource, type PreviewDescriptor, type PreviewErrorCode, type PreviewErrorDescriptor, type PreviewLimits, type ResourceRequest, type TextPreviewDescriptor, type UnsupportedPreviewDescriptor, } from "./domain/preview.ts";
 export { createWorkspaceDeliverable, deliverableResourceId, safeDownloadName, WorkspaceDeliverableError, type WorkspaceDeliverable, type WorkspaceDeliverableOptions, type WorkspaceDeliverablePreview, type WorkspaceDeliverableSource, } from "./domain/deliverable.ts";
-export { installWorkspaceResourceRoute, registerWorkspaceResourceRoute, type WebRouteRegistrar, type WorkspaceEffectRegistrar, type WorkspaceResourceRouteOptions, } from "./host/workspace-resource.ts";
+export { installWorkspaceResourceRoute, installWorkspaceVendorRoute, registerWorkspaceResourceRoute, registerWorkspaceVendorRoute, type WebRouteRegistrar, type WorkspaceEffectRegistrar, type WorkspaceResourceRouteOptions, type WorkspaceVendorRouteOptions, } from "./host/workspace-resource.ts";
 export { WorkspaceArtifactCarrier, sessionToolRecords, type WorkspaceArtifactCarrierOptions, type WorkspaceArtifactPreview, type SessionEventLike, } from "./host/workspace-artifacts.ts";
 export { createMemoryProposeTool, proposeMemory, registerMemoryPropose, MEMORY_PROPOSE_SECTION, MEMORY_PROPOSE_TOOL_NAME, type MemoryProposeArgs, } from "./host/workspace-memory-propose.ts";
-export { attachWorkspaceSummaryEmitter, workspaceSummaryFor, type SummaryAgent, type WorkspaceSummaryData, } from "./host/workspace-summary.ts";
+export { attachWorkspaceSummaryEmitter, workspaceSummaryFor, workspaceSummaryWithMemory, type SummaryAgent, type WorkspaceSummaryData, } from "./host/workspace-summary.ts";
 export { attachWorkspaceMemoryAutoWriter, buildAutoFactContent, writeAutoFact, AUTO_FACT_TAGS, AUTO_FACT_TITLE, type AutoWriteAgent, } from "./host/workspace-memory-auto-write.ts";
 declare module "@deepseek-ai/dsh-typert-protocol" {
     interface TypertContextMap {
@@ -37,6 +37,13 @@ export declare class WorkspaceService extends TypertRemoteService {
         readonly ready: boolean;
         readonly agent: AgentId;
     };
+    /**
+     * Derive the current session summary from allow-listed durable tool records
+     * (tool/call + tool/result). Never writes a custom event to the session log:
+     * persisting `workspace/summary` made the whole log unloadable after a
+     * restart (cold-read rejects unknown non-ignorable event types).
+     */
+    workspaceSummary(agentId: AgentId): Promise<WorkspaceSummaryData | undefined>;
     focus(agentId: AgentId): {
         readonly focused: boolean;
     };

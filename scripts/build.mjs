@@ -83,6 +83,17 @@ try {
   await run([tsdown, "--config", "tsdown.client.config.mjs", "--tsconfig", "tsconfig.bundle.json", "--no-report"])
   await run([tsc, "-p", "tsconfig.declarations.json", "--pretty", "false"])
   try { await cp(join(repo, "lib/style.css"), join(plugin, "lib/style.css")) } catch {}
+  // Copy the mermaid vendor bundle into the plugin assets so the host can
+  // serve it same-origin (zero runtime npm dependency — ADR 0011; dsh-web-ui
+  // pattern). The browser loads it through /workspace/vendor/mermaid.js.
+  try {
+    const vendorSrc = join(repo, "node_modules/mermaid/dist/mermaid.min.js")
+    const vendorDir = join(plugin, "lib/assets")
+    await mkdir(vendorDir, { recursive: true })
+    await cp(vendorSrc, join(vendorDir, "mermaid.min.js"))
+  } catch (error) {
+    console.warn("mermaid vendor bundle missing; mermaid rendering will be unavailable:", String(error?.message ?? error))
+  }
   await rm(join(repo, "lib"), { recursive: true, force: true })
   await cp(join(plugin, "lib"), join(repo, "lib"), { recursive: true })
   await wrapWebClient(join(repo, "lib/client.js"))

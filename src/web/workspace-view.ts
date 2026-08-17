@@ -40,6 +40,8 @@ export interface WorkspaceConversationViewOptions {
   readonly artifacts: WorkspaceSurfaceComponent;
   readonly memory: WorkspaceSurfaceComponent;
   readonly changes: WorkspaceSurfaceComponent;
+  /** Optional read-only summary block rendered above the surface tabs. */
+  readonly summary?: WorkspaceSurfaceComponent;
 }
 
 /**
@@ -50,9 +52,9 @@ export interface WorkspaceConversationViewOptions {
  */
 export function createWorkspaceConversationViewComponent(options: WorkspaceConversationViewOptions): (props: Record<string, unknown>) => ReactNode {
   return function WorkspaceConversationView(props: Record<string, unknown>): ReactNode {
-    return createElement(
-      "section",
-      { role: "region", "aria-label": "Workspace", "data-dsh-workspace": "view" },
+    const children: ReactNode[] = [];
+    if (options.summary) children.push(createElement(options.summary, props));
+    children.push(
       createElement("input", { id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": "Artifacts" }),
       createElement("input", { id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Memory" }),
       createElement("input", { id: "dsh-workspace-view-tab-changes", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Changes" }),
@@ -67,5 +69,6 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "changes" }, createElement(options.changes, props)),
       ),
     );
+    return createElement("section", { role: "region", "aria-label": "Workspace", "data-dsh-workspace": "view" }, children);
   };
 }

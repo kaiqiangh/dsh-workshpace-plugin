@@ -4,7 +4,7 @@ import type {
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceDeliverable } from 'dsh-workspace-plugin/client'
-import type { AgentId, GitChange, GitDiffResult, MemoryDraft, MemoryGovernanceAction, MemoryListOptions, MemoryReadState, MemoryRecord, MemoryScopeRequest, MemorySearchOptions, WorkspaceArtifactPreview } from 'dsh-workspace-plugin/types'
+import type { AgentId, GitChange, GitDiffResult, MemoryDraft, MemoryGovernanceAction, MemoryListOptions, MemoryReadState, MemoryRecord, MemoryScopeRequest, MemorySearchOptions, WorkspaceArtifactPreview, WorkspaceSummaryData } from 'dsh-workspace-plugin/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$776f726b7370616365 {
@@ -25,6 +25,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     memoryUpsert: (agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
     previewArtifact: (agentId: AgentId, id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
     summary: (agent: AgentId) => Promise<RemoteResult<{ readonly ready: boolean; readonly agent: AgentId; }>>
+    workspaceSummary: (agentId: AgentId) => Promise<RemoteResult<WorkspaceSummaryData | undefined>>
   }
   interface TypertRemoteMap {
     'workspace/artifactMetadata': (agentId: AgentId) => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>
@@ -44,6 +45,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace/memoryUpsert': (agentId: AgentId, request: MemoryScopeRequest, draft: MemoryDraft) => Promise<RemoteResult<MemoryRecord>>
     'workspace/previewArtifact': (agentId: AgentId, id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>
     'workspace/summary': (agent: AgentId) => Promise<RemoteResult<{ readonly ready: boolean; readonly agent: AgentId; }>>
+    'workspace/workspaceSummary': (agentId: AgentId) => Promise<RemoteResult<WorkspaceSummaryData | undefined>>
   }
   interface TypertRemoteNamespaceMap {
     'workspace': TypertRemoteNamespace$776f726b7370616365

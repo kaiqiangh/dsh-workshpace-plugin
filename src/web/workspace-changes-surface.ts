@@ -3,12 +3,20 @@ import { createElement, useEffect, useRef, useState, type KeyboardEvent, type Re
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { GitChange, GitDiffResult } from "../domain/git.ts";
 import { buildDiffRows, DEFAULT_EXPAND_STEP, pairByIndex, parseUnifiedDiff, type DiffLine, type DiffRow, type ExpanderRow } from "./workspace-diff.ts";
+import { t, tCount } from "./workspace-i18n.ts";
 import { friendlyRemoteMessage, remoteCode, unwrapRemote } from "./workspace-remote.ts";
 import { workspaceCountBadge, workspaceEmptyState, workspaceFilterChip, workspaceListDetail, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
 
 export interface WorkspaceChangesRemote {
   readonly gitStatus: () => Promise<RemoteResult<readonly GitChange[]>>;
   readonly gitDiff: (path?: string) => Promise<RemoteResult<GitDiffResult>>;
+  /**
+   * Derive the current session summary from allow-listed durable tool records
+   * (tool/call + tool/result). v0.6: the summary is derived on demand instead
+   * of a persisted custom event, so live and resumed sessions both work.
+   * The remote unwraps to the summary value (or undefined when unavailable).
+   */
+  readonly workspaceSummary?: () => Promise<import("../host/workspace-summary.ts").WorkspaceSummaryData | undefined>;
 }
 
 export interface WorkspaceChangesSurfaceOptions {
@@ -35,13 +43,13 @@ const statusLabels: Record<GitChange["status"], string> = {
 
 type ChangeFilter = "all" | "added" | "modified" | "deleted" | "untracked" | "staged";
 
-const filterLabels: readonly { readonly key: ChangeFilter; readonly label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "added", label: "Added" },
-  { key: "modified", label: "Modified" },
-  { key: "deleted", label: "Deleted" },
-  { key: "untracked", label: "Untracked" },
-  { key: "staged", label: "Staged" },
+const filterLabels: readonly { readonly key: ChangeFilter; readonly label: () => string }[] = [
+  { key: "all", label: () => t("changes.filter.all") },
+  { key: "added", label: () => t("changes.filter.added") },
+  { key: "modified", label: () => t("changes.filter.modified") },
+  { key: "deleted", label: () => t("changes.filter.deleted") },
+  { key: "untracked", label: () => t("changes.filter.untracked") },
+  { key: "staged", label: () => t("changes.filter.staged") },
 ];
 
 /** Split view appears only on carriers at least this wide (VS Code-style auto-degradation). */
@@ -65,7 +73,8 @@ function matchesFilter(change: GitChange, filter: ChangeFilter): boolean {
 
 function statusText(status: GitChange["status"], staged: boolean): string {
   const label = statusLabels[status];
-  return status === "untracked" ? "Untracked" : `${staged ? "Index" : "Worktree"} ${label}`;
+  if (status === "untracked") return t("changes.status.untracked");
+  return `${staged ? t("changes.status.index") : t("changes.status.worktree")} ${label}`;
 }
 
 function renderDiffContent(line: DiffLine): ReactNode {
@@ -98,7 +107,7 @@ function expanderRow(row: ExpanderRow, onExpand: (anchor: string, total: number,
     createElement(
       "button",
       { type: "button", onClick: () => onExpand(row.anchor, row.total, row.revealed) },
-      `Show ${row.hidden} hidden line${row.hidden === 1 ? "" : "s"}`,
+      `Show ${row.hidden} ${row.hidden === 1 ? t("changes.hiddenLine", { count: row.hidden }) : t("changes.hiddenLines", { count: row.hidden })}`,
     ),
   );
 }
@@ -192,6 +201,70 @@ function splitRowsNode(rows: readonly DiffRow[], onExpand: (anchor: string, tota
   );
 }
 
+/** One change row (badge + select button + meta), shared by every group. */
+function changeRow(
+  change: GitChange,
+  state: { readonly selectedPath?: string; readonly selectedButton: React.MutableRefObject<HTMLButtonElement | null>; readonly select: (path: string) => void },
+): ReactNode {
+  return createElement("li", {
+    key: `${change.staged ? "i" : "w"}:${change.path}`,
+    "data-dsh-workspace": "change-item",
+    "data-selected": String(change.path === state.selectedPath),
+    "data-status": change.status,
+  },
+    createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "change-status-badge", "data-status": change.status }, statusLabels[change.status]),
+    createElement("button", {
+      ref: change.path === state.selectedPath ? state.selectedButton : undefined,
+      type: "button",
+      "data-dsh-workspace": "change-select",
+      "aria-pressed": change.path === state.selectedPath,
+      onClick: () => state.select(change.path),
+    }, change.path),
+    createElement("span", { "data-dsh-workspace": "change-meta" }, `${statusText(change.status, change.staged)}${change.previousPath ? ` (from ${change.previousPath})` : ""}`),
+  );
+}
+
+/** One grouped section (Staged / Unstaged / Untracked) with a header and rows. */
+function changeGroupSection(
+  label: string,
+  rows: readonly GitChange[],
+  state: { readonly selectedPath?: string; readonly selectedButton: React.MutableRefObject<HTMLButtonElement | null>; readonly select: (path: string) => void },
+): ReactNode | null {
+  if (rows.length === 0) return null;
+  return createElement(
+    "section",
+    { key: label, "data-dsh-workspace": "change-group", "aria-label": label },
+    createElement("h4", { "data-dsh-workspace": "change-group-title" }, label),
+    createElement("ul", { "data-dsh-workspace": "changes-list" }, rows.map((change) => changeRow(change, state))),
+  );
+}
+
+/**
+ * Render the visible changes grouped by Staged / Unstaged / Untracked
+ * (dsh-web-ui ScmPanel grouping, read-only adaptation — ADR #115). When a
+ * non-"all" filter is active, only the matching group(s) are shown.
+ */
+function changeGroups(
+  visible: readonly GitChange[],
+  filter: ChangeFilter,
+  state: { readonly selectedPath?: string; readonly selectedButton: React.MutableRefObject<HTMLButtonElement | null>; readonly select: (path: string) => void },
+): ReactNode {
+  const staged = visible.filter((change) => change.staged);
+  const untracked = visible.filter((change) => !change.staged && change.status === "untracked");
+  const unstaged = visible.filter((change) => !change.staged && change.status !== "untracked");
+  if (filter === "staged") {
+    return changeGroupSection(t("changes.group.staged"), staged, state) ?? workspaceEmptyState(t("changes.noFiltered", { filter: t("changes.filter.staged").toLowerCase() }));
+  }
+  if (filter === "untracked") {
+    return changeGroupSection(t("changes.group.untracked"), untracked, state) ?? workspaceEmptyState(t("changes.noFiltered", { filter: t("changes.filter.untracked").toLowerCase() }));
+  }
+  return createElement("div", { "data-dsh-workspace": "change-groups" },
+    changeGroupSection(t("changes.group.staged"), staged, state),
+    changeGroupSection(t("changes.group.unstaged"), unstaged, state),
+    changeGroupSection(t("changes.group.untracked"), untracked, state),
+  );
+}
+
 /** Read-only Changes view: git status list + readable unified diff preview. */
 export function createWorkspaceChangesSurfaceComponent(
   remote: WorkspaceChangesRemote | undefined,
@@ -230,7 +303,7 @@ export function createWorkspaceChangesSurfaceComponent(
       let active = true;
       if (!activeRemote) {
         setStatus("degraded");
-        setMessage("Git changes are unavailable in this Web scope.");
+        setMessage(t("changes.unavailable"));
         return () => { active = false; };
       }
       if (!sessionId) {
@@ -251,7 +324,7 @@ export function createWorkspaceChangesSurfaceComponent(
         } catch (error) {
           if (!active || token !== request.current) return;
           setStatus("degraded");
-          setMessage(friendlyRemoteMessage(remoteCode(error), "Git changes are unavailable."));
+          setMessage(friendlyRemoteMessage(remoteCode(error), t("changes.unavailable")));
         }
       };
       void load();
@@ -315,10 +388,10 @@ export function createWorkspaceChangesSurfaceComponent(
       };
       activeRemote.gitDiff(selectedPath).then((result) => {
         if (token !== request.current) return;
-        if (!result.ok) { setDiffStatus("error"); setMessage(friendlyRemoteMessage(result.error.code, "Diff is unavailable for this change.")); return; }
+        if (!result.ok) { setDiffStatus("error"); setMessage(friendlyRemoteMessage(result.error.code, t("changes.diffUnavailable"))); return; }
         applyDiffResult(result.value);
         setMessage(undefined);
-      }).catch((error) => { if (token === request.current) { setDiffStatus("error"); setMessage(friendlyRemoteMessage(remoteCode(error), "Diff is unavailable for this change.")); } });
+      }).catch((error) => { if (token === request.current) { setDiffStatus("error"); setMessage(friendlyRemoteMessage(remoteCode(error), t("changes.diffUnavailable"))); } });
     }, [selectedPath, activeRemote, refreshTick, diffTick]);
 
     useEffect(() => {
@@ -331,16 +404,16 @@ export function createWorkspaceChangesSurfaceComponent(
     const copyDiff = async (): Promise<void> => {
       if (!diff) return;
       if (typeof navigator === "undefined" || typeof navigator.clipboard?.writeText !== "function") {
-        setMessage("Copy is unavailable in this browser; select the diff text manually.");
+        setMessage(t("changes.copyUnavailable"));
         return;
       }
       const text = [diff.staged, diff.unstaged].filter(Boolean).join("\n");
-      if (!text) { setMessage("There is no diff text to copy."); return; }
+      if (!text) { setMessage(t("changes.noDiffText")); return; }
       try {
         await navigator.clipboard.writeText(text);
-        setMessage("Diff copied to the clipboard.");
+        setMessage(t("changes.copyCopied"));
       } catch {
-        setMessage("Copy failed; select the diff text manually.");
+        setMessage(t("changes.copyFailed"));
       }
     };
 
@@ -402,7 +475,7 @@ export function createWorkspaceChangesSurfaceComponent(
         type: "button",
         "data-dsh-workspace": "diff-collapse",
         "aria-expanded": String(!fileCollapsed),
-        "aria-label": fileCollapsed ? "Expand file diff" : "Collapse file diff",
+        "aria-label": fileCollapsed ? t("changes.expandDiff") : t("changes.collapseDiff"),
         onClick: () => setFileCollapsed((value) => !value),
       }, fileCollapsed ? "▸" : "▾"),
       createElement("div", { "data-dsh-workspace": "diff-file-title" },
@@ -413,13 +486,13 @@ export function createWorkspaceChangesSurfaceComponent(
           createElement("b", { "data-sign": "del" }, `−${diffDeletions}`),
         ),
       ),
-      wideEnough && createElement("div", { role: "group", "aria-label": "Diff view mode", "data-dsh-workspace": "diff-mode-toggle" },
-        createElement("button", { type: "button", "aria-pressed": effectiveMode === "unified", onClick: () => setMode("unified") }, "Unified"),
-        createElement("button", { type: "button", "aria-pressed": effectiveMode === "split", onClick: () => setMode("split") }, "Split"),
+      wideEnough && createElement("div", { role: "group", "aria-label": t("changes.diffMode"), "data-dsh-workspace": "diff-mode-toggle" },
+        createElement("button", { type: "button", "aria-pressed": effectiveMode === "unified", onClick: () => setMode("unified") }, t("changes.unified")),
+        createElement("button", { type: "button", "aria-pressed": effectiveMode === "split", onClick: () => setMode("split") }, t("changes.split")),
       ),
-      createElement("button", { type: "button", "data-dsh-workspace": "diff-prev", "aria-label": "Previous file", disabled: visible.length < 2, onClick: () => navigate(-1) }, "‹"),
-      createElement("button", { type: "button", "data-dsh-workspace": "diff-next", "aria-label": "Next file", disabled: visible.length < 2, onClick: () => navigate(1) }, "›"),
-      createElement("button", { type: "button", onClick: () => { void copyDiff(); } }, "Copy diff"),
+      createElement("button", { type: "button", "data-dsh-workspace": "diff-prev", "aria-label": t("changes.previousFile"), disabled: visible.length < 2, onClick: () => navigate(-1) }, "‹"),
+      createElement("button", { type: "button", "data-dsh-workspace": "diff-next", "aria-label": t("changes.nextFile"), disabled: visible.length < 2, onClick: () => navigate(1) }, "›"),
+      createElement("button", { type: "button", onClick: () => { void copyDiff(); } }, t("changes.copyDiff")),
     );
 
     const renderDiffBlock = (label: string, rows: readonly DiffRow[] | undefined): ReactNode => {
@@ -435,55 +508,40 @@ export function createWorkspaceChangesSurfaceComponent(
     };
 
     const body = status === "loading"
-      ? createElement("p", { role: "status" }, "Loading git changes…")
+      ? createElement("p", { role: "status" }, t("changes.loading"))
       : status === "degraded"
-        ? workspaceNotice("error", message ?? "Git changes are unavailable.")
+        ? workspaceNotice("error", message ?? t("changes.unavailable"))
         : createElement("div", { "data-dsh-workspace": "changes-surface" },
           workspaceSurfaceHeader({
-            title: "Changes",
-            count: workspaceCountBadge(`${changes.length} change${changes.length === 1 ? "" : "s"}`),
-            actions: createElement("button", { type: "button", onClick: refresh }, "Refresh"),
+            title: t("changes.title"),
+            count: workspaceCountBadge(changes.length === 1 ? t("changes.count", { count: 1 }) : t("changes.countPlural", { count: changes.length })),
+            actions: createElement("button", { type: "button", onClick: refresh }, t("refresh")),
           }),
-          changes.length === 0 && workspaceEmptyState("No changes in the working tree."),
+          changes.length === 0 && workspaceEmptyState(t("changes.empty")),
           changes.length > 0 && workspaceListDetail(
             createElement("div", { "data-dsh-workspace": "changes-list-column" },
-              createElement("div", { role: "group", "aria-label": "Filter changes", "data-dsh-workspace": "changes-filter" },
-                filterLabels.map(({ key, label }) => workspaceFilterChip(label, filter === key, () => setFilter(key), key)),
+              createElement("div", { role: "group", "aria-label": t("changes.filter"), "data-dsh-workspace": "changes-filter" },
+                filterLabels.map(({ key, label }) => workspaceFilterChip(label(), filter === key, () => setFilter(key), key)),
               ),
               visible.length > 0
-                ? createElement("ul", { "aria-label": "Git changes", "data-dsh-workspace": "changes-list" }, visible.map((change) => createElement("li", {
-                  key: `${change.staged ? "i" : "w"}:${change.path}`,
-                  "data-dsh-workspace": "change-item",
-                  "data-selected": String(change.path === selectedPath),
-                  "data-status": change.status,
-                },
-                  createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "change-status-badge", "data-status": change.status }, statusLabels[change.status]),
-                  createElement("button", {
-                    ref: change.path === selectedPath ? selectedButton : undefined,
-                    type: "button",
-                    "data-dsh-workspace": "change-select",
-                    "aria-pressed": change.path === selectedPath,
-                    onClick: () => select(change.path),
-                  }, change.path),
-                  createElement("span", { "data-dsh-workspace": "change-meta" }, `${statusText(change.status, change.staged)}${change.previousPath ? ` (from ${change.previousPath})` : ""}`),
-                )))
-                : workspaceEmptyState(`No ${filterLabels.find((f) => f.key === filter)?.label.toLowerCase() ?? ""} changes in this view.`),
+                ? changeGroups(visible, filter, { selectedPath, selectedButton, select })
+                : workspaceEmptyState(t("changes.noFiltered", { filter: (filterLabels.find((f) => f.key === filter)?.label() ?? "").toLowerCase() })),
             ),
             createElement("div", { ref: detailRef, "data-dsh-workspace": "changes-detail-column" },
-              !selectedPath && workspaceEmptyState("Select a file to preview its diff."),
-              selectedPath && diffStatus === "loading" && createElement("p", { role: "status" }, "Loading diff…"),
-              selectedPath && diffStatus === "error" && workspaceNotice("error", "Diff is unavailable for this change."),
+              !selectedPath && workspaceEmptyState(t("changes.selectHint")),
+              selectedPath && diffStatus === "loading" && createElement("p", { role: "status" }, t("changes.loadingDiff")),
+              selectedPath && diffStatus === "error" && workspaceNotice("error", t("changes.diffUnavailable")),
               selectedPath && diff && createElement("article", { "aria-label": `${selectedPath} diff`, "data-dsh-workspace": "change-diff" },
                 diffHeader(),
-                stale && createElement("button", { type: "button", "data-dsh-workspace": "diff-refresh-pill", onClick: applyPending }, "New changes · Refresh"),
-                diff.truncated && workspaceNotice("warning", "Diff truncated; additional content omitted."),
-                selectedIsUntracked && workspaceNotice("info", "Untracked file — stage it to see a diff."),
+                stale && createElement("button", { type: "button", "data-dsh-workspace": "diff-refresh-pill", onClick: applyPending }, t("changes.newChanges")),
+                diff.truncated && workspaceNotice("warning", t("changes.diffTruncated")),
+                selectedIsUntracked && workspaceNotice("info", t("changes.untrackedNotice")),
                 fileCollapsed
-                  ? workspaceEmptyState("Diff collapsed — expand to review.")
+                  ? workspaceEmptyState(t("changes.diffCollapsed"))
                   : createElement("div", null,
-                    !selectedIsUntracked && diff.staged && renderDiffBlock("Staged", stagedRows),
-                    !selectedIsUntracked && diff.unstaged && renderDiffBlock("Unstaged", unstagedRows),
-                    !selectedIsUntracked && !diff.staged && !diff.unstaged && createElement("p", { role: "status" }, "No diff content for this change."),
+                    !selectedIsUntracked && diff.staged && renderDiffBlock(t("changes.staged"), stagedRows),
+                    !selectedIsUntracked && diff.unstaged && renderDiffBlock(t("changes.unstaged"), unstagedRows),
+                    !selectedIsUntracked && !diff.staged && !diff.unstaged && createElement("p", { role: "status" }, t("changes.noDiffContent")),
                   ),
               ),
             ),
@@ -491,11 +549,11 @@ export function createWorkspaceChangesSurfaceComponent(
           message && createElement("p", { role: "status" }, message),
         );
     if (!sessionId) {
-      return createElement("section", { tabIndex: -1, "data-dsh-workspace": "changes", role: "region", "aria-label": "Git changes", onKeyDown },
-        createElement("h2", null, "Git changes"),
-        createElement("p", { role: "status" }, "Git changes require an active Harness session."));
+      return createElement("section", { tabIndex: -1, "data-dsh-workspace": "changes", role: "region", "aria-label": t("changes.title"), onKeyDown },
+        createElement("h2", null, t("changes.title")),
+        createElement("p", { role: "status" }, t("changes.requireSession")));
     }
-    return createElement("section", { tabIndex: -1, "data-dsh-workspace": "changes", role: "region", "aria-label": "Git changes", onKeyDown }, createElement("h2", null, "Git changes"), body);
+    return createElement("section", { tabIndex: -1, "data-dsh-workspace": "changes", role: "region", "aria-label": t("changes.title"), onKeyDown }, createElement("h2", null, t("changes.title")), body);
   };
 }
 

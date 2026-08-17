@@ -354,3 +354,33 @@ test("identical diff on refresh stays silent without a pill", async () => {
   await act(async () => {});
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-refresh-pill").length, 0, "no pill when the diff is unchanged");
 });
+
+test("groups changes into staged / unstaged / untracked sections (ADR #115)", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteFor([
+    { path: "staged.ts", status: "added", staged: true },
+    { path: "unstaged.ts", status: "modified", staged: false },
+    { path: "untracked.txt", status: "untracked", staged: false },
+  ]), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const groups = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-group");
+  assert.equal(groups.length, 3, "one section per group");
+  const titles = groups.map((node) => node.children.find((child) => typeof child === "object" && (child as { props?: { "data-dsh-workspace"?: string } }).props?.["data-dsh-workspace"] === "change-group-title")?.children?.join("") ?? "");
+  assert.ok(titles.includes("Staged"));
+  assert.ok(titles.includes("Unstaged"));
+  assert.ok(titles.includes("Untracked"));
+  const listRows = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-select").map((node) => node.children.join(""));
+  assert.deepEqual(listRows, ["staged.ts", "unstaged.ts", "untracked.txt"]);
+});
+
+test("grouped sections omit empty groups", async () => {
+  const render = createWorkspaceChangesSurfaceComponent(remoteFor([
+    { path: "only-untracked.txt", status: "untracked", staged: false },
+  ]), { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  const groups = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-group");
+  assert.equal(groups.length, 1, "only the non-empty group renders");
+});

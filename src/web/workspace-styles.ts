@@ -1239,6 +1239,125 @@ const WORKSPACE_VIEW_STYLES = `
   outline: 2px solid color-mix(in srgb, Highlight 45%, transparent);
   outline-offset: 1px;
 }
+
+/* v0.6: session summary block at the top of the Workspace tab. */
+[data-dsh-workspace="view"] [data-dsh-workspace="summary-block"] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 10px;
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="summary-block-body"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="summary-block-body"] strong {
+  font-size: var(--dsw-type-sm);
+  font-weight: 700;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="summary-block"] [data-dsh-workspace="summary-metric"] {
+  font-size: var(--dsw-type-xs);
+  color: var(--dsw-text-secondary);
+}
+
+/* v0.6: read-only multi-tab preview inside Artifacts (ADR #114). */
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-tabs"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 200px;
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 999px;
+  background: var(--dsw-surface);
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-tab"][data-active="true"] {
+  border-color: color-mix(in srgb, Highlight 55%, transparent);
+  background: var(--dsw-surface-hover);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-tab-select"] {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--dsw-type-xs);
+  color: var(--dsw-text-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-tab-close"] {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  font-size: var(--dsw-type-sm);
+  line-height: 1;
+  color: var(--dsw-text-tertiary);
+  cursor: pointer;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-tab-close"]:hover {
+  color: var(--dsw-text-primary);
+}
+
+/* v0.6: SCM grouped display (ADR #115). */
+[data-dsh-workspace="view"] [data-dsh-workspace="change-groups"] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="change-group-title"] {
+  margin: 0 0 4px;
+  font-size: var(--dsw-type-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dsw-text-tertiary);
+}
+
+/* v0.6: rendered markdown preview (self-contained; mermaid diagrams scroll). */
+[data-dsh-workspace="view"] [data-dsh-workspace-preview="markdown"] {
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace-preview="markdown"] img {
+  max-width: 100%;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace-preview="markdown"] .dsh-workspace-mermaid {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace-preview="markdown"] pre {
+  overflow-x: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 8px;
+  background: var(--dsw-surface-hover);
+}
 `;
 
 let styleUsers = 0;

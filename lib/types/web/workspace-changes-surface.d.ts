@@ -4,6 +4,13 @@ import type { GitChange, GitDiffResult } from "../domain/git.ts";
 export interface WorkspaceChangesRemote {
     readonly gitStatus: () => Promise<RemoteResult<readonly GitChange[]>>;
     readonly gitDiff: (path?: string) => Promise<RemoteResult<GitDiffResult>>;
+    /**
+     * Derive the current session summary from allow-listed durable tool records
+     * (tool/call + tool/result). v0.6: the summary is derived on demand instead
+     * of a persisted custom event, so live and resumed sessions both work.
+     * The remote unwraps to the summary value (or undefined when unavailable).
+     */
+    readonly workspaceSummary?: () => Promise<import("../host/workspace-summary.ts").WorkspaceSummaryData | undefined>;
 }
 export interface WorkspaceChangesSurfaceOptions {
     readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceChangesRemote | undefined;

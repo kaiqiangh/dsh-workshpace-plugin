@@ -176,3 +176,37 @@ test("skips a malformed artifact and shows a hidden-count warning instead of fai
   const chips = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "status-chip").map((node) => node.children.join(""));
   assert.ok(chips.some((text) => text.includes("1 hidden")));
 });
+
+test("opens multi-tab previews and switches between them (ADR #114)", async () => {
+  const first = { ...artifact, id: "workspace:a", name: "a.md" };
+  const second = { ...artifact, id: "workspace:b", name: "b.md" };
+  const remote = {
+    artifactMetadata: async () => ({ ok: true, value: [first, second] }),
+    previewArtifact: async (id: string) => ({
+      ok: true,
+      value: { type: "markdown", renderer: "ui-primitives", content: `# ${id}`, truncated: false, policy: { allowRawHtml: false, allowRemoteImages: false, allowedLinkSchemes: ["http", "https", "mailto"] } },
+    }),
+  };
+  const primitives = { MarkdownText: () => null, CodeBlock: () => null, JsonTree: () => null };
+  const render = createWorkspaceArtifactSurfaceComponent(remote, primitives, { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  // Open the second artifact: both tabs exist now.
+  const selects = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-select");
+  const secondSelect = selects.find((node) => node.children.join("") === "b.md")!;
+  await act(async () => { secondSelect.props.onClick(); });
+  await act(async () => {});
+  const tabs = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-tab");
+  assert.ok(tabs.length >= 2, "two tabs are open");
+  const active = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-tab" && node.props["data-active"] === "true");
+  assert.equal(active.length, 1);
+  // Close the active tab: the other tab becomes active.
+  const closeButtons = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-tab-close");
+  const activeClose = closeButtons.find((node) => node.props["aria-label"]?.includes("b.md"))!;
+  await act(async () => { activeClose.props.onClick(); });
+  await act(async () => {});
+  const remaining = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "artifact-tab");
+  assert.equal(remaining.length, 1);
+  assert.ok(remaining[0].props["data-active"] === "true");
+});

@@ -27,6 +27,8 @@ export interface WorkspaceConversationViewOptions {
     readonly artifacts: WorkspaceSurfaceComponent;
     readonly memory: WorkspaceSurfaceComponent;
     readonly changes: WorkspaceSurfaceComponent;
+    /** Optional read-only summary block rendered above the surface tabs. */
+    readonly summary?: WorkspaceSurfaceComponent;
 }
 /**
  * Conversation view tab body: the Artifacts/Memory/Changes switch rendered in
