@@ -26,3 +26,11 @@ export declare function workspaceFilterChip(label: string, active: boolean, onCl
 export declare function workspaceSegment(label: string, children: ReactNode, key?: string): ReactNode;
 /** A toolbar row inside a surface toolbar. */
 export declare function workspaceToolbarRow(children: ReactNode, key?: string): ReactNode;
+/**
+ * Shared two-column list | detail layout. Wraps the v0.7 `columns` CSS so the
+ * three Workspace surfaces (Artifacts / Memory / Changes) share one structure
+ * without per-surface UI atoms. Left column holds the persistent list; right
+ * column holds the detail/preview that stays visible while the list is browsed.
+ * Collapses to a single column below 760px via the shared stylesheet.
+ */
+export declare function workspaceListDetail(list: ReactNode, detail: ReactNode, key?: string): ReactNode;

@@ -13,7 +13,7 @@ import {
 } from "./workspace-deliverables.ts";
 import { createWorkspacePreviewRenderer, type WorkspacePrimitiveSet } from "./workspace-preview-adapters.ts";
 import { friendlyRemoteMessage, remoteCode, unwrapRemote } from "./workspace-remote.ts";
-import { workspaceCountBadge, workspaceEmptyState, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
+import { workspaceCountBadge, workspaceEmptyState, workspaceListDetail, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
 import type { WorkspaceArtifactPreview, WorkspaceJsonValue } from "../host/workspace-artifacts.ts";
 
 export const WORKSPACE_ARTIFACT_SLOT_NAME = "shell.overlay" as const;
@@ -335,6 +335,27 @@ export function createWorkspaceArtifactSurfaceComponent(
     const filtered = query.trim() ? artifacts.filter((artifact) => artifact.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) : artifacts;
     const filteredGroups = artifactGroups(filtered);
 
+    const artifactDetail: ReactNode = selected && detail
+      ? createElement(
+        "article",
+        { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
+        createElement("h3", null, selected.name),
+        createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
+        createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
+        createElement("div", { role: "group" },
+          selected.resourceId && createElement("button", { type: "button", onClick: () => { void downloadArtifact(); } }, download.status === "loading" ? "Downloading…" : "Download"),
+          download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
+        ),
+        download.message && createElement("p", { role: "status" }, download.message),
+        download.status === "ready" && createElement("p", { role: "status" }, "Download started."),
+        message && createElement("p", { role: "status" }, message),
+      )
+      : selected && !detail && detailStatus === "loading"
+        ? createElement("p", { role: "status" }, "Loading artifact preview…")
+        : selected && !detail && detailStatus !== "loading" && message
+          ? createElement("p", { role: "status" }, message)
+          : workspaceEmptyState("Select an artifact to preview it.");
+
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace artifacts…")
       : status === "degraded"
@@ -358,30 +379,11 @@ export function createWorkspaceArtifactSurfaceComponent(
             skipped > 0 && createElement("span", { "data-dsh-workspace": "status-chip", "data-status": "stale" }, `${skipped} hidden`),
           ),
           artifacts.length === 0 && workspaceEmptyState("No session artifacts yet — ask the agent to create a file and it appears here automatically."),
-          artifacts.length > 0 && createElement("div", { "data-dsh-workspace": "columns" },
-            createElement("div", { "data-dsh-workspace": "column-list" },
-              filtered.length === 0 && workspaceEmptyState("No artifacts match your search."),
-              ...filteredGroups.map((group, groupIndex) => group.length === 0 ? null : groupList(group, groupIndex)),
-            ),
-            createElement("div", { "data-dsh-workspace": "column-detail" },
-              selected && detail && createElement(
-                "article",
-                { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
-                createElement("h3", null, selected.name),
-                createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
-                createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
-                createElement("div", { role: "group" },
-                  selected.resourceId && createElement("button", { type: "button", onClick: () => { void downloadArtifact(); } }, download.status === "loading" ? "Downloading…" : "Download"),
-                  download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
-                ),
-                download.message && createElement("p", { role: "status" }, download.message),
-                download.status === "ready" && createElement("p", { role: "status" }, "Download started."),
-                message && createElement("p", { role: "status" }, message),
-              ),
-              selected && !detail && detailStatus === "loading" && createElement("p", { role: "status" }, "Loading artifact preview…"),
-              selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
-              !selected && workspaceEmptyState("Select an artifact to preview it."),
-            ),
+          artifacts.length > 0 && workspaceListDetail(
+            filtered.length === 0
+              ? workspaceEmptyState("No artifacts match your search.")
+              : filteredGroups.map((group, groupIndex) => group.length === 0 ? null : groupList(group, groupIndex)),
+            artifactDetail,
           ),
         );
     if (!sessionId) {

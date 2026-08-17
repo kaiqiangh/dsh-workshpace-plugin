@@ -108,6 +108,6 @@ test("parseUnifiedDiff splits lines into typed groups with running line numbers"
 });
 
 test("parseUnifiedDiff is empty-safe and bounded", () => {
-  assert.deepEqual(parseUnifiedDiff(""), { lines: [], insertions: 0, deletions: 0 });
+  assert.deepEqual(parseUnifiedDiff(""), { lines: [], insertions: 0, deletions: 0, intraLine: true });
   assert.deepEqual(parseUnifiedDiff(undefined as unknown as string).insertions, 0);
 });

@@ -15,7 +15,7 @@ import type {
 import { MEMORY_TYPES } from "../types.ts";
 import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 import { remoteErrorMessage, unwrapRemote } from "./workspace-remote.ts";
-import { workspaceCountBadge, workspaceEmptyState, workspaceNotice } from "./workspace-primitives.ts";
+import { workspaceCountBadge, workspaceEmptyState, workspaceListDetail, workspaceNotice } from "./workspace-primitives.ts";
 
 export interface WorkspaceMemoryRemote {
   readonly memoryOpen: (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>;
@@ -318,43 +318,48 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
               workspaceCountBadge(`${records.length} record${records.length === 1 ? "" : "s"}`),
             ),
           ),
-          records.length === 0 && workspaceEmptyState("No Memory records for this scope yet. Save a record or ask the agent to propose one."),
-          recordList,
-          selected && selectedGovernance && createElement("dl", { "aria-label": "Memory governance", "data-dsh-workspace": "memory-governance" },
-            createElement("dt", null, "Origin"), createElement("dd", null, selectedGovernance.origin),
-            createElement("dt", null, "Verification"), createElement("dd", null, selectedGovernance.verification),
-            createElement("dt", null, "Retention"), createElement("dd", null, selectedGovernance.retention),
-            createElement("dt", null, "Revision"), createElement("dd", null, String(selectedGovernance.revision)),
-            createElement("dt", null, "Sources"), createElement("dd", null, selectedGovernance.sourceRefs.map((source) => `${source.kind}/${source.id}`).join(", ") || "none"),
-            selectedGovernance.conflictGroup && createElement("dt", null, "Conflict group"),
-            selectedGovernance.conflictGroup && createElement("dd", null, selectedGovernance.conflictGroup),
-            selectedGovernance.expiresAt !== undefined && createElement("dt", null, "Expires"),
-            selectedGovernance.expiresAt !== undefined && createElement("dd", null, String(selectedGovernance.expiresAt)),
-          ),
-          hasConflict && createElement("p", { role: "status" }, "Conflicting Memory uses the same title and type with different content. Verify one or reject this item."),
-          hasConflict && createElement("aside", { "aria-label": "Memory conflict comparison", "data-dsh-workspace": "memory-conflict" },
-            createElement("h3", null, "Conflict comparison"),
-            createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void resolveConflict() }, "Keep this version"),
-            createElement("div", { "data-dsh-workspace": "memory-conflict-columns" },
-              [selected!, ...conflictingRecords].map((record) => {
-                const keep = record.id === selectedId;
-                const governance = displayGovernance(record);
-                return createElement("section", { key: record.id, "data-dsw-version": keep ? "keep" : "conflict", "aria-label": `Version ${record.contentHash.slice(0, 8)}` },
-                  createElement("div", { "data-dsh-workspace": "surface-header" },
-                    createElement("div", { "data-dsh-workspace": "surface-title" },
-                      createElement("h4", null, keep ? "Selected" : "Conflict"),
-                      createElement("span", { "data-dsh-workspace": "status-chip", "data-status": governance.verification === "verified" ? "verified" : "unverified" }, governance.verification),
-                    ),
-                  ),
-                  createElement("button", { type: "button", onClick: () => setSelectedId(record.id) }, `Review · rev ${governance.revision} · ${record.contentHash.slice(0, 15)}`),
-                  createElement("pre", null, record.content.slice(0, 512)),
-                );
-              }),
+          workspaceListDetail(
+            records.length === 0
+              ? workspaceEmptyState("No Memory records for this scope yet. Save a record or ask the agent to propose one.")
+              : recordList,
+            createElement("div", { "data-dsh-workspace": "memory-detail-column" },
+              selected && selectedGovernance && createElement("dl", { "aria-label": "Memory governance", "data-dsh-workspace": "memory-governance" },
+                createElement("dt", null, "Origin"), createElement("dd", null, selectedGovernance.origin),
+                createElement("dt", null, "Verification"), createElement("dd", null, selectedGovernance.verification),
+                createElement("dt", null, "Retention"), createElement("dd", null, selectedGovernance.retention),
+                createElement("dt", null, "Revision"), createElement("dd", null, String(selectedGovernance.revision)),
+                createElement("dt", null, "Sources"), createElement("dd", null, selectedGovernance.sourceRefs.map((source) => `${source.kind}/${source.id}`).join(", ") || "none"),
+                selectedGovernance.conflictGroup && createElement("dt", null, "Conflict group"),
+                selectedGovernance.conflictGroup && createElement("dd", null, selectedGovernance.conflictGroup),
+                selectedGovernance.expiresAt !== undefined && createElement("dt", null, "Expires"),
+                selectedGovernance.expiresAt !== undefined && createElement("dd", null, String(selectedGovernance.expiresAt)),
+              ),
+              hasConflict && createElement("p", { role: "status" }, "Conflicting Memory uses the same title and type with different content. Verify one or reject this item."),
+              hasConflict && createElement("aside", { "aria-label": "Memory conflict comparison", "data-dsh-workspace": "memory-conflict" },
+                createElement("h3", null, "Conflict comparison"),
+                createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void resolveConflict() }, "Keep this version"),
+                createElement("div", { "data-dsh-workspace": "memory-conflict-columns" },
+                  [selected!, ...conflictingRecords].map((record) => {
+                    const keep = record.id === selectedId;
+                    const governance = displayGovernance(record);
+                    return createElement("section", { key: record.id, "data-dsw-version": keep ? "keep" : "conflict", "aria-label": `Version ${record.contentHash.slice(0, 8)}` },
+                      createElement("div", { "data-dsh-workspace": "surface-header" },
+                        createElement("div", { "data-dsh-workspace": "surface-title" },
+                          createElement("h4", null, keep ? "Selected" : "Conflict"),
+                          createElement("span", { "data-dsh-workspace": "status-chip", "data-status": governance.verification === "verified" ? "verified" : "unverified" }, governance.verification),
+                        ),
+                      ),
+                      createElement("button", { type: "button", onClick: () => setSelectedId(record.id) }, `Review · rev ${governance.revision} · ${record.contentHash.slice(0, 15)}`),
+                      createElement("pre", null, record.content.slice(0, 512)),
+                    );
+                  }),
+                ),
+              ),
+              editor,
+              createElement("p", { role: "status" }, state?.readOnly ? "Read-only Memory" : "Review only: Memory never injects records into Agent context."),
+              message && createElement("p", { role: "status" }, message),
             ),
           ),
-          editor,
-          createElement("p", { role: "status" }, state?.readOnly ? "Read-only Memory" : "Review only: Memory never injects records into Agent context."),
-          message && createElement("p", { role: "status" }, message),
         );
     const confirmation = forgetPending && selected && createElement("div", { role: "alertdialog", "aria-modal": "true", "aria-labelledby": "memory-forget-title", "aria-describedby": "memory-forget-description" },
       createElement("h3", { id: "memory-forget-title" }, "Forget Memory?"),

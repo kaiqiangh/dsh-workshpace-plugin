@@ -132,6 +132,30 @@ test("filters artifacts by name as the search query changes", async () => {
   assert.deepEqual(names, ["report.md"]);
 });
 
+test("renders a two-column list | detail layout", async () => {
+  const remote = {
+    artifactMetadata: async () => ({ ok: true, value: [artifact] }),
+    previewArtifact: async () => ({
+      ok: true,
+      value: {
+        type: "markdown",
+        renderer: "ui-primitives",
+        content: "# Report",
+        truncated: false,
+        policy: { allowRawHtml: false, allowRemoteImages: false, allowedLinkSchemes: ["http", "https", "mailto"] },
+      },
+    }),
+  };
+  const primitives = { MarkdownText: () => null, CodeBlock: () => null, JsonTree: () => null };
+  const render = createWorkspaceArtifactSurfaceComponent(remote, primitives, { refreshMs: 0 });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "columns").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "column-list").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "column-detail").length, 1);
+});
+
 test("skips a malformed artifact and shows a hidden-count warning instead of failing", async () => {
   const valid = {
     id: "workspace:ok", name: "ok.md", mediaType: "text/markdown", sizeBytes: 12,

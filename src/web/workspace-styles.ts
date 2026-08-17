@@ -858,6 +858,26 @@ const WORKSPACE_VIEW_STYLES = `
   color: var(--dsw-faint);
 }
 
+/* ============ v0.7: intra-line (word-level) diff tokens ============ */
+
+/* Unchanged run inside a changed line — quiet, inherits the line color. */
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-token"][data-token="equal"] {
+  color: inherit;
+}
+
+/* Inserted run — stronger highlight than the line-level add background. */
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-token"][data-token="added"] {
+  background: color-mix(in srgb, var(--dsw-success) 34%, transparent);
+  border-radius: 2px;
+}
+
+/* Deleted run — stronger highlight than the line-level remove background. */
+[data-dsh-workspace="view"] [data-dsh-workspace="diff-token"][data-token="removed"] {
+  background: color-mix(in srgb, var(--dsw-danger) 34%, transparent);
+  border-radius: 2px;
+  text-decoration: line-through;
+}
+
 [data-dsh-workspace="view"] [data-dsh-workspace="diff-stats"] {
   color: var(--dsw-muted);
   font-size: 11px;

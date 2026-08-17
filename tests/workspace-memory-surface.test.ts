@@ -103,3 +103,40 @@ test("renders model-suggested proposals with a Proposal badge", async () => {
   assert.ok(badges.includes("Proposal"));
   assert.ok(badges.includes("unverified"));
 });
+
+test("renders a two-column list | detail layout", async () => {
+  const record = {
+    schemaVersion: 1 as const,
+    id: "memory:1",
+    scope: "project" as const,
+    scopeKey: "root:one",
+    type: "decision" as const,
+    title: "Decision",
+    content: "Local",
+    tags: [],
+    provenance: { kind: "agent", sessionId: "session-1" },
+    createdAt: 1,
+    updatedAt: 2,
+    useCount: 0,
+    contentHash: `sha256:${"a".repeat(64)}`,
+    status: "active" as const,
+  };
+  const remote = {
+    memoryOpen: async () => ({ ok: true, value: { scope: "project", scopeKey: "root:one", records: [record], warnings: [], readOnly: false } }),
+    memoryList: async () => ({ ok: true, value: [record] }),
+    memorySearch: async () => ({ ok: true, value: [record] }),
+    memoryUpsert: async () => ({ ok: true, value: record }),
+    memoryArchive: async () => ({ ok: true, value: record }),
+    memoryForget: async () => ({ ok: true, value: record }),
+    memoryGovern: async () => ({ ok: true, value: record }),
+    memoryExport: async () => ({ ok: true, value: "{}" }),
+    memoryImport: async () => ({ ok: true, value: [] }),
+  };
+  const render = createWorkspaceMemorySurfaceComponent({ remote });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "columns").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "column-list").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "column-detail").length, 1);
+});
