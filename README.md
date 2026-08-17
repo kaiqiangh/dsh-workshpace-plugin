@@ -8,8 +8,8 @@ Harness sessions can produce useful files and state while an agent is working, b
 
 - a `Workspace` tab beside `Trajectory` in the conversation view row (the only entry);
 - a per-session summary card in the chat that shows what the agent touched (files by kind, artifacts, memory/decision counts, active span);
-- tabbed surfaces: `Artifacts`, `Memory`, and `Changes`;
-- artifact previews, Memory governance controls, and Git diff inspection stay inside the surfaces;
+- tabbed surfaces: `Artifacts`, `Memory`, and `Changes` on a shared visual system (auto-refresh, friendly empty/error states, keyboard-operable);
+- artifact previews (grouped by type, searchable, with per-item status and one-click download), Memory governance controls, and readable Git diff inspection stay inside the surfaces;
 - Memory is auto-written per session as derived facts, so Export carries useful information;
 - the surfaces use scoped styles so they do not change the Harness shell globally.
 
@@ -45,9 +45,9 @@ Open [http://127.0.0.1:3080/](http://127.0.0.1:3080/) in a browser. Restart the 
 3. Start the conversation and let the agent create or inspect files.
 4. Open the `Workspace` conversation tab.
 5. Use the tabs:
-   - `Artifacts` — inspect session-created deliverables (grouped by type) with bounded previews and download;
+   - `Artifacts` — inspect session-created deliverables (grouped by type, searchable by name) with bounded previews beside the list, per-item preview status, and one-click download;
    - `Memory` — review, create, verify, pin, archive, or forget project/session Memory records, review Agent proposals (`model-suggested` items show as unverified until you Verify or Reject them), and see session facts the auto-writer derived from agent activity;
-   - `Changes` — working-tree and staged Git changes with unified diffs.
+   - `Changes` — working-tree and staged Git changes (auto-refreshing, filterable by status) with colored, line-numbered unified diffs, `+N −M` stats, and a copy-diff control.
 
 The Workspace tab renders the three surfaces in a card-based layout with scoped styles; the chat summary card above the conversation tracks the same session facts.
 

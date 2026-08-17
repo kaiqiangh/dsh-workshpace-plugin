@@ -133,14 +133,30 @@ export function createWorkspaceArtifactDetail(artifact: WorkspaceDeliverable, de
   };
 }
 
+export interface WorkspaceResourceUrlOptions {
+  readonly download?: boolean;
+  readonly resourcePath?: string;
+}
+
+/** Single authorized opaque-resource URL builder shared by preview + download paths. */
+export function workspaceResourceUrl(resourceId: string, mediaType: string, options: WorkspaceResourceUrlOptions = {}): string | undefined {
+  const resourcePath = options.resourcePath ?? "/workspace/resource";
+  if (typeof resourceId !== "string" || !resourceId
+    || typeof mediaType !== "string" || !mediaType
+    || typeof resourcePath !== "string" || !/^\/[A-Za-z0-9._/-]+$/u.test(resourcePath) || resourcePath.endsWith("/")) {
+    return undefined;
+  }
+  const url = new URL(resourcePath, "http://workspace.local");
+  url.searchParams.set("id", resourceId);
+  url.searchParams.set("type", mediaType);
+  if (options.download) url.searchParams.set("download", "1");
+  return `${url.pathname}${url.search}`;
+}
+
 export function buildWorkspaceResourceUrl(artifact: WorkspaceDeliverable, resourcePath = "/workspace/resource"): string | undefined {
   const safeArtifact = assertArtifact(artifact);
-  if (!safeArtifact.resourceId || typeof resourcePath !== "string" || !/^\/[A-Za-z0-9._/-]+$/u.test(resourcePath) || resourcePath.endsWith("/")) return undefined;
-  const url = new URL(resourcePath, "http://workspace.local");
-  url.searchParams.set("id", safeArtifact.resourceId);
-  url.searchParams.set("type", safeArtifact.mediaType);
-  url.searchParams.set("download", "1");
-  return `${url.pathname}${url.search}`;
+  if (!safeArtifact.resourceId) return undefined;
+  return workspaceResourceUrl(safeArtifact.resourceId, safeArtifact.mediaType, { download: true, resourcePath });
 }
 
 function responseStatus(status: number): WorkspaceDownloadStatus {

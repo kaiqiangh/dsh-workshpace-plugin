@@ -12,6 +12,8 @@ import {
   type WorkspaceDownloadRuntime,
 } from "./workspace-deliverables.ts";
 import { createWorkspacePreviewRenderer, type WorkspacePrimitiveSet } from "./workspace-preview-adapters.ts";
+import { friendlyRemoteMessage, remoteCode, unwrapRemote } from "./workspace-remote.ts";
+import { workspaceCountBadge, workspaceEmptyState, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
 import type { WorkspaceArtifactPreview, WorkspaceJsonValue } from "../host/workspace-artifacts.ts";
 
 export const WORKSPACE_ARTIFACT_SLOT_NAME = "shell.overlay" as const;
@@ -26,11 +28,6 @@ export interface WorkspaceArtifactSurfaceOptions {
   readonly resourcePath?: string;
   readonly refreshMs?: number;
   readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceArtifactRemote | undefined;
-}
-
-function remoteValue<T>(result: RemoteResult<T>): T {
-  if (result.ok) return result.value;
-  throw new Error("Workspace artifact capability is unavailable");
 }
 
 function descriptorFor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor {
@@ -95,6 +92,10 @@ function artifactTypeBadge(artifact: WorkspaceDeliverable): string {
   return extension;
 }
 
+function artifactStatus(artifact: WorkspaceDeliverable): string {
+  return artifact.preview;
+}
+
 function artifactIdentity(artifact: WorkspaceDeliverable | undefined): string {
   if (!artifact) return "";
   return [artifact.id, artifact.resourceId, artifact.version, artifact.sizeBytes, artifact.preview, artifact.mediaType].join("\u0000");
@@ -103,6 +104,24 @@ function artifactIdentity(artifact: WorkspaceDeliverable | undefined): string {
 /** Convert a path-free Host preview into the existing bounded renderer contract. */
 export function workspaceArtifactPreviewDescriptor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor {
   return descriptorFor(artifact, preview);
+}
+
+/** Lenient normalization: a single malformed artifact is skipped, not fatal. */
+function normalizeLenient(input: readonly WorkspaceDeliverable[]): { readonly items: readonly WorkspaceDeliverable[]; readonly skipped: number } {
+  try {
+    return { items: normalizeWorkspaceArtifacts(input), skipped: 0 };
+  } catch {
+    const items: WorkspaceDeliverable[] = [];
+    let skipped = 0;
+    for (const item of input) {
+      try {
+        items.push(...normalizeWorkspaceArtifacts([item]));
+      } catch {
+        skipped += 1;
+      }
+    }
+    return { items, skipped };
+  }
 }
 
 /** Build one additive, keyboard-operable artifact list/detail surface. */
@@ -120,8 +139,10 @@ export function createWorkspaceArtifactSurfaceComponent(
     const [selectedId, setSelectedId] = useState<string | undefined>();
     const [detail, setDetail] = useState<PreviewDescriptor | undefined>();
     const [detailStatus, setDetailStatus] = useState("idle");
+    const [query, setQuery] = useState("");
+    const [skipped, setSkipped] = useState(0);
     const [message, setMessage] = useState<string | undefined>();
-    const [download, setDownload] = useState<{ readonly url?: string; readonly name?: string; readonly status?: string }>({});
+    const [download, setDownload] = useState<{ readonly url?: string; readonly name?: string; readonly status?: string; readonly message?: string }>({});
     const [refreshTick, setRefreshTick] = useState(0);
     const selectedButton = useRef<HTMLButtonElement | null>(null);
     const downloadController = useRef<ReturnType<typeof createWorkspaceDownloadController> | undefined>();
@@ -140,11 +161,19 @@ export function createWorkspaceArtifactSurfaceComponent(
         setMessage("Workspace artifacts are unavailable in this Web scope.");
         return () => { active = false; };
       }
+      if (!sessionId) {
+        // Without an active session the surface renders a static notice; do
+        // not start the polling timer (avoids leaked intervals in tests).
+        setStatus("degraded");
+        return () => { active = false; };
+      }
       const refresh = async (): Promise<void> => {
         const token = ++refreshRequest.current;
         try {
-          const items = normalizeWorkspaceArtifacts(remoteValue(await activeRemote.artifactMetadata()));
+          const raw = unwrapRemote(await activeRemote.artifactMetadata());
+          const normalized = normalizeLenient(raw);
           if (!active || token !== refreshRequest.current) return;
+          const items = normalized.items;
           const currentId = selectedIdRef.current;
           const nextId = currentId && items.some((item) => item.id === currentId) ? currentId : items[0]?.id;
           const nextArtifact = items.find((item) => item.id === nextId);
@@ -154,6 +183,7 @@ export function createWorkspaceArtifactSurfaceComponent(
           selectedIdRef.current = nextId;
           selectedIdentityRef.current = nextIdentity;
           setArtifacts(items);
+          setSkipped(normalized.skipped);
           setSelectedId(nextId);
           if (selectedArtifactChanged || refreshTextPreview) {
             request.current += 1;
@@ -167,7 +197,7 @@ export function createWorkspaceArtifactSurfaceComponent(
             setDownload({});
           }
           setStatus("ready");
-          setMessage(undefined);
+          setMessage(normalized.skipped > 0 ? `${normalized.skipped} artifact(s) were skipped because their metadata is invalid.` : undefined);
         } catch {
           if (!active || token !== refreshRequest.current) return;
           setStatus((current) => current === "loading" ? "degraded" : current);
@@ -235,10 +265,10 @@ export function createWorkspaceArtifactSurfaceComponent(
         setDetail(detailValue.descriptor);
         setDetailStatus(detailValue.status);
         setMessage(detailValue.message);
-      }).catch(() => {
+      }).catch((error) => {
         if (token !== request.current) return;
         setDetailStatus("error");
-        setMessage("Workspace artifact preview is unavailable.");
+        setMessage(friendlyRemoteMessage(remoteCode(error), "Workspace artifact preview is unavailable."));
       });
     };
 
@@ -249,7 +279,7 @@ export function createWorkspaceArtifactSurfaceComponent(
     const downloadArtifact = async (): Promise<void> => {
       const token = ++downloadRequest.current;
       if (!selected || !runtime) {
-        setDownload({ status: "unsupported" });
+        setDownload({ status: "unsupported", message: "Download is unsupported in this browser." });
         return;
       }
       downloadController.current ??= createWorkspaceDownloadController(runtime, options.resourcePath);
@@ -259,7 +289,13 @@ export function createWorkspaceArtifactSurfaceComponent(
         if (result.url) downloadController.current.release(result.url);
         return;
       }
-      setDownload({ status: result.status, url: result.url, name: result.downloadName });
+      setDownload({ status: result.status, url: result.url, name: result.downloadName, message: result.message });
+      if (result.status === "ready" && result.url && result.downloadName && typeof document !== "undefined") {
+        const anchor = document.createElement("a");
+        anchor.href = result.url;
+        anchor.download = result.downloadName;
+        anchor.click();
+      }
     };
 
     const groupList = (group: readonly WorkspaceDeliverable[], groupIndex: number): ReactNode => {
@@ -291,43 +327,62 @@ export function createWorkspaceArtifactSurfaceComponent(
             artifact.name,
           ),
           createElement("span", { "data-dsh-workspace": "artifact-meta", "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${artifact.preview}` }, `${formatSize(artifact.sizeBytes)} · ${artifact.preview}`),
+          createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-status-chip", "data-status": artifactStatus(artifact) }, artifactStatus(artifact)),
         ))),
       );
     };
 
+    const filtered = query.trim() ? artifacts.filter((artifact) => artifact.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) : artifacts;
+    const filteredGroups = artifactGroups(filtered);
+
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace artifacts…")
       : status === "degraded"
-        ? createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "error" }, createElement("p", { role: "status" }, message ?? "Workspace artifacts are unavailable."))
+        ? workspaceNotice("error", message ?? "Workspace artifacts are unavailable.")
         : createElement(
           "div",
           { "data-dsh-workspace": "artifact-surface" },
-          createElement("header", { "data-dsh-workspace": "surface-header" },
-            createElement("div", { "data-dsh-workspace": "surface-title" },
-              createElement("h3", null, "Artifacts"),
-              createElement("span", { "data-dsh-workspace": "count-badge", "aria-label": "Artifact count" }, `${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}`),
+          workspaceSurfaceHeader({
+            title: "Artifacts",
+            count: workspaceCountBadge(`${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}`),
+            actions: createElement("button", { type: "button", onClick: () => setRefreshTick((tick) => tick + 1) }, "Refresh"),
+          }),
+          createElement("div", { "data-dsh-workspace": "surface-toolbar" },
+            // Filtering is a pure in-memory derived filter over already-fetched
+            // metadata, so it is applied instantly on each keystroke (no remote
+            // call to debounce — the spec's 200ms intent was to avoid per-key
+            // RPC traffic, which does not apply here).
+            createElement("form", { role: "search", onSubmit: (event: { preventDefault: () => void }) => event.preventDefault(), "aria-label": "Search artifacts" },
+              createElement("label", null, "Search artifacts ", createElement("input", { type: "search", placeholder: "Filter by name…", value: query, "aria-label": "Search artifacts", onChange: (event: { target: { value: string } }) => setQuery(event.target.value) })),
             ),
-            createElement("div", { "data-dsh-workspace": "surface-actions" },
-              createElement("button", { type: "button", onClick: () => setRefreshTick((tick) => tick + 1) }, "Refresh"),
+            skipped > 0 && createElement("span", { "data-dsh-workspace": "status-chip", "data-status": "stale" }, `${skipped} hidden`),
+          ),
+          artifacts.length === 0 && workspaceEmptyState("No session artifacts yet — ask the agent to create a file and it appears here automatically."),
+          artifacts.length > 0 && createElement("div", { "data-dsh-workspace": "columns" },
+            createElement("div", { "data-dsh-workspace": "column-list" },
+              filtered.length === 0 && workspaceEmptyState("No artifacts match your search."),
+              ...filteredGroups.map((group, groupIndex) => group.length === 0 ? null : groupList(group, groupIndex)),
+            ),
+            createElement("div", { "data-dsh-workspace": "column-detail" },
+              selected && detail && createElement(
+                "article",
+                { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
+                createElement("h3", null, selected.name),
+                createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
+                createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
+                createElement("div", { role: "group" },
+                  selected.resourceId && createElement("button", { type: "button", onClick: () => { void downloadArtifact(); } }, download.status === "loading" ? "Downloading…" : "Download"),
+                  download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
+                ),
+                download.message && createElement("p", { role: "status" }, download.message),
+                download.status === "ready" && createElement("p", { role: "status" }, "Download started."),
+                message && createElement("p", { role: "status" }, message),
+              ),
+              selected && !detail && detailStatus === "loading" && createElement("p", { role: "status" }, "Loading artifact preview…"),
+              selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
+              !selected && workspaceEmptyState("Select an artifact to preview it."),
             ),
           ),
-          artifacts.length === 0 && createElement("div", { "data-dsh-workspace": "empty-state" }, "No session artifacts yet — ask the agent to create a file and it appears here automatically."),
-          ...artifactGroups(artifacts).map((group, groupIndex) => group.length === 0 ? null : groupList(group, groupIndex)),
-          selected && detail && createElement(
-            "article",
-            { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
-            createElement("h3", null, selected.name),
-            createElement("p", { "aria-label": "Artifact provenance", "data-dsh-workspace": "artifact-provenance" }, `Source ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
-            createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
-            createElement("div", { role: "group" },
-              selected.resourceId && createElement("button", { type: "button", onClick: downloadArtifact }, download.status === "loading" ? "Downloading…" : "Download"),
-              download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, "Cancel download"),
-              download.url && createElement("a", { href: download.url, download: download.name ?? selected.downloadName }, "Save download"),
-            ),
-            message && createElement("p", { role: "status" }, message),
-          ),
-          selected && !detail && detailStatus === "loading" && createElement("p", { role: "status" }, "Loading artifact preview…"),
-          selected && !detail && detailStatus !== "loading" && message && createElement("p", { role: "status" }, message),
         );
     if (!sessionId) {
       return createElement("section", { "data-dsh-workspace": "artifacts", role: "region", "aria-label": "Workspace artifacts" },

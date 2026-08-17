@@ -35,6 +35,12 @@ export interface WorkspaceDownloadRuntime {
 export declare function normalizeWorkspaceArtifacts(input: readonly WorkspaceDeliverable[]): readonly WorkspaceDeliverable[];
 export declare function createWorkspaceArtifactView(input: readonly WorkspaceDeliverable[], selectedId?: string): WorkspaceArtifactView;
 export declare function createWorkspaceArtifactDetail(artifact: WorkspaceDeliverable, descriptor?: PreviewDescriptor): WorkspaceArtifactDetail;
+export interface WorkspaceResourceUrlOptions {
+    readonly download?: boolean;
+    readonly resourcePath?: string;
+}
+/** Single authorized opaque-resource URL builder shared by preview + download paths. */
+export declare function workspaceResourceUrl(resourceId: string, mediaType: string, options?: WorkspaceResourceUrlOptions): string | undefined;
 export declare function buildWorkspaceResourceUrl(artifact: WorkspaceDeliverable, resourcePath?: string): string | undefined;
 /** Own one cancellable browser download and its object-URL cleanup. */
 export declare function createWorkspaceDownloadController(runtime: WorkspaceDownloadRuntime, resourcePath?: string): {

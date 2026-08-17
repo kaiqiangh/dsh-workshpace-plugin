@@ -1,6 +1,7 @@
 import { createElement, type ComponentType, type ExoticComponent, type ReactNode } from "react";
 
 import type { PreviewDescriptor } from "../domain/preview.ts";
+import { workspaceResourceUrl } from "./workspace-deliverables.ts";
 
 type WorkspacePrimitive<Props extends object> = ComponentType<Props> | ExoticComponent<Props>;
 
@@ -78,13 +79,7 @@ function primitiveElement<Props extends object>(primitive: WorkspacePrimitive<Pr
 }
 
 function resourceHref(descriptor: Extract<PreviewDescriptor, { type: "binary" }>, options: WorkspacePreviewRenderOptions, download: boolean): string | undefined {
-  const path = options.resourcePath ?? "/workspace/resource";
-  if (typeof path !== "string" || !/^\/[A-Za-z0-9._/-]+$/u.test(path) || path.endsWith("/")) return undefined;
-  const url = new URL(path, "http://workspace.local");
-  url.searchParams.set("id", descriptor.resourceId);
-  url.searchParams.set("type", descriptor.mediaType);
-  if (download) url.searchParams.set("download", "1");
-  return `${url.pathname}${url.search}`;
+  return workspaceResourceUrl(descriptor.resourceId, descriptor.mediaType, { download, resourcePath: options.resourcePath });
 }
 
 function imageAlt(descriptor: Extract<PreviewDescriptor, { type: "binary" }>, options: WorkspacePreviewRenderOptions): string {

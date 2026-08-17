@@ -1,7 +1,10 @@
 {
   "name": "dsh-workspace-plugin",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./lib/index.js",
   "files": [
     "lib/index.js",
@@ -91,7 +94,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "check": "node --experimental-strip-types --check src/client.ts && node --experimental-strip-types --check src/index.ts && node --experimental-strip-types --check src/types.ts && node --experimental-strip-types --check src/domain/activity.ts && node --experimental-strip-types --check src/domain/config.ts && node --experimental-strip-types --check src/domain/memory-store.ts && node --experimental-strip-types --check src/domain/memory.ts && node --experimental-strip-types --check src/domain/memory-governance.ts && node --experimental-strip-types --check src/domain/observation.ts && node --experimental-strip-types --check src/domain/path.ts && node --experimental-strip-types --check src/domain/preview.ts && node --experimental-strip-types --check src/domain/workspace.ts && node --experimental-strip-types --check src/domain/deliverable.ts && node --experimental-strip-types --check src/domain/git.ts && node --experimental-strip-types --check src/host/workspace-resource.ts && node --experimental-strip-types --check src/host/workspace-artifacts.ts && node --experimental-strip-types --check src/host/workspace-memory-propose.ts && node --experimental-strip-types --check src/host/workspace-memory-auto-write.ts && node --experimental-strip-types --check src/host/workspace-summary.ts && node --experimental-strip-types --check src/web/workspace-conversation.ts && node --experimental-strip-types --check src/web/workspace-preview-adapters.ts && node --experimental-strip-types --check src/web/workspace-deliverables.ts && node --experimental-strip-types --check src/web/workspace-artifact-surface.ts && node --experimental-strip-types --check src/web/workspace-memory-surface.ts && node --experimental-strip-types --check src/web/workspace-styles.ts && node --experimental-strip-types --check src/web/workspace-view.ts && node --experimental-strip-types --check src/web/workspace-changes-surface.ts",
+    "check": "node scripts/check.mjs",
     "smoke:compat": "node --experimental-strip-types scripts/dsh-compat-smoke.mjs"
   }
 }

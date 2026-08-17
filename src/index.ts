@@ -260,6 +260,9 @@ export class WorkspaceService extends TypertRemoteService {
     const cwd = agent.session?.header?.cwd;
     if (!cwd && request.scope === "user") return { identity: { sessionId: agent.id, rootId: "root:unavailable" } };
     if (!cwd) throw new MemoryStoreError("PROJECT_UNAVAILABLE", "Workspace Session is unavailable");
+    // A session is bound to one Workspace Root: rebinding to a different root
+    // must fail closed (PROJECT_UNAVAILABLE) rather than silently following the
+    // new directory — see scripts/dsh-compat-smoke.mjs "must fail closed".
     try {
       const existingSnapshot = this.memoryWorkspaceSnapshots.get(agent.id);
       const snapshot = existingSnapshot
@@ -284,7 +287,10 @@ export class WorkspaceService extends TypertRemoteService {
     };
     const cwd = agentView.session?.header?.cwd;
     if (!cwd || typeof agent.id !== "string") return undefined;
-    if (this.artifactCarrier && this.artifactAgentId === agent.id) return this.artifactCarrier;
+    // Key the carrier by session + working directory so a session whose cwd
+    // moves to another workspace does not keep serving stale artifacts.
+    const carrierKey = `${agent.id}\u0000${cwd}`;
+    if (this.artifactCarrier && this.artifactAgentId === carrierKey) return this.artifactCarrier;
     this.artifactRouteDispose?.();
     this.artifactRouteDispose = undefined;
     this.artifactCarrier?.dispose();
@@ -301,7 +307,7 @@ export class WorkspaceService extends TypertRemoteService {
           readonly data?: Record<string, unknown>;
         }[]),
       });
-      this.artifactAgentId = agent.id;
+      this.artifactAgentId = carrierKey;
       const webServer = this.ctx.get("webServer") as WebRouteRegistrar | undefined;
       if (webServer?.register) {
         const carrier = this.artifactCarrier;

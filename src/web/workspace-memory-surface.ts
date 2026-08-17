@@ -14,6 +14,8 @@ import type {
 } from "../types.ts";
 import { MEMORY_TYPES } from "../types.ts";
 import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
+import { remoteErrorMessage, unwrapRemote } from "./workspace-remote.ts";
+import { workspaceCountBadge, workspaceEmptyState, workspaceNotice } from "./workspace-primitives.ts";
 
 export interface WorkspaceMemoryRemote {
   readonly memoryOpen: (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>;
@@ -47,12 +49,11 @@ export function workspaceMemoryRecordSummary(record: MemoryRecord): string {
 }
 
 function valueOf<T>(result: RemoteResult<T>): T {
-  if (result.ok) return result.value;
-  throw new Error(`${result.error.code}: ${result.error.message}`);
+  return unwrapRemote(result);
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : "Memory operation failed; records were not changed.";
+function errorMessage(error: unknown, fallback = "Memory operation failed; records were not changed."): string {
+  return remoteErrorMessage(error, fallback);
 }
 
 function scopeLabel(scope: MemoryScopeRequest["scope"]): string {
@@ -254,7 +255,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       } catch (error) { setMessage(errorMessage(error)); }
     };
 
-    const scopeButtons = createElement("div", { role: "group", "aria-label": "Memory scope" }, (["project", "session", "user", "shared-project"] as const).map((value) => createElement("button", {
+    const scopeButtons = createElement("div", { "data-dsw-segment": "true", role: "group", "aria-label": "Memory scope" }, (["project", "session", "user", "shared-project"] as const).map((value) => createElement("button", {
       key: value,
       ref: value === "project" ? scopeFirstButton : undefined,
       type: "button",
@@ -280,38 +281,44 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         createElement("label", null, "Title ", createElement("input", { value: title, maxLength: 256, onChange: (event: { target: { value: string } }) => setTitle(event.target.value) })),
         createElement("label", null, "Type ", createElement("select", { value: type, onChange: (event: { target: { value: MemoryType } }) => setType(event.target.value) }, workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
         createElement("label", null, "Content ", createElement("textarea", { value: content, maxLength: 64 * 1024, onChange: (event: { target: { value: string } }) => setContent(event.target.value) })),
-        createElement("button", { type: "submit", disabled: !state || state.readOnly || !writesAllowed }, selected ? "Save changes" : "Create Memory"),
-        selected && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("archive") }, "Archive"),
-        selected && createElement("button", { ref: forgetTrigger, type: "button", disabled: !writesAllowed, onClick: () => setForgetPending(true) }, "Forget"),
-        selected?.status === "archived" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("restore") }, "Restore"),
-        selectedGovernance?.verification === "unverified" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("verify") }, "Verify"),
-        selectedGovernance?.verification === "unverified" && hasConflict && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("reject") }, "Reject conflict"),
-        selectedGovernance?.verification === "stale" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("reverify") }, "Re-verify"),
-        selectedGovernance?.verification === "verified" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate(selectedGovernance.pinnedAt === undefined ? "pin" : "unpin") }, selectedGovernance.pinnedAt === undefined ? "Pin" : "Unpin"),
+        createElement("div", { "data-dsw-editor-actions": "true" },
+          createElement("button", { type: "submit", "data-dsw-primary": "true", disabled: !state || state.readOnly || !writesAllowed }, selected ? "Save changes" : "Create Memory"),
+          selected && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("archive") }, "Archive"),
+          selected && createElement("button", { ref: forgetTrigger, type: "button", disabled: !writesAllowed, onClick: () => setForgetPending(true) }, "Forget"),
+          selected?.status === "archived" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("restore") }, "Restore"),
+          selectedGovernance?.verification === "unverified" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("verify") }, "Verify"),
+          selectedGovernance?.verification === "unverified" && hasConflict && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("reject") }, "Reject conflict"),
+          selectedGovernance?.verification === "stale" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate("reverify") }, "Re-verify"),
+          selectedGovernance?.verification === "verified" && createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void mutate(selectedGovernance.pinnedAt === undefined ? "pin" : "unpin") }, selectedGovernance.pinnedAt === undefined ? "Pin" : "Unpin"),
+        ),
       ),
     );
     const body = status === "loading"
       ? createElement("p", { role: "status" }, "Loading Workspace Memory…")
       : status === "degraded"
-        ? createElement("div", { "data-dsh-workspace": "notice", "data-dsw-tone": "error" }, createElement("p", { role: "status" }, message ?? "Workspace Memory is unavailable."))
+        ? workspaceNotice("error", message ?? "Workspace Memory is unavailable.")
         : createElement("div", { "data-dsh-workspace": "memory-surface" },
           createElement("div", { "data-dsh-workspace": "memory-toolbar" },
-            scopeButtons,
-            scope === "shared-project" && createElement("label", null, createElement("input", { type: "checkbox", checked: sharedWriteAcknowledged, onChange: (event: { target: { checked: boolean } }) => setSharedWriteAcknowledged(event.target.checked) }), " I understand this writes to the shared Workspace Memory."),
-            scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
-            createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); if (searchTimer.current) clearTimeout(searchTimer.current); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => { setQuery(event.target.value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => { void load(event.target.value); }, 250); }, "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
-            createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
-            createElement("label", null, "Status filter ", createElement("select", { value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": "Filter Memory status" }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, value)))),
-            createElement("button", { type: "button", onClick: () => void exportMemory() }, "Export Memory"),
-            createElement("label", null, "Import Memory ", createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
+            createElement("div", { "data-dsw-row": "true" },
+              scopeButtons,
+              scope === "shared-project" && createElement("label", null, createElement("input", { type: "checkbox", checked: sharedWriteAcknowledged, onChange: (event: { target: { checked: boolean } }) => setSharedWriteAcknowledged(event.target.checked) }), " I understand this writes to the shared Workspace Memory."),
+              scope === "user" && createElement("label", null, "User profile ", createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": "User Memory profile" })),
+            ),
+            createElement("div", { "data-dsw-row": "true" },
+              createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); if (searchTimer.current) clearTimeout(searchTimer.current); void load(query); } }, createElement("label", null, "Search Memory ", createElement("input", { value: query, onChange: (event: { target: { value: string } }) => { setQuery(event.target.value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => { void load(event.target.value); }, 250); }, "aria-label": "Search Memory" })), createElement("button", { type: "submit" }, "Search")),
+              createElement("label", null, "Type filter ", createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": "Filter Memory type" }, createElement("option", { value: "" }, "All types"), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
+              createElement("label", null, "Status filter ", createElement("select", { value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": "Filter Memory status" }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, value)))),
+              createElement("button", { type: "button", onClick: () => void exportMemory() }, "Export Memory"),
+              createElement("label", null, "Import Memory ", createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
+            ),
           ),
           createElement("header", { "data-dsh-workspace": "surface-header" },
             createElement("div", { "data-dsh-workspace": "surface-title" },
               createElement("h3", null, "Memory"),
-              createElement("span", { "data-dsh-workspace": "count-badge", "aria-label": "Memory record count" }, `${records.length} record${records.length === 1 ? "" : "s"}`),
+              workspaceCountBadge(`${records.length} record${records.length === 1 ? "" : "s"}`),
             ),
           ),
-          records.length === 0 && createElement("div", { "data-dsh-workspace": "empty-state" }, "No Memory records for this scope yet. Save a record or ask the agent to propose one."),
+          records.length === 0 && workspaceEmptyState("No Memory records for this scope yet. Save a record or ask the agent to propose one."),
           recordList,
           selected && selectedGovernance && createElement("dl", { "aria-label": "Memory governance", "data-dsh-workspace": "memory-governance" },
             createElement("dt", null, "Origin"), createElement("dd", null, selectedGovernance.origin),
@@ -329,10 +336,20 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
             createElement("h3", null, "Conflict comparison"),
             createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void resolveConflict() }, "Keep this version"),
             createElement("div", { "data-dsh-workspace": "memory-conflict-columns" },
-              [selected!, ...conflictingRecords].map((record) => createElement("section", { key: record.id, "aria-label": `Version ${record.contentHash.slice(0, 8)}` },
-                createElement("button", { type: "button", onClick: () => setSelectedId(record.id) }, `Review ${displayGovernance(record).verification} · rev ${displayGovernance(record).revision} · ${record.contentHash.slice(0, 15)}`),
-                createElement("pre", null, record.content.slice(0, 512)),
-              )),
+              [selected!, ...conflictingRecords].map((record) => {
+                const keep = record.id === selectedId;
+                const governance = displayGovernance(record);
+                return createElement("section", { key: record.id, "data-dsw-version": keep ? "keep" : "conflict", "aria-label": `Version ${record.contentHash.slice(0, 8)}` },
+                  createElement("div", { "data-dsh-workspace": "surface-header" },
+                    createElement("div", { "data-dsh-workspace": "surface-title" },
+                      createElement("h4", null, keep ? "Selected" : "Conflict"),
+                      createElement("span", { "data-dsh-workspace": "status-chip", "data-status": governance.verification === "verified" ? "verified" : "unverified" }, governance.verification),
+                    ),
+                  ),
+                  createElement("button", { type: "button", onClick: () => setSelectedId(record.id) }, `Review · rev ${governance.revision} · ${record.contentHash.slice(0, 15)}`),
+                  createElement("pre", null, record.content.slice(0, 512)),
+                );
+              }),
             ),
           ),
           editor,

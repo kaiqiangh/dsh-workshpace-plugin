@@ -77,6 +77,7 @@ export declare class WorkspaceArtifactCarrier {
     private readonly root;
     private readonly records;
     private artifacts;
+    private readonly descriptorCache;
     constructor(options: WorkspaceArtifactCarrierOptions);
     metadata(): Promise<readonly WorkspaceDeliverable[]>;
     previewArtifact(id: string): Promise<WorkspaceArtifactPreview>;

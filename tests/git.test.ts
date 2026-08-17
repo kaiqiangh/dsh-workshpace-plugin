@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { GitError, gitDiff, gitStatus, parsePorcelain } from "../src/domain/git.ts";
+import { parseUnifiedDiff } from "../src/web/workspace-diff.ts";
 
 function run(root: string, args: readonly string[]): string {
   return execFileSync("git", [...args], { cwd: root, encoding: "utf8" }).trim();
@@ -75,4 +76,38 @@ test("gitStatus fails closed outside a git repository", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-nogit-"));
   await assert.rejects(() => gitStatus(root), (error: unknown) => error instanceof GitError && error.code === "NOT_A_GIT_REPOSITORY");
   await rm(root, { recursive: true, force: true });
+});
+
+test("parseUnifiedDiff splits lines into typed groups with running line numbers", () => {
+  const diffText = [
+    "diff --git a/a.ts b/a.ts",
+    "index 1111111..2222222 100644",
+    "--- a/a.ts",
+    "+++ b/a.ts",
+    "@@ -1,2 +1,3 @@",
+    " one",
+    "-two",
+    "+two-plus",
+    "+three",
+    "\\ No newline at end of file",
+  ].join("\n");
+  const parsed = parseUnifiedDiff(diffText);
+  const kinds = parsed.lines.map((line) => line.kind);
+  assert.deepEqual(kinds, ["header", "header", "header", "header", "hunk", "context", "remove", "add", "add", "header"]);
+  assert.equal(parsed.insertions, 2);
+  assert.equal(parsed.deletions, 1);
+  const context = parsed.lines[5];
+  assert.equal(context.oldLine, 1);
+  assert.equal(context.newLine, 1);
+  const remove = parsed.lines[6];
+  assert.equal(remove.oldLine, 2);
+  assert.equal(remove.newLine, undefined);
+  const add = parsed.lines[7];
+  assert.equal(add.newLine, 2);
+  assert.equal(add.oldLine, undefined);
+});
+
+test("parseUnifiedDiff is empty-safe and bounded", () => {
+  assert.deepEqual(parseUnifiedDiff(""), { lines: [], insertions: 0, deletions: 0 });
+  assert.deepEqual(parseUnifiedDiff(undefined as unknown as string).insertions, 0);
 });
