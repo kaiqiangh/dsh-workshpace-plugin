@@ -11,6 +11,10 @@ export interface WorkspaceChangesSurfaceOptions {
     /** Polling cadence in ms; 0 disables auto-refresh (used by tests). */
     readonly refreshMs?: number;
 }
+type ChangeFilter = "all" | "added" | "modified" | "deleted" | "untracked" | "staged";
+declare function matchesFilter(change: GitChange, filter: ChangeFilter): boolean;
 /** Read-only Changes view: git status list + readable unified diff preview. */
 export declare function createWorkspaceChangesSurfaceComponent(remote: WorkspaceChangesRemote | undefined, options?: WorkspaceChangesSurfaceOptions): (props: Record<string, unknown>) => ReactNode;
 export type { GitDiffResult };
+export type { ChangeFilter };
+export { matchesFilter };
