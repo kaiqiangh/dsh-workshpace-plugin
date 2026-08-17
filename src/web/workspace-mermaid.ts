@@ -11,6 +11,9 @@
 /** The same-origin vendor route served by the host. */
 export const MERMAID_VENDOR_URL = "/workspace/vendor/mermaid.js";
 
+/** Operational Budget: max mermaid fences enhanced in one preview (ADR #113). */
+export const MERMAID_MAX_BLOCKS = 16;
+
 /** The markdown renderer emits mermaid fences as `pre.code.language-mermaid`. */
 const MERMAID_BLOCK_SELECTOR = "pre code.language-mermaid";
 
@@ -84,8 +87,9 @@ function ensureInitialized(theme: string): void {
 
 /**
  * Render one mermaid code block in place. On success the `<pre>` is replaced
- * by the diagram SVG; on failure the block is restored so the raw text stays
- * readable. Returns true when the block rendered.
+ * by the diagram SVG (carrying the source in `data-dsh-source` so a later
+ * shell-theme flip can re-render it); on failure the block is restored so the
+ * raw text stays readable. Returns true when the block rendered.
  */
 export async function renderMermaidBlock(block: HTMLPreElement, theme: string): Promise<boolean> {
   const code = block.querySelector("code");
@@ -100,6 +104,7 @@ export async function renderMermaidBlock(block: HTMLPreElement, theme: string): 
     const { svg } = await api.render(id, source);
     const container = document.createElement("div");
     container.className = "dsh-workspace-mermaid";
+    container.setAttribute("data-dsh-source", source);
     container.innerHTML = svg;
     block.replaceWith(container);
     return true;
@@ -115,7 +120,7 @@ export async function renderMermaidBlock(block: HTMLPreElement, theme: string): 
  * decide when to show the "diagram unavailable" fallback.
  */
 export async function enhanceMermaidBlocks(root: ParentNode, theme: string): Promise<number> {
-  const blocks = Array.from(root.querySelectorAll(MERMAID_BLOCK_SELECTOR)).map((code) => code.closest("pre"));
+  const blocks = Array.from(root.querySelectorAll(MERMAID_BLOCK_SELECTOR)).map((code) => code.closest("pre")).slice(0, MERMAID_MAX_BLOCKS);
   if (blocks.length === 0) return 0;
   const loaded = await loadVendor();
   if (!loaded) return blocks.length;

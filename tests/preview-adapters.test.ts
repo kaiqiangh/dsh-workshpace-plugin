@@ -62,9 +62,14 @@ test("keeps CSV accessible and binary states explicit", () => {
   assert.match(String((unsupported as { props: { children: unknown } }).props.children), /Download is unavailable/);
 });
 
-test("sanitizes Markdown images without touching links", () => {
+test("sanitizes remote Markdown images while preserving relative ones and links", () => {
+  // Remote inline images are stripped to alt text; relative/reference images
+  // pass through so the v0.6 renderer can resolve them to opaque resource
+  // URLs; remote reference definitions are removed.
   assert.equal(
     sanitizeWorkspaceMarkdown("![x](https://example.com/x.png) [link](https://example.com) ![y][remote]\n[remote]: https://example.com/y.png\n![a [b]](https://evil.invalid/x.png)\n![shortcut]\n[shortcut]: <https://evil.invalid/shortcut.png>\n![foo\\]bar]\n[foo\\]bar]: <https://evil.invalid/escaped.png>"),
-    "x [link](https://example.com) y\n\na [b]\nshortcut\n\nfoo\\]bar\n",
+    "x [link](https://example.com) ![y][remote]\n\na [b]\n![shortcut]\n\n![foo\\]bar]\n",
   );
+  // A relative inline image is preserved verbatim for the renderer.
+  assert.equal(sanitizeWorkspaceMarkdown("![diagram](./img/flow.png)"), "![diagram](./img/flow.png)");
 });

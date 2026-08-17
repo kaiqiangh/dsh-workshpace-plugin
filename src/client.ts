@@ -33,7 +33,7 @@ import {
   WORKSPACE_VIEW_SLOT,
   type WorkspaceViewSlotRegistry,
 } from "./web/workspace-view.ts";
-import { workspaceSummaryBlockComponent } from "./web/workspace-summary-block.ts";
+import { workspaceSummaryBlockComponent, type WorkspaceSummaryRemote } from "./web/workspace-summary-block.ts";
 import type { WorkspaceSummaryData } from "./host/workspace-summary.ts";
 
 interface ClientContributionContext {
@@ -84,13 +84,13 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
       const registerWorkspaceSurfaces = (scope: ClientContributionContext): (() => void) => {
         const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
-        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote>();
-        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote | undefined => {
+        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote & WorkspaceSummaryRemote>();
+        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote & WorkspaceSummaryRemote | undefined => {
           if (!sessionId || !workspace) return undefined;
           const cached = remotes.get(sessionId);
           if (cached) return cached;
           const call = <T>(method: string, ...args: readonly unknown[]): Promise<T> => workspace[method]!(sessionId, ...args) as Promise<T>;
-          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote = {
+          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote & WorkspaceSummaryRemote = {
             artifactMetadata: () => call("artifactMetadata"),
             previewArtifact: (id: Parameters<WorkspaceArtifactRemote["previewArtifact"]>[0]) => call("previewArtifact", id),
             gitStatus: () => call("gitStatus"),
@@ -129,7 +129,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
               artifacts,
               memory,
               changes,
-              summary: workspaceSummaryBlockComponent({ resolveRemote: resolveRemote as (sessionId: string | undefined) => import("./web/workspace-summary-block.ts").WorkspaceSummaryRemote | undefined }),
+              summary: workspaceSummaryBlockComponent({ resolveRemote }),
             }),
           )));
         }

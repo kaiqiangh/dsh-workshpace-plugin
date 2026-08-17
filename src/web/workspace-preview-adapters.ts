@@ -20,7 +20,14 @@ export interface WorkspacePreviewRenderOptions {
   readonly altText?: string;
 }
 
-/** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
+/**
+ * Remove remote Markdown image fetches before rendering, while preserving
+ * relative images so the v0.6 renderer can resolve them to same-origin opaque
+ * resource URLs. Relative srcs (`./x.png`, `../x.png`, `/x.png`, plain
+ * filenames) pass through unchanged; absolute http(s)/data:/other-scheme srcs
+ * and remote reference definitions are stripped to their alt text. The
+ * renderer's `resolveImageSrc` hook then decides what actually renders.
+ */
 export function sanitizeWorkspaceMarkdown(text: string): string {
   const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[((?:\\.|[^\]])+)\]:\s*<?https?:\/\/[^>\s]+>?[^\r\n]*$/gimu, "");
   const readDelimited = (start: number, open: string, close: string): number => {
@@ -45,7 +52,9 @@ export function sanitizeWorkspaceMarkdown(text: string): string {
             : -1;
         const alt = withoutRemoteDefinitions.slice(index + 2, altEnd);
         const hasExplicitDestination = withoutRemoteDefinitions[destinationStart] === "(" || withoutRemoteDefinitions[destinationStart] === "[";
-        if (!hasExplicitDestination || destinationEnd !== -1) {
+        const isRemote = hasExplicitDestination && /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(withoutRemoteDefinitions.slice(destinationStart + 1, destinationEnd === -1 ? undefined : destinationEnd).trim());
+        if ((!hasExplicitDestination || destinationEnd !== -1) && isRemote) {
+          // Remote image: keep only the alt text (privacy policy).
           sanitized += alt;
           index = destinationEnd === -1 ? altEnd + 1 : destinationEnd + 1;
           continue;
@@ -131,7 +140,7 @@ export function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet
   }
   if (descriptor.type === "json") {
     const data = descriptor.value !== null && typeof descriptor.value === "object" ? descriptor.value as object | readonly unknown[] : { value: descriptor.value };
-    return primitiveElement(primitives.JsonTree, { data, label: "Workspace JSON", copyable: true, expandTopLevel: true });
+    return primitiveElement(primitives.JsonTree, { data, label: t("preview.jsonLabel"), copyable: true, expandTopLevel: true });
   }
   if (descriptor.type === "csv") return withTruncation(csvTable(descriptor.columns, descriptor.rows, descriptor.truncated), descriptor.truncated);
   const resourceUrl = resourceHref(descriptor, options, false);

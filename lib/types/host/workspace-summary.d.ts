@@ -42,6 +42,8 @@ export interface SummaryAgent {
         readonly append?: (type: string, data: unknown) => unknown;
     };
 }
+/** Operational Budget: max durable tool records folded for one summary. */
+export declare const SUMMARY_FOLD_MAX_RECORDS = 20000;
 /**
  * Deterministic summary from durable session tool records — never assistant
  * narration. `changes` counts present session files the agent created or

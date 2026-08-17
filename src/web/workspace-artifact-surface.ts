@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { WorkspaceDeliverable } from "../domain/deliverable.ts";
@@ -18,6 +18,9 @@ import { workspaceCountBadge, workspaceEmptyState, workspaceListDetail, workspac
 import type { WorkspaceArtifactPreview, WorkspaceJsonValue } from "../host/workspace-artifacts.ts";
 
 export const WORKSPACE_ARTIFACT_SLOT_NAME = "shell.overlay" as const;
+
+/** Operational Budget: max open preview tabs (ADR #114). */
+export const ARTIFACT_MAX_OPEN_TABS = 8;
 
 export interface WorkspaceArtifactRemote {
   readonly artifactMetadata: () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>;
@@ -257,7 +260,7 @@ export function createWorkspaceArtifactSurfaceComponent(
       setDownload({});
       // Open/activate the tab. A cached tab renders instantly; a new tab
       // fetches once and stores its descriptor for later switches.
-      setOpenTabs((tabs) => tabs.includes(artifact.id) ? tabs : [...tabs, artifact.id]);
+      setOpenTabs((tabs) => tabs.includes(artifact.id) ? tabs : (tabs.length >= ARTIFACT_MAX_OPEN_TABS ? tabs : [...tabs, artifact.id]));
       const cached = tabStates.get(artifact.id);
       if (cached) {
         setDetail(cached.descriptor);
@@ -416,16 +419,34 @@ export function createWorkspaceArtifactSurfaceComponent(
     // Read-only tab strip (dsh-web-ui PreviewTabs pattern): one tab per open
     // artifact, active tab highlighted, close button per tab. The detail pane
     // below renders the active tab's cached descriptor.
-    const tabStrip = openTabs.length > 1 || openTabs.length === 1 ? createElement(
+    const tablistRef = useRef<HTMLDivElement | null>(null);
+    const onTablistKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest?.("[data-dsh-workspace='artifact-tab']")) return;
+      const tabs = openTabs;
+      if (tabs.length < 2) return;
+      const current = tabs.indexOf(selectedId ?? "");
+      const index = current === -1 ? 0 : current;
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      const artifact = artifacts.find((item) => item.id === tabs[next]);
+      if (artifact) select(artifact);
+    };
+    const tabStrip = openTabs.length >= 1 ? createElement(
       "div",
-      { role: "tablist", "aria-label": t("artifacts.title"), "data-dsh-workspace": "artifact-tabs" },
+      { ref: tablistRef, role: "tablist", "aria-label": t("artifacts.title"), "data-dsh-workspace": "artifact-tabs", onKeyDown: onTablistKeyDown },
       openTabs.map((id) => {
         const artifact = artifacts.find((item) => item.id === id);
         if (!artifact) return null;
         const active = id === selectedId;
         return createElement(
           "div",
-          { key: id, role: "tab", "aria-selected": String(active), "data-dsh-workspace": "artifact-tab", "data-active": String(active) },
+          { key: id, role: "tab", "aria-selected": String(active), "data-dsh-workspace": "artifact-tab", "data-active": String(active), tabIndex: active ? 0 : -1 },
           createElement("button", { type: "button", "data-dsh-workspace": "artifact-tab-select", "aria-pressed": active, onClick: () => select(artifact) }, artifact.name),
           createElement("button", { type: "button", "data-dsh-workspace": "artifact-tab-close", "aria-label": `${t("cancel")} ${artifact.name}`, onClick: () => closeTab(id) }, "×"),
         );

@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from "react";
 
 import type { WorkspaceSurfaceComponent } from "./workspace-styles.ts";
+import { t } from "./workspace-i18n.ts";
 
 /** The public Harness conversation view ring: one list entry per view tab. */
 export const WORKSPACE_VIEW_SLOT = "conversation.view" as const;
@@ -55,13 +56,13 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
     const children: ReactNode[] = [];
     if (options.summary) children.push(createElement(options.summary, props));
     children.push(
-      createElement("input", { id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": "Artifacts" }),
-      createElement("input", { id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Memory" }),
-      createElement("input", { id: "dsh-workspace-view-tab-changes", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": "Changes" }),
-      createElement("div", { role: "group", "aria-label": "Workspace sections", "data-dsh-workspace": "panel-tabs" },
-        createElement("label", { htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, "Artifacts"),
-        createElement("label", { htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, "Memory"),
-        createElement("label", { htmlFor: "dsh-workspace-view-tab-changes", "data-dsh-workspace": "panel-tab" }, "Changes"),
+      createElement("input", { id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": t("view.artifacts") }),
+      createElement("input", { id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.memory") }),
+      createElement("input", { id: "dsh-workspace-view-tab-changes", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.changes") }),
+      createElement("div", { role: "group", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
+        createElement("label", { htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, t("view.artifacts")),
+        createElement("label", { htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, t("view.memory")),
+        createElement("label", { htmlFor: "dsh-workspace-view-tab-changes", "data-dsh-workspace": "panel-tab" }, t("view.changes")),
       ),
       createElement("div", { "data-dsh-workspace": "panel-content" },
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
@@ -69,6 +70,6 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "changes" }, createElement(options.changes, props)),
       ),
     );
-    return createElement("section", { role: "region", "aria-label": "Workspace", "data-dsh-workspace": "view" }, children);
+    return createElement("section", { role: "region", "aria-label": t("view.workspace"), "data-dsh-workspace": "view" }, children);
   };
 }

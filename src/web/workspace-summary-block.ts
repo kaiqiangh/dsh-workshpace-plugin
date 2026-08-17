@@ -65,7 +65,7 @@ export function workspaceSummaryBlockComponent(options: WorkspaceSummaryBlockOpt
           setMessage(undefined);
         } catch (error) {
           if (!active || token !== request.current) return;
-          setMessage(friendlyRemoteMessage(remoteCode(error), "Workspace summary is unavailable."));
+          setMessage(friendlyRemoteMessage(remoteCode(error), t("summary.unavailable")));
         } finally {
           if (active && token === request.current) setLoaded(true);
         }

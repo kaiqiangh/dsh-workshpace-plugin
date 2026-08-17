@@ -412,7 +412,8 @@ export class PreviewService {
   }
 
   /** Read one bounded text file with canonical containment and before/after version checks. */
-  async readText(pathInput: string, maxBytes: number, signal?: AbortSignal): Promise<BoundedTextRead> {    if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
+  async readText(pathInput: string, maxBytes: number, signal?: AbortSignal): Promise<BoundedTextRead> {
+    if (this.disposed) throw new PreviewPanelError("RESOURCE_EXPIRED", "Resource is expired");
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new PreviewPanelError("FILE_TOO_LARGE", "Read limit is invalid");
     assertNotAborted(signal);
     const resolved = await this.resolve(pathInput);

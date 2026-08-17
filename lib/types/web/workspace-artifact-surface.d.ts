@@ -6,6 +6,8 @@ import { type WorkspaceDownloadRuntime } from "./workspace-deliverables.ts";
 import { type WorkspacePrimitiveSet } from "./workspace-preview-adapters.ts";
 import type { WorkspaceArtifactPreview } from "../host/workspace-artifacts.ts";
 export declare const WORKSPACE_ARTIFACT_SLOT_NAME: "shell.overlay";
+/** Operational Budget: max open preview tabs (ADR #114). */
+export declare const ARTIFACT_MAX_OPEN_TABS = 8;
 export interface WorkspaceArtifactRemote {
     readonly artifactMetadata: () => Promise<RemoteResult<readonly WorkspaceDeliverable[]>>;
     readonly previewArtifact: (id: string) => Promise<RemoteResult<WorkspaceArtifactPreview>>;

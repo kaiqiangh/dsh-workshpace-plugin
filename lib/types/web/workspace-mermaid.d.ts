@@ -9,6 +9,8 @@
  */
 /** The same-origin vendor route served by the host. */
 export declare const MERMAID_VENDOR_URL = "/workspace/vendor/mermaid.js";
+/** Operational Budget: max mermaid fences enhanced in one preview (ADR #113). */
+export declare const MERMAID_MAX_BLOCKS = 16;
 /** Current shell theme from `prefers-color-scheme` (defaults to light). */
 export declare function shellIsDark(): boolean;
 /** Observe shell theme flips; returns a disposer. */
@@ -17,8 +19,9 @@ export declare function watchShellTheme(listener: (isDark: boolean) => void): ()
 export declare function mermaidTheme(isDark: boolean): string;
 /**
  * Render one mermaid code block in place. On success the `<pre>` is replaced
- * by the diagram SVG; on failure the block is restored so the raw text stays
- * readable. Returns true when the block rendered.
+ * by the diagram SVG (carrying the source in `data-dsh-source` so a later
+ * shell-theme flip can re-render it); on failure the block is restored so the
+ * raw text stays readable. Returns true when the block rendered.
  */
 export declare function renderMermaidBlock(block: HTMLPreElement, theme: string): Promise<boolean>;
 /**

@@ -22,7 +22,14 @@ export interface WorkspacePreviewRenderOptions {
     readonly downloadName?: string;
     readonly altText?: string;
 }
-/** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
+/**
+ * Remove remote Markdown image fetches before rendering, while preserving
+ * relative images so the v0.6 renderer can resolve them to same-origin opaque
+ * resource URLs. Relative srcs (`./x.png`, `../x.png`, `/x.png`, plain
+ * filenames) pass through unchanged; absolute http(s)/data:/other-scheme srcs
+ * and remote reference definitions are stripped to their alt text. The
+ * renderer's `resolveImageSrc` hook then decides what actually renders.
+ */
 export declare function sanitizeWorkspaceMarkdown(text: string): string;
 /** Render only bounded, already-authorized Host data through public UI primitives. */
 export declare function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet, descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;

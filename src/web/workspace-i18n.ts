@@ -167,6 +167,7 @@ export type WorkspaceMessageKey =
   | "changes.status.untracked"
   // Preview adapters
   | "preview.status"
+  | "preview.jsonLabel"
   | "preview.csvTitle"
   | "preview.csvTruncatedTitle"
   | "preview.truncatedNote"
@@ -187,6 +188,7 @@ export type WorkspaceMessageKey =
   | "summary.memory"
   | "summary.active"
   | "summary.justNow"
+  | "summary.unavailable"
   // Remote / error messages
   | "error.gitUnavailable"
   | "error.notGitRepository"
@@ -360,6 +362,7 @@ const table: MessageTable = {
   "changes.status.untracked": { en: "Untracked", zh: "未跟踪" },
 
   "preview.status": { en: "status", zh: "状态" },
+  "preview.jsonLabel": { en: "Workspace JSON", zh: "Workspace JSON" },
   "preview.csvTitle": { en: "Workspace CSV preview", zh: "Workspace CSV 预览" },
   "preview.csvTruncatedTitle": { en: "Workspace CSV preview (additional rows omitted)", zh: "Workspace CSV 预览（其余行已省略）" },
   "preview.truncatedNote": { en: "Preview truncated; additional content omitted.", zh: "预览已截断；其余内容已省略。" },
@@ -380,6 +383,7 @@ const table: MessageTable = {
   "summary.memory": { en: "{count} memory · {count2} decisions", zh: "{count} 条记忆 · {count2} 条决策" },
   "summary.active": { en: "active {span}", zh: "活跃 {span}" },
   "summary.justNow": { en: "just now", zh: "刚刚" },
+  "summary.unavailable": { en: "Workspace summary is unavailable.", zh: "Workspace 摘要当前不可用。" },
 
   "error.gitUnavailable": { en: "Git is not available for this workspace.", zh: "此工作区不可用 Git。" },
   "error.notGitRepository": { en: "This workspace is not a git repository.", zh: "此工作区不是 Git 仓库。" },
