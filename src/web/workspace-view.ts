@@ -8,12 +8,26 @@ export const WORKSPACE_VIEW_SLOT = "conversation.view" as const;
 export const WORKSPACE_VIEW_ENTRY_KEY = "dsh-workspace" as const;
 export const WORKSPACE_VIEW_ORDER = 20 as const;
 export const WORKSPACE_VIEW_LABEL = "Workspace" as const;
+export const WORKSPACE_VIEW_LOCALE_NS = "dsh-workspace" as const;
+
+/**
+ * Props the view body receives from the rc.7 `register.inject(sessionId)`
+ * seat. The conversation.view hole is session-scoped (children of
+ * `conversation.session` with `scope: "session"`), so the shell passes the
+ * active session id into `inject`; we surface it back as the `useSessions`
+ * seat the surfaces already read (dsh-web-ui trajectory pattern).
+ */
+export interface WorkspaceConversationViewInjectedProps {
+  readonly useSessions: () => string | undefined;
+}
 
 export interface WorkspaceConversationViewRegistration {
   readonly name: typeof WORKSPACE_VIEW_SLOT;
   readonly id: typeof WORKSPACE_VIEW_ENTRY_KEY;
   readonly order: typeof WORKSPACE_VIEW_ORDER;
-  readonly label: typeof WORKSPACE_VIEW_LABEL;
+  readonly locale: typeof WORKSPACE_VIEW_LOCALE_NS;
+  readonly label: () => string;
+  readonly inject: (sessionId: string) => WorkspaceConversationViewInjectedProps;
 }
 
 /** Pinned registration descriptor; the client contribution registers this into `conversation.view`. */
@@ -22,7 +36,9 @@ export function workspaceConversationViewRegistration(): WorkspaceConversationVi
     name: WORKSPACE_VIEW_SLOT,
     id: WORKSPACE_VIEW_ENTRY_KEY,
     order: WORKSPACE_VIEW_ORDER,
-    label: WORKSPACE_VIEW_LABEL,
+    locale: WORKSPACE_VIEW_LOCALE_NS,
+    label: () => WORKSPACE_VIEW_LABEL,
+    inject: (sessionId: string) => Object.freeze({ useSessions: () => sessionId }),
   });
 }
 

@@ -29,7 +29,7 @@ export interface WorkspaceClientSurface {
 }
 export declare const workspaceClient: WorkspaceClientSurface;
 export declare function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;
-export declare const inject: readonly ["conversationEvents", "slots", "remote", "sessions"];
+export declare const inject: readonly ["slots", "remote"];
 export declare function apply(ctx: ClientContributionContext): Promise<() => Promise<void>>;
 export { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, workspaceConversationDefinition, workspaceConversationView, };
 export type { WorkspaceConversationContributionOptions };

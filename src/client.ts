@@ -63,11 +63,17 @@ export function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: 
   return createWorkspacePreviewRenderer({ MarkdownText, CodeBlock, JsonTree }, descriptor, options);
 }
 
-export const inject = ["conversationEvents", "slots", "remote", "sessions"] as const;
+export const inject = ["slots", "remote"] as const;
 
 export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
-  if (!ctx?.conversationEvents || !ctx.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount || typeof ctx.emit !== "function") {
-    throw new Error("DSH Workspace requires the public conversation and Typert Remote seams");
+  // rc.7 client protocol (dsh 0.1.0-rc.7): the shell provides `slots`
+  // (slot registry with inject/register), `remote` (Typert mount seat) and
+  // `effect` (fiber-lifetime). The rc.6-era `conversationEvents`/`sessions`
+  // service injection is gone; conversation.view registration rides the
+  // session-scoped `conversation.session` parent slot instead (trajectory
+  // pattern), and `register.inject(sessionId)` hands the view its session.
+  if (!ctx?.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount) {
+    throw new Error("DSH Workspace requires the public slot registry and Typert Remote seams");
   }
   const remoteDispose: TypertDisposer = await ctx.remote.$mount(TYPERT_REMOTE as TypertRemoteContribution);
   let disposeConversation: (() => void) | undefined;

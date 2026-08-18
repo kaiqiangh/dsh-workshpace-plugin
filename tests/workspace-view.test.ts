@@ -11,12 +11,14 @@ import {
 } from "../src/web/workspace-view.ts";
 
 test("conversation view registration descriptor is pinned", () => {
-  assert.deepEqual(workspaceConversationViewRegistration(), {
-    name: "conversation.view",
-    id: "dsh-workspace",
-    order: 20,
-    label: "Workspace",
-  });
+  const registration = workspaceConversationViewRegistration();
+  assert.equal(registration.name, "conversation.view");
+  assert.equal(registration.id, "dsh-workspace");
+  assert.equal(registration.order, 20);
+  assert.equal(registration.locale, "dsh-workspace");
+  assert.equal(registration.label(), "Workspace");
+  // rc.7: inject(sessionId) returns the useSessions seat the surfaces read.
+  assert.equal(registration.inject("session-1").useSessions(), "session-1");
   assert.equal(WORKSPACE_VIEW_SLOT, "conversation.view");
   assert.equal(WORKSPACE_VIEW_ENTRY_KEY, "dsh-workspace");
   assert.equal(WORKSPACE_VIEW_ORDER, 20);
