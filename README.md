@@ -8,12 +8,12 @@ Harness sessions can produce useful files and state while an agent is working, b
 
 - a `Workspace` tab beside `Trajectory` in the conversation view row (the only entry);
 - a session summary block at the top of the Workspace tab that shows what the agent touched (files by kind, artifacts, memory/decision counts, active span) — derived on demand, so it works identically for live and reopened sessions;
-- tabbed surfaces: `Artifacts`, `Memory`, and `Changes` on a shared visual system (auto-refresh, friendly empty/error states, keyboard-operable);
-- artifact previews (grouped by type, searchable, with per-item status and one-click download) including a read-only multi-tab preview, markdown previews that render relative images and mermaid diagrams, and streaming PDF previews; Memory governance controls, and readable Git diff inspection stay inside the surfaces;
+- tabbed surfaces: `Artifacts`, `Memory`, and `Git` on a shared visual system (auto-refresh, friendly empty/error states, keyboard-operable); the Git tab hosts the Changes and History views;
+- artifact previews (grouped by type, searchable, with per-item size · modified-time · status and one-click download, copy-path) including a read-only multi-tab preview, markdown previews that render relative images and mermaid diagrams, and streaming PDF previews; Memory governance controls, and readable Git inspection stay inside the surfaces;
 - Memory is auto-written per session as derived facts, so Export carries useful information;
-- Changes are grouped into staged / unstaged / untracked sections with filterable status and readable unified/split diffs;
+- Git: a repo-status header (branch, dirty/clean, staged / unstaged / untracked counts, ahead/behind), Changes grouped into staged / unstaged / untracked sections with filterable status and readable unified/split diffs, and a commit History (commit list + per-commit files/diff); non-Git workspaces show a clean "not a Git repository" state;
 - the surfaces use scoped styles so they do not change the Harness shell globally;
-- all displayed copy is available in English and Chinese (follows the browser language).
+- all displayed copy is available in English and Chinese and follows the Harness app language (browser language is only the fallback).
 
 ## Install the plugin
 
@@ -47,9 +47,9 @@ Open [http://127.0.0.1:3080/](http://127.0.0.1:3080/) in a browser. Restart the 
 3. Start the conversation and let the agent create or inspect files.
 4. Open the `Workspace` conversation tab.
 5. Use the tabs:
-   - `Artifacts` — inspect session-created deliverables (grouped by type, searchable by name) with bounded previews beside the list, per-item preview status, and one-click download;
+   - `Artifacts` — inspect session-created deliverables (grouped by type, searchable by name) with bounded previews beside the list, per-item size · modified-time · preview status, copy-path, and one-click download;
    - `Memory` — review, create, verify, pin, archive, or forget project/session Memory records, review Agent proposals (`model-suggested` items show as unverified until you Verify or Reject them), and see session facts the auto-writer derived from agent activity;
-   - `Changes` — working-tree and staged Git changes (auto-refreshing, grouped into staged / unstaged / untracked sections, filterable by status) with colored, line-numbered unified diffs, `+N −M` stats, and a copy-diff control.
+   - `Git` — repo-status header (branch + short head, dirty/clean, staged / unstaged / untracked counts, ahead/behind), then a **Changes / History** switch: Changes shows working-tree and staged changes (auto-refreshing, grouped into staged / unstaged / untracked sections, filterable by status) with colored, line-numbered unified diffs, `+N −M` stats, and a copy-diff control; History shows the commit list and a per-commit files/diff detail.
 
 The Workspace tab renders the three surfaces in a card-based layout with scoped styles; the summary block above the tabs tracks the same session facts.
 
@@ -71,7 +71,7 @@ npm run smoke:compat
 - **A historical session created before v0.6 will not reopen:** pre-v0.6 versions persisted a custom `workspace/summary` event into the session log, and DSH's cold persistence path refuses to load logs containing unknown non-ignorable event types. v0.6 stops persisting that event, so new sessions are clean and reopen normally; already-affected logs cannot be safely rewritten (seq continuity), so those specific sessions are not recoverable — delete them or start fresh sessions.
 - **Markdown images or mermaid diagrams do not show:** the plugin serves them through the same-origin opaque resource route and a vendor bundle; if the Web UI was started before a v0.6 rebuild, restart `dsh web` so the new routes (`/workspace/vendor/mermaid.js`, Range/ETag on `/workspace/resource`) are registered.
 - **Artifacts or Memory are empty:** open Workspace from an active Harness session; the surfaces read session-scoped data rather than a global file list.
-- **Changes is empty:** the workspace root is not a Git repository (or has no working-tree/staged changes). Open Workspace from a session whose working directory is a Git checkout.
+- **Git shows "not a Git repository":** the workspace root is not a Git checkout. Open Workspace from a session whose working directory is a Git repository to see Changes and History.
 - **Memory Export downloads an empty bundle (`"records":[]`):** that is expected only when the session had no Memory and no agent file activity. Since v0.2, a session auto-writer derives `fact` records from agent tool activity (files by kind + artifacts), so an active session exports useful facts even without manual records. Manual records are created in the UI or proposed by the Agent via `workspace_memory_propose`; proposals are stored `unverified` until you Verify them. Storage details: [`docs/MEMORY_STORAGE.md`](docs/MEMORY_STORAGE.md).
 - **The command cannot find the plugin:** run the add command from the Harness project and use the correct relative path to this repository.
 

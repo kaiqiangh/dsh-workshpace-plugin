@@ -2,6 +2,69 @@
 
 All notable changes to this plugin are recorded here, newest first.
 
+## v0.7.0 (2026-08-19) — app-locale i18n, artifacts as a working surface, memory redesign, Git tab with history (ADR 0015)
+
+**Localization now follows the DeepSeek app language**
+
+- Reactive locale layer in `workspace-i18n.ts`: `subscribeWorkspaceLocale`,
+  `useWorkspaceLocale` (useSyncExternalStore), `setWorkspaceLocale` notify, and
+  `startWorkspaceLocaleSync` which observes `<html lang>` + `languagechange`
+  (the host exposes no public locale event — research #118). Every surface
+  re-renders on a language switch; browser language is only the fallback.
+- The Workspace tab label is now `label: () => t("view.workspace")`, so the
+  host's locale-aware `dsh-workspace` namespace translates it (research #118,
+  wayfinder #126).
+
+**Zero-`undefined` summary (research #119)**
+
+- `validSummaryShape` guard in the summary block: partial/garbled payloads
+  downgrade to "Workspace summary is unavailable." instead of painting
+  `undefined files · undefined added · …` (root cause: the v0.6 chat-card→block
+  migration dropped the validator).
+
+**Artifacts reachability + UX (research #120, impl #127)**
+
+- `artifactMetadata` returns the empty list (and `previewArtifact` an error
+  descriptor) for an unregistered agent instead of throwing
+  `PROJECT_UNAVAILABLE` — a normal session's artifacts now show.
+- Per-row `size · relative modified time · preview status` (new optional
+  `mtimeMs` on `WorkspaceDeliverable`), copy-path button (clipboard →
+  execCommand → select-to-copy fallback), distinct friendly copy for
+  unsupported / oversized / stale vs error previews, empty-state gap
+  explainer.
+
+**Memory redesign (prototype #123, impl #128)**
+
+- Toolbar: scope segmented control (Project / Session / User / Shared Project)
+  with per-scope tooltips, debounced search, type + status filters, right-pinned
+  Export / Import.
+- Record cards (title, type + verification chips, scope, relative time,
+  one-line preview) + detail panel (scrollable content, governance table with
+  explainer tooltips, action row with tooltips, collapsible inline editor,
+  read-only shared scope). All remotes preserved.
+
+**Git tab with history (research #122, prototype #124, impl #129)**
+
+- New **Git** tab (IA #125: Artifacts → Memory → Git) with a repo-status header
+  (branch + short head, dirty/clean pill, staged / unstaged / untracked counts,
+  ahead/behind, refresh) and an internal **Changes / History** switch.
+- History: `gitHistory` / `gitCommit` / `gitRepoInfo` host primitives (shell to
+  `git`; budgets 200 commits / 256 KiB per commit / 10 s timeout), commit list
+  (hash, subject, decorations, author, relative time), per-commit detail with
+  files `+N -M` and unified diff; branch-graph placeholder bar reserved for
+  v0.8 (`parents` carried in the data shape).
+- Non-Git workspaces show "This workspace is not a Git repository." — no
+  spinner, no error.
+
+**Tests / hygiene**
+
+- New suites: `workspace-summary-block`, `workspace-i18n-subscriber`,
+  `workspace-artifacts-e2e` (carrier → bridge → surface), `workspace-git-history`,
+  `workspace-history-surface`, `workspace-git-surface`; memory + artifacts +
+  view surface suites extended. Full suite **218 pass / 0 fail**, `npm run
+  check` + `npm run build` green. Pre-existing `workspace-memory-auto-write`
+  prune-timing flake hardened.
+
 ## v0.6.0 (2026-08-17) — history-resume fix, dsh-web-ui preview port, full i18n
 
 **History-resume bug fix (the headline)**
