@@ -74,7 +74,8 @@ const WORKSPACE_VIEW_STYLES = `
 
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [for="dsh-workspace-view-tab-artifacts"],
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [for="dsh-workspace-view-tab-memory"],
-[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [for="dsh-workspace-view-tab-changes"] {
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [for="dsh-workspace-view-tab-changes"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-git:checked) [for="dsh-workspace-view-tab-git"] {
   border-color: color-mix(in srgb, Highlight 45%, transparent);
   background: color-mix(in srgb, Highlight 14%, transparent);
   color: CanvasText;
@@ -87,7 +88,8 @@ const WORKSPACE_VIEW_STYLES = `
 
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [data-dsh-workspace-tab="artifacts"],
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [data-dsh-workspace-tab="memory"],
-[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [data-dsh-workspace-tab="changes"] {
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [data-dsh-workspace-tab="changes"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-git:checked) [data-dsh-workspace-tab="git"] {
   display: block;
 }
 
@@ -773,7 +775,8 @@ const WORKSPACE_VIEW_STYLES = `
 
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-artifacts:checked) [for="dsh-workspace-view-tab-artifacts"],
 [data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-memory:checked) [for="dsh-workspace-view-tab-memory"],
-[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [for="dsh-workspace-view-tab-changes"] {
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-changes:checked) [for="dsh-workspace-view-tab-changes"],
+[data-dsh-workspace="view"]:has(#dsh-workspace-view-tab-git:checked) [for="dsh-workspace-view-tab-git"] {
   border-color: color-mix(in srgb, Highlight 50%, transparent);
   background: color-mix(in srgb, Highlight 18%, transparent);
   color: CanvasText;
@@ -1614,6 +1617,153 @@ const WORKSPACE_VIEW_STYLES = `
   display: flex;
   flex-direction: column;
   gap: 4px;
+/* ============ v0.7: Git tab — repo status header ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-repo-header"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius);
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-status-pill"],
+[data-dsh-workspace="view"] [data-dsh-workspace="git-count-pill"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 999px;
+  background: Canvas;
+  font-size: var(--dsw-type-sm);
+  line-height: 1.4;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-status-dot"] {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-status-dot"][data-state="clean"] {
+  background: var(--dsw-success);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-status-dot"][data-state="dirty"] {
+  background: var(--dsw-warning);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-status-text"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-branch"] {
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-head"] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  color: var(--dsw-muted);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-ahead-behind"] {
+  color: var(--dsw-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-count-pill"] {
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-header-spacer"] {
+  flex: 1 1 auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0 0 10px;
+  padding: 3px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, CanvasText 4%, Canvas);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] button {
+  min-height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: var(--dsw-type-sm);
+  cursor: pointer;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, Highlight 45%, transparent);
+  background: var(--dsw-accent-soft);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-pane"][hidden] {
+  display: none;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-nongit"] {
+  padding: 24px 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-nongit-title"] {
+  margin: 0 0 6px;
+  font-size: var(--dsw-type-lg);
+  font-weight: 650;
+  color: var(--dsw-text);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-nongit-hint"] {
+  margin: 0;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-sm);
+}
+
+/* ============ v0.7: History surface ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-list-column"],
+[data-dsh-workspace="view"] [data-dsh-workspace="history-detail-column"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-graph-bar"] {
+  margin: 0 0 6px;
+  padding: 4px 8px;
+  border: 1px dashed var(--dsw-border-strong);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-diff-band);
+  color: var(--dsw-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  line-height: 1.5;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-list"] {
+  display: grid;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1626,6 +1776,189 @@ const WORKSPACE_VIEW_STYLES = `
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit"] {
+  display: grid;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 10px;
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit"]:hover {
+  background: var(--dsw-surface-hover);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit"][data-selected="true"] {
+  border-color: color-mix(in srgb, Highlight 55%, transparent);
+  background: var(--dsw-accent-soft);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-select"] {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-hash"] {
+  flex: none;
+  width: 52px;
+  color: color-mix(in srgb, Highlight 85%, CanvasText 15%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-subject"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-deco"] {
+  flex: none;
+  color: color-mix(in srgb, Highlight 80%, CanvasText 20%);
+  font-size: var(--dsw-type-xs);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-meta"] {
+  grid-column: 1 / -1;
+  color: var(--dsw-faint);
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-detail"] {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius);
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-subject"] {
+  margin: 0 0 6px;
+  font-size: var(--dsw-type-md);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-hash"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  color: var(--dsw-muted);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-kv-list"] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 10px 0 0;
+  font-size: var(--dsw-type-sm);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-kv"] {
+  display: contents;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-kv"] dt {
+  color: var(--dsw-faint);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-kv"] dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-files"] {
+  margin: 12px 0 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-files"] h4 {
+  margin: 0 0 6px;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-file-list"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  overflow: hidden;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-file"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--dsw-border);
+  font-size: var(--dsw-type-sm);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-file"]:last-child {
+  border-bottom: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-file-path"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-files"] {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] {
+  min-width: 0;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  overflow: hidden;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file-header"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsw-border);
+  background: var(--dsw-diff-band);
+  font-size: var(--dsw-type-sm);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file-path"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-code"] {
+  border: 0;
+  border-radius: 0;
 }
 `;
 

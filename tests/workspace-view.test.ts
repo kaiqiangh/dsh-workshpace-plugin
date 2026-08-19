@@ -37,11 +37,11 @@ function renderView(
   return tree;
 }
 
-test("renders one Workspace conversation view with artifact, memory, and changes tabs", () => {
+test("renders one Workspace conversation view with artifact, memory, and git tabs", () => {
   const tree = renderView({
     artifacts: () => createElement("div", { "data-dsh-workspace-tab-surface": "artifacts" }),
     memory: () => createElement("div", { "data-dsh-workspace-tab-surface": "memory" }),
-    changes: () => createElement("div", { "data-dsh-workspace-tab-surface": "changes" }),
+    git: () => createElement("div", { "data-dsh-workspace-tab-surface": "git" }),
   });
   const section = tree.root.find((node) => node.type === "section");
   assert.equal(section.props["data-dsh-workspace"], "view");
@@ -49,12 +49,12 @@ test("renders one Workspace conversation view with artifact, memory, and changes
   const artifactsInput = tree.root.find((node) => node.props.id === "dsh-workspace-view-tab-artifacts");
   assert.equal(artifactsInput.props.defaultChecked, true);
   assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-memory").length, 1);
-  assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-changes").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-git").length, 1);
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "panel-tabs").length, 1);
   // Each surface is mounted in its own tab-content panel.
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "artifacts").length, 1);
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "memory").length, 1);
-  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "changes").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "git").length, 1);
 });
 
 test("renders the summary block above the tabs when provided", () => {
@@ -62,7 +62,7 @@ test("renders the summary block above the tabs when provided", () => {
   const tree = renderView({
     artifacts: () => createElement("div"),
     memory: () => createElement("div"),
-    changes: () => createElement("div"),
+    git: () => createElement("div"),
     summary,
   });
   const summaryBlock = tree.root.find((node) => node.props["data-dsh-workspace-tab-surface"] === "summary");
@@ -79,11 +79,21 @@ test("passes props through to all surfaces", () => {
   const tree = renderView({
     artifacts: surface("artifacts"),
     memory: surface("memory"),
-    changes: surface("changes"),
+    git: surface("git"),
   }, { sessionId: "session-1" });
-  for (const label of ["artifacts", "memory", "changes"]) {
+  for (const label of ["artifacts", "memory", "git"]) {
     const nodes = tree.root.findAll((node) => node.props["data-dsh-workspace-tab-surface"] === label);
     assert.equal(nodes.length, 1, `${label} surface rendered once`);
     assert.equal(nodes[0]?.props["data-prop"], "session-1", `${label} surface receives the props`);
   }
+});
+
+test("falls back to a changes-only option shape for backward compat", () => {
+  const tree = renderView({
+    artifacts: () => createElement("div"),
+    memory: () => createElement("div"),
+    changes: () => createElement("div", { "data-dsh-workspace-tab-surface": "changes" }),
+  });
+  assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-changes").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "changes").length, 1);
 });

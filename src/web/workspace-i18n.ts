@@ -179,6 +179,30 @@ export type WorkspaceMessageKey =
   | "changes.status.index"
   | "changes.status.worktree"
   | "changes.status.untracked"
+  // Git tab: repo status header
+  | "git.notARepo"
+  | "git.notARepoHint"
+  | "git.branch"
+  | "git.clean"
+  | "git.dirty"
+  | "git.ahead"
+  | "git.behind"
+  | "git.staged"
+  | "git.unstaged"
+  | "git.untracked"
+  | "git.refresh"
+  // Git tab: History surface
+  | "history.title"
+  | "history.author"
+  | "history.parents"
+  | "history.filesChanged"
+  | "history.additions"
+  | "history.deletions"
+  | "history.loading"
+  | "history.empty"
+  | "history.selectCommit"
+  | "history.commitDetail"
+  | "history.decorations"
   // Preview adapters
   | "preview.status"
   | "preview.jsonLabel"
@@ -195,6 +219,8 @@ export type WorkspaceMessageKey =
   | "view.artifacts"
   | "view.memory"
   | "view.changes"
+  | "view.git"
+  | "view.history"
   | "view.workspace"
   | "summary.workspaceName"
   | "summary.files"
@@ -440,6 +466,30 @@ const table: MessageTable = {
   "changes.status.worktree": { en: "Worktree", zh: "工作区" },
   "changes.status.untracked": { en: "Untracked", zh: "未跟踪" },
 
+  "git.notARepo": { en: "This workspace is not a Git repository.", zh: "此工作区不是 Git 仓库。" },
+  "git.notARepoHint": { en: "Git changes and history are unavailable here. Initialize a repository to see them.", zh: "此处的 Git 变更与历史不可用。初始化一个仓库以查看。" },
+  "git.branch": { en: "Branch", zh: "分支" },
+  "git.clean": { en: "Clean", zh: "干净" },
+  "git.dirty": { en: "Dirty", zh: "有变更" },
+  "git.ahead": { en: "{count} ahead", zh: "领先 {count}" },
+  "git.behind": { en: "{count} behind", zh: "落后 {count}" },
+  "git.staged": { en: "{count} staged", zh: "{count} 已暂存" },
+  "git.unstaged": { en: "{count} unstaged", zh: "{count} 未暂存" },
+  "git.untracked": { en: "{count} untracked", zh: "{count} 未跟踪" },
+  "git.refresh": { en: "Refresh", zh: "刷新" },
+
+  "history.title": { en: "History", zh: "历史" },
+  "history.author": { en: "Author", zh: "作者" },
+  "history.parents": { en: "Parents", zh: "父提交" },
+  "history.filesChanged": { en: "Files changed", zh: "变更文件" },
+  "history.additions": { en: "{count} additions", zh: "{count} 处新增" },
+  "history.deletions": { en: "{count} deletions", zh: "{count} 处删除" },
+  "history.loading": { en: "Loading commit history…", zh: "正在加载提交历史…" },
+  "history.empty": { en: "No commits in this repository yet.", zh: "此仓库中还没有提交。" },
+  "history.selectCommit": { en: "Select a commit to view its summary and diff.", zh: "选择一个提交以查看其摘要与 diff。" },
+  "history.commitDetail": { en: "Commit detail", zh: "提交详情" },
+  "history.decorations": { en: "Refs", zh: "引用" },
+
   "preview.status": { en: "status", zh: "状态" },
   "preview.jsonLabel": { en: "Workspace JSON", zh: "Workspace JSON" },
   "preview.csvTitle": { en: "Workspace CSV preview", zh: "Workspace CSV 预览" },
@@ -455,6 +505,8 @@ const table: MessageTable = {
   "view.artifacts": { en: "Artifacts", zh: "产物" },
   "view.memory": { en: "Memory", zh: "记忆" },
   "view.changes": { en: "Changes", zh: "变更" },
+  "view.git": { en: "Git", zh: "Git" },
+  "view.history": { en: "History", zh: "历史" },
   "view.workspace": { en: "Workspace", zh: "工作区" },
   "summary.workspaceName": { en: "Workspace", zh: "工作区" },
   "summary.files": { en: "{count} files", zh: "{count} 个文件" },

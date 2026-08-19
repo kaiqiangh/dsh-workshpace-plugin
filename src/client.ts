@@ -21,10 +21,11 @@ import {
   createWorkspaceMemorySurfaceComponent,
   type WorkspaceMemoryRemote,
 } from "./web/workspace-memory-surface.ts";
+import type { WorkspaceChangesRemote } from "./web/workspace-changes-surface.ts";
 import {
-  createWorkspaceChangesSurfaceComponent,
-  type WorkspaceChangesRemote,
-} from "./web/workspace-changes-surface.ts";
+  createWorkspaceGitSurfaceComponent,
+  type WorkspaceGitRemote,
+} from "./web/workspace-git-surface.ts";
 import type { MemoryScopeRequest } from "./domain/memory.ts";
 import { installWorkspaceStyles } from "./web/workspace-styles.ts";
 import {
@@ -91,17 +92,20 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
       const registerWorkspaceSurfaces = (scope: ClientContributionContext): (() => void) => {
         const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
-        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote & WorkspaceSummaryRemote>();
-        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote & WorkspaceSummaryRemote | undefined => {
+        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceGitRemote & WorkspaceSummaryRemote>();
+        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceGitRemote & WorkspaceSummaryRemote | undefined => {
           if (!sessionId || !workspace) return undefined;
           const cached = remotes.get(sessionId);
           if (cached) return cached;
           const call = <T>(method: string, ...args: readonly unknown[]): Promise<T> => workspace[method]!(sessionId, ...args) as Promise<T>;
-          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote & WorkspaceSummaryRemote = {
+          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceGitRemote & WorkspaceSummaryRemote = {
             artifactMetadata: () => call("artifactMetadata"),
             previewArtifact: (id: Parameters<WorkspaceArtifactRemote["previewArtifact"]>[0]) => call("previewArtifact", id),
             gitStatus: () => call("gitStatus"),
             gitDiff: (path: Parameters<WorkspaceChangesRemote["gitDiff"]>[0]) => call("gitDiff", path),
+            gitHistory: (options: Parameters<WorkspaceGitRemote["gitHistory"]>[0]) => call("gitHistory", options),
+            gitCommit: (sha: Parameters<WorkspaceGitRemote["gitCommit"]>[0]) => call("gitCommit", sha),
+            gitRepoInfo: () => call("gitRepoInfo"),
             workspaceSummary: () => call<WorkspaceSummaryData | undefined>("workspaceSummary"),
             memoryOpen: (request: Parameters<WorkspaceMemoryRemote["memoryOpen"]>[0]) => call("memoryOpen", request),
             memoryList: (request: Parameters<WorkspaceMemoryRemote["memoryList"]>[0], options: Parameters<WorkspaceMemoryRemote["memoryList"]>[1]) => call("memoryList", request, options),
@@ -126,7 +130,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         const memory = createWorkspaceMemorySurfaceComponent({
           resolveRemote,
         });
-        const changes = createWorkspaceChangesSurfaceComponent(undefined, {
+        const git = createWorkspaceGitSurfaceComponent(undefined, {}, {
           resolveRemote,
         });
         if (typeof viewSlots.inject === "function" && typeof viewSlots.register === "function") {
@@ -135,7 +139,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             createWorkspaceConversationViewComponent({
               artifacts,
               memory,
-              changes,
+              git,
               summary: workspaceSummaryBlockComponent({ resolveRemote }),
             }),
           )));
@@ -224,6 +228,14 @@ export {
   createWorkspaceChangesSurfaceComponent,
 } from "./web/workspace-changes-surface.ts";
 export type { WorkspaceChangesRemote, WorkspaceChangesSurfaceOptions } from "./web/workspace-changes-surface.ts";
+export {
+  createWorkspaceGitSurfaceComponent,
+} from "./web/workspace-git-surface.ts";
+export type { WorkspaceGitPrimitives, WorkspaceGitRemote, WorkspaceGitSurfaceOptions } from "./web/workspace-git-surface.ts";
+export {
+  createWorkspaceHistorySurfaceComponent,
+} from "./web/workspace-history-surface.ts";
+export type { WorkspaceHistoryRemote, WorkspaceHistorySurfaceOptions } from "./web/workspace-history-surface.ts";
 export { installWorkspaceStyles } from "./web/workspace-styles.ts";
 export type { WorkspaceSurfaceComponent } from "./web/workspace-styles.ts";
 export {

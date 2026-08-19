@@ -6,7 +6,7 @@ import { resolveWorkspaceRoot, resumeWorkspace, startWorkspace, type WorkspaceSn
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
-import { gitDiff as gitDiffForRoot, gitStatus as gitStatusForRoot, GitError, type GitChange, type GitDiffResult } from "./domain/git.ts";
+import { gitCommit as gitCommitForRoot, gitDiff as gitDiffForRoot, gitHistory as gitHistoryForRoot, gitRepoInfo as gitRepoInfoForRoot, gitStatus as gitStatusForRoot, GitError, type GitChange, type GitCommit, type GitCommitResult, type GitDiffResult, type GitHistoryOptions, type GitRepoInfo } from "./domain/git.ts";
 import { sessionToolRecords, WorkspaceArtifactCarrier, type SessionEventLike } from "./host/workspace-artifacts.ts";
 import { registerMemoryPropose } from "./host/workspace-memory-propose.ts";
 import { attachWorkspaceSummaryEmitter, workspaceSummaryWithMemory, type SummaryAgent } from "./host/workspace-summary.ts";
@@ -61,7 +61,7 @@ export {
 } from "./domain/memory-governance.ts";
 
 export { MEMORY_TYPES } from "./types.ts";
-export { GitError, gitDiff, gitStatus, isGitRepository, parsePorcelain, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitDiffResult, type GitErrorCode } from "./domain/git.ts";
+export { GitError, gitCommit, gitDiff, gitHistory, gitRepoInfo, gitStatus, isGitRepository, parsePorcelain, GIT_COMMIT_MAX_DIFF_BYTES, GIT_HISTORY_MAX_COMMITS, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitCommit, type GitCommitFile, type GitCommitResult, type GitDiffResult, type GitErrorCode, type GitHistoryOptions, type GitRepoInfo } from "./domain/git.ts";
 export {
   PreviewPanelError,
   PreviewService,
@@ -274,6 +274,21 @@ export class WorkspaceService extends TypertRemoteService {
   @Remote("gitDiff")
   async gitDiff(agentId: AgentId, path?: string): Promise<GitDiffResult> {
     return gitDiffForRoot(this.rootFor(this.agent(agentId)), path);
+  }
+
+  @Remote("gitHistory")
+  async gitHistory(agentId: AgentId, options?: GitHistoryOptions): Promise<readonly GitCommit[]> {
+    return gitHistoryForRoot(this.rootFor(this.agent(agentId)), options);
+  }
+
+  @Remote("gitCommit")
+  async gitCommit(agentId: AgentId, sha: string): Promise<GitCommitResult> {
+    return gitCommitForRoot(this.rootFor(this.agent(agentId)), sha);
+  }
+
+  @Remote("gitRepoInfo")
+  async gitRepoInfo(agentId: AgentId): Promise<GitRepoInfo> {
+    return gitRepoInfoForRoot(this.rootFor(this.agent(agentId)));
   }
 
   private rootFor(agent: Agent): string {
