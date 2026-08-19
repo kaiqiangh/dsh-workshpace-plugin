@@ -258,7 +258,7 @@ export class WorkspaceArtifactCarrier {
           descriptor,
           { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
           info.size,
-          { name: item.path },
+          { name: item.path, mtimeMs: info.mtimeMs },
         );
         next.set(artifact.id, { path: item.path, artifact, descriptor });
       } catch {

@@ -60,7 +60,8 @@ function assertArtifact(value: WorkspaceDeliverable): WorkspaceDeliverable {
     || (value.source.kind !== "artifact" && value.source.kind !== "file")
     || (value.resourceId !== undefined && (!safeText(value.resourceId, 256) || !safeOpaque.test(value.resourceId)))
     || (value.version !== undefined && (!safeText(value.version, 512) || /[\\/]/u.test(value.version)))
-    || (value.altText !== undefined && !safeText(value.altText, 256))) {
+    || (value.altText !== undefined && !safeText(value.altText, 256))
+    || (value.mtimeMs !== undefined && (typeof value.mtimeMs !== "number" || !Number.isFinite(value.mtimeMs) || value.mtimeMs < 0))) {
     throw new Error("Workspace artifact metadata is invalid");
   }
   if (value.mediaType.startsWith("image/") && value.preview === "available" && !safeText(value.altText, 256)) {
@@ -82,6 +83,7 @@ function assertArtifact(value: WorkspaceDeliverable): WorkspaceDeliverable {
     ...(value.resourceId === undefined ? {} : { resourceId: value.resourceId }),
     downloadName: value.downloadName,
     ...(value.altText === undefined ? {} : { altText: value.altText }),
+    ...(value.mtimeMs === undefined ? {} : { mtimeMs: value.mtimeMs }),
   });
 }
 

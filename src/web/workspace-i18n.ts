@@ -44,6 +44,18 @@ export type WorkspaceMessageKey =
   | "artifacts.source"
   | "artifacts.downloadUnsupported"
   | "artifacts.previewUnsupported"
+  | "artifacts.previewAvailable"
+  | "artifacts.previewOversized"
+  | "artifacts.previewStale"
+  | "artifacts.copyPath"
+  | "artifacts.copied"
+  | "artifacts.copyUnsupported"
+  | "artifacts.emptyExplainer"
+  | "artifacts.time.justNow"
+  | "artifacts.time.minutesAgo"
+  | "artifacts.time.hoursAgo"
+  | "artifacts.time.daysAgo"
+  | "artifacts.time.weeksAgo"
   // Memory surface
   | "memory.title"
   | "memory.requireSession"
@@ -239,6 +251,18 @@ const table: MessageTable = {
   "artifacts.source": { en: "Source", zh: "来源" },
   "artifacts.downloadUnsupported": { en: "Download is unsupported in this browser.", zh: "当前浏览器不支持下载。" },
   "artifacts.previewUnsupported": { en: "Preview unavailable", zh: "预览不可用" },
+  "artifacts.previewAvailable": { en: "Preview available", zh: "可预览" },
+  "artifacts.previewOversized": { en: "Too large to preview", zh: "过大，无法预览" },
+  "artifacts.previewStale": { en: "Preview outdated", zh: "预览已过期" },
+  "artifacts.copyPath": { en: "Copy path", zh: "复制路径" },
+  "artifacts.copied": { en: "Path copied", zh: "路径已复制" },
+  "artifacts.copyUnsupported": { en: "Copy is unavailable in this browser; select the path manually.", zh: "当前浏览器不支持复制；请手动选择路径。" },
+  "artifacts.emptyExplainer": { en: "Artifacts appear when the agent creates files during this session. Deleted or non-previewable files are not listed.", zh: "当智能体在此会话中创建文件时，产物会出现在这里。已删除或无法预览的文件不会列出。" },
+  "artifacts.time.justNow": { en: "just now", zh: "刚刚" },
+  "artifacts.time.minutesAgo": { en: "{count}m ago", zh: "{count} 分钟前" },
+  "artifacts.time.hoursAgo": { en: "{count}h ago", zh: "{count} 小时前" },
+  "artifacts.time.daysAgo": { en: "{count}d ago", zh: "{count} 天前" },
+  "artifacts.time.weeksAgo": { en: "{count}w ago", zh: "{count} 周前" },
 
   "memory.title": { en: "Memory", zh: "记忆" },
   "memory.requireSession": { en: "Workspace Memory requires an active Harness session.", zh: "Workspace 记忆需要处于活动状态的 Harness 会话。" },
