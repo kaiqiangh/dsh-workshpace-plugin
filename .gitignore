@@ -35,3 +35,4 @@ pnpm-debug.log*
 packages/
 .workbuddy/
 .scratch/
+.dsh/
