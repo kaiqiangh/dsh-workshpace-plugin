@@ -1,11 +1,19 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { GIT_HISTORY_MAX_COMMITS, type GitCommit, type GitCommitResult, type GitHistoryOptions } from "../domain/git.ts";
+import type { GitCommit, GitCommitResult, GitHistoryOptions } from "../domain/git.ts";
 import { parseUnifiedDiff, type DiffLine } from "./workspace-diff.ts";
 import { t, useWorkspaceLocale } from "./workspace-i18n.ts";
 import { workspaceEmptyState, workspaceListDetail, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
 import { friendlyRemoteMessage, remoteCode, unwrapRemote } from "./workspace-remote.ts";
+
+/**
+ * Client-side commit request limit. The host clamps any requested limit to
+ * GIT_HISTORY_MAX_COMMITS (200) in domain/git.ts, so the browser surface only
+ * needs the request constant here — importing the host constant would drag
+ * node:child_process into the client bundle (client-modules loader failure).
+ */
+const HISTORY_REQUEST_LIMIT = 200;
 
 export interface WorkspaceHistoryRemote {
   readonly gitHistory: (options?: GitHistoryOptions) => Promise<RemoteResult<readonly GitCommit[]>>;
@@ -216,7 +224,7 @@ export function createWorkspaceHistorySurfaceComponent(
       const load = async (): Promise<void> => {
         const token = ++request.current;
         try {
-          const value = unwrapRemote(await activeRemote.gitHistory({ limit: GIT_HISTORY_MAX_COMMITS }));
+          const value = unwrapRemote(await activeRemote.gitHistory({ limit: HISTORY_REQUEST_LIMIT }));
           if (!active || token !== request.current) return;
           setCommits(value);
           setSelectedSha((current) => current && value.some((commit) => commit.sha === current) ? current : value[0]?.sha);

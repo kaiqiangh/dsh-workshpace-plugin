@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { type GitCommit, type GitCommitResult, type GitHistoryOptions } from "../domain/git.ts";
+import type { GitCommit, GitCommitResult, GitHistoryOptions } from "../domain/git.ts";
 export interface WorkspaceHistoryRemote {
     readonly gitHistory: (options?: GitHistoryOptions) => Promise<RemoteResult<readonly GitCommit[]>>;
     readonly gitCommit: (sha: string) => Promise<RemoteResult<GitCommitResult>>;
