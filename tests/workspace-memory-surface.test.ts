@@ -370,3 +370,41 @@ test("shared-project scope keeps writes disabled until acknowledged", async () =
   const editAfter = tree.root.findAllByType("button").find((node) => buttonLabel(node) === "Edit");
   assert.equal(editAfter.props.disabled, false, "Edit is enabled after acknowledgement");
 });
+
+
+test("exposes Markdown export when the host supports it and routes .md imports", async () => {
+  let exportMarkdownCalls = 0;
+  let importMarkdownCalls = 0;
+  const remote = {
+    memoryOpen: async () => ({ ok: true, value: { scope: "project", scopeKey: "root:one", records: [], warnings: [], readOnly: false } }),
+    memoryList: async () => ({ ok: true, value: [] }),
+    memorySearch: async () => ({ ok: true, value: [] }),
+    memoryUpsert: async () => ({ ok: true, value: {} }),
+    memoryArchive: async () => ({ ok: true, value: {} }),
+    memoryForget: async () => ({ ok: true, value: {} }),
+    memoryGovern: async () => ({ ok: true, value: {} }),
+    memoryExport: async () => ({ ok: true, value: "{}" }),
+    memoryImport: async () => ({ ok: true, value: [] }),
+    memoryExportMarkdown: async () => { exportMarkdownCalls += 1; return { ok: true, value: "# Memory\n" }; },
+    memoryImportMarkdown: async () => { importMarkdownCalls += 1; return { ok: true, value: [{ id: "memory:import:1", title: "Note" }] }; },
+  };
+  const render = createWorkspaceMemorySurfaceComponent({ remote: remote as never });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  await act(async () => {});
+
+  const buttons = tree.root.findAllByType("button").map((node) => node.children.join(""));
+  assert.ok(buttons.includes("Export Markdown"), "Markdown export button is rendered when supported");
+
+  const markdownExport = tree.root.findAll((node) => node.type === "button" && node.children.join("") === "Export Markdown")[0]!;
+  await act(async () => { markdownExport.props.onClick(); });
+  assert.equal(exportMarkdownCalls, 1, "Markdown export calls the markdown remote");
+
+  // Importing a .md file routes to the markdown importer.
+  const importInput = tree.root.find((node) => node.props.type === "file");
+  await act(async () => {
+    importInput.props.onChange({ target: { files: [{ name: "notes.md", size: 64, text: async () => "# Note\n\ntype: fact\n\nbody" }] } });
+  });
+  await act(async () => {});
+  assert.equal(importMarkdownCalls, 1, ".md import routes to the markdown importer");
+});

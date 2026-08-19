@@ -59,6 +59,8 @@ export declare class WorkspaceService extends TypertRemoteService {
     memoryGovern(agentId: AgentId, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
     memoryExport(agentId: AgentId, request: MemoryScopeRequest): Promise<string>;
     memoryImport(agentId: AgentId, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
+    memoryExportMarkdown(agentId: AgentId, request: MemoryScopeRequest): Promise<string>;
+    memoryImportMarkdown(agentId: AgentId, request: MemoryScopeRequest, markdown: string): Promise<readonly MemoryRecord[]>;
     memoryClose(agentId: AgentId, request: MemoryScopeRequest): Promise<void>;
     gitStatus(agentId: AgentId): Promise<readonly GitChange[]>;
     gitDiff(agentId: AgentId, path?: string): Promise<GitDiffResult>;

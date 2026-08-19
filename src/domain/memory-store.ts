@@ -114,7 +114,7 @@ export interface MemoryMigration {
 }
 
 export interface MemoryStoreWarning {
-  readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE" | "STORE_TOO_LARGE";
+  readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE" | "STORE_TOO_LARGE" | "RECOVERED_LINE";
   readonly line: number;
   readonly message: string;
 }
@@ -315,6 +315,53 @@ function recordRank(record: MemoryRecord, query: string): number {
   return 5;
 }
 
+/**
+ * Escape raw control characters (LF / CR / TAB) that sit *inside* JSON string
+ * literals. JSONL forbids them; a non-JSONL writer (or a hand edit) that
+ * wrote unescaped newlines in `content` produces a file that fails JSON.parse
+ * line-by-line *and* joined. This state-machine pass turns those back into
+ * `\n` / `\r` / `\t` escapes so the joined record parses again.
+ */
+function fixStringControlCharacters(source: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (const ch of source) {
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (inString && ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; out += ch; continue; }
+    if (inString && (ch === "\n" || ch === "\r" || ch === "\t")) {
+      out += ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : "\\t";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Recover a record that spans multiple physical lines. JSONL requires one
+ * JSON document per line, but a record whose `content` holds raw (unescaped)
+ * newlines occupies several lines. Join subsequent lines (bounded), fix the
+ * in-string control characters, and re-parse; returns the parsed value and the
+ * index of the last consumed line, or undefined when no bounded prefix is
+ * recoverable.
+ */
+function recoverMultiline(lines: readonly string[], start: number, maxBytes: number): { readonly value: unknown; readonly lastIndex: number } | undefined {
+  let buffer = lines[start] ?? "";
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (index - start > 32 || buffer.length > maxBytes) return undefined;
+    buffer = `${buffer}\n${lines[index]}`;
+    try {
+      const value = JSON.parse(fixStringControlCharacters(buffer)) as unknown;
+      if (value && typeof value === "object") return { value, lastIndex: index };
+    } catch {
+      // Keep accumulating: the record may still be split further down.
+    }
+  }
+  return undefined;
+}
+
 function migrateValue(value: Record<string, unknown>, migrations: readonly MemoryMigration[]): Record<string, unknown> {
   let current = value;
   let version = typeof current.schemaVersion === "number" ? current.schemaVersion : NaN;
@@ -433,27 +480,60 @@ export class MemoryStore {
     }
     const lines = source.split("\n");
     let migrated = false;
-    for (let index = 0; index < lines.length; index += 1) {
+    let index = 0;
+    while (index < lines.length) {
       const line = lines[index]!.trim();
-      if (!line) continue;
+      if (!line) { index += 1; continue; }
+      let parsed: unknown;
+      let consumed = index;
+      let recovered = false;
       try {
-        const parsed = JSON.parse(line) as unknown;
-        if (this.scope === "user" && parsed && typeof parsed === "object" && (parsed as Record<string, unknown>).scope === "user" && typeof (parsed as Record<string, unknown>).scopeKey === "string" && (parsed as Record<string, unknown>).scopeKey !== this.scopeKey) {
-          try { validateRecord(parsed, "user", (parsed as Record<string, unknown>).scopeKey as string, this.maxContentBytes); } catch { /* preserve another profile's line untouched */ }
-          this.foreignLines.push(line);
+        parsed = JSON.parse(line) as unknown;
+      } catch {
+        // A record whose content contains raw (unescaped) newlines spans
+        // several physical lines (e.g. written by a non-JSONL writer or
+        // edited by hand). Join subsequent lines until the concatenation
+        // parses, so one bad writer cannot quarantine the whole store.
+        const joined = recoverMultiline(lines, index, this.maxContentBytes);
+        if (joined === undefined) {
+          this.warnings.push({ code: "CORRUPT_RECORD", line: index + 1, message: "Memory record is invalid" });
+          await this.quarantine(`${line}\n`, index + 1);
+          index += 1;
+          continue;
+        }
+        parsed = joined.value;
+        consumed = joined.lastIndex;
+        recovered = true;
+      }
+      try {
+        const recordScope = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).scope : undefined;
+        const recordScopeKey = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).scopeKey : undefined;
+        if (recordScope === this.scope && typeof recordScopeKey === "string" && recordScopeKey !== this.scopeKey) {
+          // A record written under a different scope key — e.g. the store
+          // file was copied from another project, or a foreign profile landed
+          // in the shared user file. Preserve the line untouched (the same
+          // policy as user-scope foreign profiles) instead of quarantining:
+          // quarantining on scope mismatch turned a copied .dsh dir into a
+          // "corrupt store" that kept growing records.jsonl.corrupt.
+          this.foreignLines.push(recovered ? lines.slice(index, consumed + 1).join("\n") : line);
+          index = consumed + 1;
           continue;
         }
         const migratedValue = parsed && typeof parsed === "object" ? migrateValue(parsed as Record<string, unknown>, this.migrations) : parsed;
         migrated ||= migratedValue !== parsed;
         const record = validateRecord(migratedValue, this.scope, this.scopeKey, this.maxContentBytes);
         this.records.set(record.id, record);
+        if (recovered) {
+          this.warnings.push({ code: "RECOVERED_LINE", line: index + 1, message: "Memory record spanned multiple lines and was recovered" });
+        }
       } catch (error) {
-        const truncated = index === lines.length - 1 && !source.endsWith("\n");
+        const truncated = consumed === lines.length - 1 && !source.endsWith("\n");
         const code = error instanceof MemoryStoreError && error.code === "UNSUPPORTED_SCHEMA" ? "UNSUPPORTED_SCHEMA" : truncated ? "TRUNCATED_LINE" : error instanceof MemoryStoreError && error.message.includes("hash") ? "BAD_HASH" : "CORRUPT_RECORD";
         this.warnings.push({ code, line: index + 1, message: error instanceof Error ? error.message : "Memory record is invalid" });
         if (code === "UNSUPPORTED_SCHEMA") this.readOnly = true;
-        else await this.quarantine(`${line}\n`, index + 1);
+        else await this.quarantine(`${recovered ? lines.slice(index, consumed + 1).join("\n") : line}\n`, index + 1);
       }
+      index = consumed + 1;
     }
     if (migrated && !this.readOnly) {
       try { await this.compact(); } catch (error) {

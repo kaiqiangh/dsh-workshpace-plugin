@@ -71,6 +71,9 @@ export type WorkspaceMessageKey =
   | "memory.statusFilter"
   | "memory.allTypes"
   | "memory.export"
+  | "memory.exportMarkdown"
+  | "memory.exportMarkdownHint"
+  | "memory.exportMarkdownUnsupported"
   | "memory.import"
   | "memory.records"
   | "memory.recordOne"
@@ -363,6 +366,9 @@ const table: MessageTable = {
   "memory.statusFilter": { en: "Status filter", zh: "状态筛选" },
   "memory.allTypes": { en: "All types", zh: "全部类型" },
   "memory.export": { en: "Export Memory", zh: "导出记忆" },
+  "memory.exportMarkdown": { en: "Export Markdown", zh: "导出 Markdown" },
+  "memory.exportMarkdownHint": { en: "Download a human-readable Markdown file", zh: "下载人类可读的 Markdown 文件" },
+  "memory.exportMarkdownUnsupported": { en: "Markdown export is not supported by this host.", zh: "当前主机不支持 Markdown 导出。" },
   "memory.import": { en: "Import Memory", zh: "导入记忆" },
   "memory.records": { en: "records", zh: "条记录" },
   "memory.recordOne": { en: "record", zh: "条记录" },

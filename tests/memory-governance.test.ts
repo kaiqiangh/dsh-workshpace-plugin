@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   assertMemoryRevision,
   exportMemoryBundle,
+  exportMemoryMarkdown,
   importMemoryBundle,
+  importMemoryMarkdown,
   memoryGovernanceEligible,
   MemoryGovernanceError,
   sourceRef,
@@ -63,4 +65,65 @@ test("preserves optimistic conflicts and remaps imported IDs into quarantine sta
   assert.notEqual(imported[0]!.id, current.id);
   assert.equal(imported[0]!.governance?.origin, "imported");
   assert.equal(imported[0]!.governance?.verification, "unverified");
+});
+
+
+test("markdown export round-trips through markdown import (multi-line content)", () => {
+  const current = record();
+  const multiline = {
+    ...current,
+    id: "memory:md-1",
+    title: "Markdown note",
+    content: "first line\nsecond line\n\n- bullet one\n- bullet two",
+    tags: ["md", "notes"],
+    governance: { ...current.governance, verification: "verified" as const, origin: "derived" as const, retention: "project-delete" as const },
+    updatedAt: 1_700_000_000_000,
+  };
+  const markdown = exportMemoryMarkdown([multiline]);
+  assert.ok(markdown.startsWith("# Markdown note\n"), "title renders as an H1");
+  assert.ok(markdown.includes("type: decision"), "type metadata is emitted");
+  assert.ok(markdown.includes("tags: md, notes"), "tags metadata is emitted");
+  assert.ok(markdown.includes("first line\nsecond line"), "multi-line content survives verbatim");
+
+  const imported = importMemoryMarkdown(markdown);
+  assert.equal(imported.length, 1);
+  assert.equal(imported[0]!.title, "Markdown note");
+  assert.equal(imported[0]!.content, "first line\nsecond line\n\n- bullet one\n- bullet two");
+  assert.equal(imported[0]!.type, "decision");
+  assert.deepEqual(imported[0]!.tags, ["md", "notes"]);
+  assert.equal(imported[0]!.governance?.verification, "verified");
+  assert.equal(imported[0]!.governance?.origin, "derived");
+  assert.equal(imported[0]!.governance?.retention, "project-delete");
+  assert.match(imported[0]!.id, /^memory:import:/u);
+  assert.match(imported[0]!.contentHash, /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("markdown import parses multiple sections and rejects malformed input", () => {
+  const source = [
+    "# First",
+    "",
+    "type: decision",
+    "",
+    "decide something",
+    "",
+    "---",
+    "",
+    "# Second",
+    "",
+    "type: convention",
+    "tags: a, b",
+    "",
+    "follow the convention",
+  ].join("\n");
+  const imported = importMemoryMarkdown(source);
+  assert.equal(imported.length, 2);
+  assert.equal(imported[0]!.title, "First");
+  assert.equal(imported[0]!.type, "decision");
+  assert.equal(imported[1]!.title, "Second");
+  assert.equal(imported[1]!.type, "convention");
+  assert.deepEqual(imported[1]!.tags, ["a", "b"]);
+
+  assert.throws(() => importMemoryMarkdown("# no body"), MemoryGovernanceError);
+  assert.throws(() => importMemoryMarkdown("plain text without a heading"), MemoryGovernanceError);
+  assert.throws(() => importMemoryMarkdown("# Bad type\n\ntype: nope\n\nbody"), MemoryGovernanceError);
 });

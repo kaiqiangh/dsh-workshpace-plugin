@@ -183,3 +183,88 @@ test("fails closed for oversized stores and project memory symlinks", async () =
   const escaped = new MemoryStore({ scope: "project", scopeKey: "root:escape", projectRoot: root, filePath: join(root, ".dsh", "workspace-memory", "records.jsonl") });
   await assert.rejects(() => escaped.open(), (error: unknown) => error instanceof MemoryStoreError && error.code === "PROJECT_UNAVAILABLE");
 });
+
+test("recovers records whose content spans multiple physical lines (unescaped newlines)", async () => {
+  const { root, filePath, value } = await store("root:multiline");
+  const original = await value.upsert({
+    scope: "project",
+    scopeKey: "root:multiline",
+    type: "fact",
+    title: "Multiline",
+    content: "line one\nline two\nline three",
+    tags: [],
+    provenance: { kind: "user" },
+  });
+  await value.close();
+
+  // Simulate a non-JSONL writer (or hand edit): unescape the \n sequences so
+  // the record spans several physical lines — the exact corruption observed
+  // in a real project store (whole file quarantined to records.jsonl.corrupt).
+  let raw = await readFile(filePath, "utf8");
+  raw = raw.replaceAll("\\n", "\n");
+  await writeFile(filePath, raw, "utf8");
+
+  const reopened = new MemoryStore({ scope: "project", scopeKey: "root:multiline", projectRoot: root, filePath, now: () => 100 });
+  const state = await reopened.open();
+  assert.equal(state.records.length, 1, "the multi-line record is recovered, not quarantined");
+  assert.equal(state.records[0]!.id, original.id);
+  assert.equal(state.records[0]!.content, "line one\nline two\nline three");
+  assert.ok(state.warnings.some((warning) => warning.code === "RECOVERED_LINE"), "a RECOVERED_LINE warning is recorded");
+  await reopened.close();
+
+  // A subsequent save/compact rewrites the file back to single-line JSONL.
+  const again = new MemoryStore({ scope: "project", scopeKey: "root:multiline", projectRoot: root, filePath, now: () => 101 });
+  await again.open();
+  await again.upsert({
+    scope: "project",
+    scopeKey: "root:multiline",
+    type: "fact",
+    title: "Second",
+    content: "plain",
+    tags: [],
+    provenance: { kind: "user" },
+  });
+  await again.compact();
+  await again.close();
+  const normalized = await readFile(filePath, "utf8");
+  assert.equal(normalized.split("\n").filter((line) => line.trim().length > 0).length, 2, "file is single-line JSONL again after a save");
+});
+
+
+test("preserves records from another scope key as foreign lines instead of quarantining", async () => {
+  const { root, filePath, value } = await store("root:home");
+  await value.upsert({
+    scope: "project", scopeKey: "root:home", type: "fact", title: "Mine",
+    content: "belongs to this project", tags: [], provenance: { kind: "user" },
+  });
+  await value.close();
+
+  // A record written under a DIFFERENT project scope key (e.g. the .dsh dir
+  // was copied from another project) must be preserved, not quarantined.
+  const foreignRoot = await mkdtemp(join(tmpdir(), "dsh-memory-foreign-"));
+  const foreignFile = join(foreignRoot, "records.jsonl");
+  const foreign = new MemoryStore({ scope: "project", scopeKey: "root:foreign", projectRoot: foreignRoot, filePath: foreignFile, now: () => 100, idFactory: () => "memory:foreign" });
+  await foreign.open();
+  await foreign.upsert({
+    scope: "project", scopeKey: "root:foreign", type: "fact", title: "Foreign",
+    content: "belongs to another project", tags: [], provenance: { kind: "user" },
+  });
+  await foreign.close();
+  const foreignLine = (await readFile(foreignFile, "utf8")).trim();
+
+  await writeFile(filePath, `${(await readFile(filePath, "utf8")).trim()}\n${foreignLine}\n`, "utf8");
+
+  const reopened = new MemoryStore({ scope: "project", scopeKey: "root:home", projectRoot: root, filePath, now: () => 100 });
+  const state = await reopened.open();
+  assert.deepEqual(state.records.map((record) => record.title), ["Mine"], "only the matching-scope record loads");
+  assert.equal(state.warnings.length, 0, "a foreign scope key is not a corruption warning");
+  await reopened.close();
+
+  const compacted = new MemoryStore({ scope: "project", scopeKey: "root:home", projectRoot: root, filePath, now: () => 101 });
+  await compacted.open();
+  await compacted.compact();
+  await compacted.close();
+  const after = await readFile(filePath, "utf8");
+  assert.ok(after.includes("root:foreign"), "the foreign record is preserved verbatim in the file");
+  assert.equal((await readFile(`${filePath}.corrupt`, "utf8").catch(() => "")).length, 0, "no corrupt file is created");
+});

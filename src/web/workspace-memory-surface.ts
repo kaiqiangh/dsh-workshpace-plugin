@@ -29,6 +29,9 @@ export interface WorkspaceMemoryRemote {
   readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
   readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
+  /** Human-readable Markdown export/import (v0.7). Absent on older hosts. */
+  readonly memoryExportMarkdown?: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
+  readonly memoryImportMarkdown?: (request: MemoryScopeRequest, markdown: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
   readonly memoryMarkUsed?: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
   readonly memoryClose?: (request: MemoryScopeRequest) => Promise<RemoteResult<void>>;
 }
@@ -292,15 +295,17 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       if (forgetPending) confirmButton.current?.focus();
     }, [forgetPending]);
 
-    const exportMemory = async (): Promise<void> => {
+    const exportMemory = async (format: "json" | "markdown" = "json"): Promise<void> => {
       if (!remote) return;
       try {
-        const serialized = valueOf(await remote.memoryExport(request));
-        const url = globalThis.URL?.createObjectURL?.(new Blob([serialized], { type: "application/json" }));
+        const isMarkdown = format === "markdown";
+        if (isMarkdown && !remote.memoryExportMarkdown) throw new Error(t("memory.exportMarkdownUnsupported"));
+        const serialized = valueOf(isMarkdown ? await remote.memoryExportMarkdown!(request) : await remote.memoryExport(request));
+        const url = globalThis.URL?.createObjectURL?.(new Blob([serialized], { type: isMarkdown ? "text/markdown" : "application/json" }));
         if (url && typeof document !== "undefined") {
           const anchor = document.createElement("a");
           anchor.href = url;
-          anchor.download = "dsh-memory-export.json";
+          anchor.download = isMarkdown ? "dsh-memory-export.md" : "dsh-memory-export.json";
           anchor.click();
           globalThis.URL.revokeObjectURL(url);
         }
@@ -308,13 +313,16 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       } catch (error) { setMessage(errorMessage(error)); }
     };
 
-    const importMemory = async (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }): Promise<void> => {
+    const importMemory = async (event: { target: { files?: readonly { size?: number; name?: string; text: () => Promise<string> }[] } }): Promise<void> => {
       const file = event.target.files?.[0];
       if (!remote || !file) return;
       try {
         if (!writesAllowed) throw new Error(t("memory.sharedWriteAck"));
         if (file.size !== undefined && file.size > 8 * 1024 * 1024) throw new Error(t("memory.importSizeLimit"));
-        const imported = valueOf(await remote.memoryImport(request, await file.text()));
+        const isMarkdown = file.name?.toLowerCase().endsWith(".md") === true;
+        const imported = valueOf(isMarkdown && remote.memoryImportMarkdown
+          ? await remote.memoryImportMarkdown(request, await file.text())
+          : await remote.memoryImport(request, await file.text()));
         await load("");
         setMessage(t("memory.imported", { count: imported.length }));
       } catch (error) { setMessage(errorMessage(error)); }
@@ -466,8 +474,9 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         createElement("select", { "data-dsh-workspace": "memory-filter-field", value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": t("memory.typeFilter") }, createElement("option", { value: "" }, t("memory.allTypes")), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value))),
         createElement("select", { "data-dsh-workspace": "memory-filter-field", value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": t("memory.statusFilter") }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, t(statusLabels[value])))),
         createElement("span", { "data-dsh-workspace": "memory-toolbar-spacer" }),
-        createElement("button", { type: "button", title: t("memory.exportHint"), onClick: () => void exportMemory() }, t("memory.export")),
-        createElement("label", { title: t("memory.importHint"), "data-dsh-workspace": "memory-import" }, `${t("memory.import")} `, createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
+        createElement("button", { type: "button", title: t("memory.exportHint"), onClick: () => void exportMemory("json") }, t("memory.export")),
+        remote?.memoryExportMarkdown ? createElement("button", { type: "button", title: t("memory.exportMarkdownHint"), onClick: () => void exportMemory("markdown") }, t("memory.exportMarkdown")) : null,
+        createElement("label", { title: t("memory.importHint"), "data-dsh-workspace": "memory-import" }, `${t("memory.import")} `, createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl,.md,.markdown", onChange: (event: { target: { files?: readonly { size?: number; name?: string; text: () => Promise<string> }[] } }) => void importMemory(event) })),
       ),
       (scope === "user" || scope === "shared-project") && createElement("div", { "data-dsw-row": "true" },
         scope === "user" && createElement("label", { "data-dsh-workspace": "memory-scope-field" }, `${t("memory.userProfile")} `, createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": t("memory.userProfile") })),

@@ -94,7 +94,7 @@ export interface MemoryMigration {
     readonly migrate: (record: Record<string, unknown>) => Record<string, unknown>;
 }
 export interface MemoryStoreWarning {
-    readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE" | "STORE_TOO_LARGE";
+    readonly code: "CORRUPT_RECORD" | "BAD_HASH" | "UNSUPPORTED_SCHEMA" | "TRUNCATED_LINE" | "STORE_TOO_LARGE" | "RECOVERED_LINE";
     readonly line: number;
     readonly message: string;
 }

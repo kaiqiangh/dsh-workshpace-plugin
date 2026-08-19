@@ -116,6 +116,8 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             memoryGovern: (request: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[1], action: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[2], revision: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[3], hash: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[4]) => call("memoryGovern", request, id, action, revision, hash),
             memoryExport: (request: Parameters<WorkspaceMemoryRemote["memoryExport"]>[0]) => call("memoryExport", request),
             memoryImport: (request: Parameters<WorkspaceMemoryRemote["memoryImport"]>[0], serialized: Parameters<WorkspaceMemoryRemote["memoryImport"]>[1]) => call("memoryImport", request, serialized),
+            memoryExportMarkdown: (request: Parameters<NonNullable<WorkspaceMemoryRemote["memoryExportMarkdown"]>>[0]) => call("memoryExportMarkdown", request),
+            memoryImportMarkdown: (request: Parameters<NonNullable<WorkspaceMemoryRemote["memoryImportMarkdown"]>>[0], markdown: Parameters<NonNullable<WorkspaceMemoryRemote["memoryImportMarkdown"]>>[1]) => call("memoryImportMarkdown", request, markdown),
             memoryMarkUsed: (request: MemoryScopeRequest, id: string) => call("memoryMarkUsed", request, id),
             memoryClose: (request: MemoryScopeRequest) => call("memoryClose", request),
           };

@@ -18,9 +18,11 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     memoryArchive: (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     memoryClose: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<void>>
     memoryExport: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
+    memoryExportMarkdown: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
     memoryForget: (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     memoryGovern: (agentId: AgentId, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     memoryImport: (agentId: AgentId, request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    memoryImportMarkdown: (agentId: AgentId, request: MemoryScopeRequest, markdown: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
     memoryList: (agentId: AgentId, request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
     memoryMarkUsed: (agentId: AgentId, request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
     memoryOpen: (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>
@@ -41,9 +43,11 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace/memoryArchive': (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'workspace/memoryClose': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<void>>
     'workspace/memoryExport': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
+    'workspace/memoryExportMarkdown': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<string>>
     'workspace/memoryForget': (agentId: AgentId, request: MemoryScopeRequest, id: string, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'workspace/memoryGovern': (agentId: AgentId, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>
     'workspace/memoryImport': (agentId: AgentId, request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
+    'workspace/memoryImportMarkdown': (agentId: AgentId, request: MemoryScopeRequest, markdown: string) => Promise<RemoteResult<readonly MemoryRecord[]>>
     'workspace/memoryList': (agentId: AgentId, request: MemoryScopeRequest, options?: MemoryListOptions) => Promise<RemoteResult<readonly MemoryRecord[]>>
     'workspace/memoryMarkUsed': (agentId: AgentId, request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>
     'workspace/memoryOpen': (agentId: AgentId, request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>

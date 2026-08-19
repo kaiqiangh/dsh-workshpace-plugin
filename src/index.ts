@@ -261,6 +261,16 @@ export class WorkspaceService extends TypertRemoteService {
     return this.memoryDomain.import(this.memoryContext(this.agent(agentId), request), request, serialized);
   }
 
+  @Remote("memoryExportMarkdown")
+  async memoryExportMarkdown(agentId: AgentId, request: MemoryScopeRequest): Promise<string> {
+    return this.memoryDomain.exportMarkdown(this.memoryContext(this.agent(agentId), request), request);
+  }
+
+  @Remote("memoryImportMarkdown")
+  async memoryImportMarkdown(agentId: AgentId, request: MemoryScopeRequest, markdown: string): Promise<readonly MemoryRecord[]> {
+    return this.memoryDomain.importMarkdown(this.memoryContext(this.agent(agentId), request), request, markdown);
+  }
+
   @Remote("memoryClose")
   async memoryClose(agentId: AgentId, request: MemoryScopeRequest): Promise<void> {
     return this.memoryDomain.close(this.memoryContext(this.agent(agentId), request), request);
