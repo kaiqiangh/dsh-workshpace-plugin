@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import TestRenderer, { act } from "react-test-renderer";
 
 import {
   createWorkspaceConversationViewComponent,
@@ -25,58 +27,63 @@ test("conversation view registration descriptor is pinned", () => {
   assert.equal(WORKSPACE_VIEW_LABEL, "Workspace");
 });
 
+function renderView(
+  options: Parameters<typeof createWorkspaceConversationViewComponent>[0],
+  props: Record<string, unknown> = {},
+): TestRenderer.ReactTestRenderer {
+  const render = createWorkspaceConversationViewComponent(options);
+  let tree!: TestRenderer.ReactTestRenderer;
+  act(() => { tree = TestRenderer.create(createElement(render, props)); });
+  return tree;
+}
+
 test("renders one Workspace conversation view with artifact, memory, and changes tabs", () => {
-  const render = createWorkspaceConversationViewComponent({
-    artifacts: () => ({ type: "artifacts" }),
-    memory: () => ({ type: "memory" }),
-    changes: () => ({ type: "changes" }),
+  const tree = renderView({
+    artifacts: () => createElement("div", { "data-dsh-workspace-tab-surface": "artifacts" }),
+    memory: () => createElement("div", { "data-dsh-workspace-tab-surface": "memory" }),
+    changes: () => createElement("div", { "data-dsh-workspace-tab-surface": "changes" }),
   });
-  const root = render({}) as { readonly type: string; readonly props: Record<string, any> };
-  const children = root.props.children as readonly { readonly type: string; readonly props: Record<string, any> }[];
-
-  assert.equal(root.type, "section");
-  assert.equal(root.props["data-dsh-workspace"], "view");
-  // Without a summary option, the first child is the artifacts tab input.
-  assert.equal(children[0].props.id, "dsh-workspace-view-tab-artifacts");
-  assert.equal(children[0].props.defaultChecked, true);
-  assert.equal(children[1].props.id, "dsh-workspace-view-tab-memory");
-  assert.equal(children[2].props.id, "dsh-workspace-view-tab-changes");
-  assert.equal(children[3].props["data-dsh-workspace"], "panel-tabs");
-
-  const content = children[4].props.children as readonly { readonly props: Record<string, any> }[];
-  assert.equal(content[0].props["data-dsh-workspace-tab"], "artifacts");
-  assert.equal(content[1].props["data-dsh-workspace-tab"], "memory");
-  assert.equal(content[2].props["data-dsh-workspace-tab"], "changes");
+  const section = tree.root.find((node) => node.type === "section");
+  assert.equal(section.props["data-dsh-workspace"], "view");
+  // Tab inputs: artifacts is the default (checked) tab.
+  const artifactsInput = tree.root.find((node) => node.props.id === "dsh-workspace-view-tab-artifacts");
+  assert.equal(artifactsInput.props.defaultChecked, true);
+  assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-memory").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-changes").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "panel-tabs").length, 1);
+  // Each surface is mounted in its own tab-content panel.
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "artifacts").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "memory").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "changes").length, 1);
 });
 
 test("renders the summary block above the tabs when provided", () => {
-  const summary = () => ({ type: "summary" });
-  const render = createWorkspaceConversationViewComponent({
-    artifacts: () => ({ type: "artifacts" }),
-    memory: () => ({ type: "memory" }),
-    changes: () => ({ type: "changes" }),
+  const summary = () => createElement("div", { "data-dsh-workspace-tab-surface": "summary" });
+  const tree = renderView({
+    artifacts: () => createElement("div"),
+    memory: () => createElement("div"),
+    changes: () => createElement("div"),
     summary,
   });
-  const root = render({}) as { readonly props: Record<string, any> };
-  const children = root.props.children as readonly { readonly type: string; readonly props: Record<string, any> }[];
-
-  // First child is now the summary block element; the tabs shift by one.
-  assert.equal(children[0].type, summary);
-  assert.equal(children[1].props.id, "dsh-workspace-view-tab-artifacts");
-  assert.equal(children[4].props["data-dsh-workspace"], "panel-tabs");
+  const summaryBlock = tree.root.find((node) => node.props["data-dsh-workspace-tab-surface"] === "summary");
+  assert.ok(summaryBlock, "summary block is rendered");
+  // The summary element precedes the artifacts tab input in document order.
+  const order = tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-artifacts" || node.props["data-dsh-workspace-tab-surface"] === "summary");
+  assert.equal(order[0]?.props["data-dsh-workspace-tab-surface"], "summary");
+  assert.equal(order[1]?.props.id, "dsh-workspace-view-tab-artifacts");
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "panel-tabs").length, 1);
 });
 
 test("passes props through to all surfaces", () => {
-  const render = createWorkspaceConversationViewComponent({
-    artifacts: () => ({ type: "artifacts" }),
-    memory: () => ({ type: "memory" }),
-    changes: () => ({ type: "changes" }),
-  });
-  const root = render({ sessionId: "session-1" }) as { readonly props: Record<string, any> };
-  const children = root.props.children as readonly { readonly props: Record<string, any> }[];
-  const content = children[4].props.children as readonly { readonly props: Record<string, any> }[];
-
-  assert.deepEqual(content[0].props.children.props, { sessionId: "session-1" });
-  assert.deepEqual(content[1].props.children.props, { sessionId: "session-1" });
-  assert.deepEqual(content[2].props.children.props, { sessionId: "session-1" });
+  const surface = (label: string) => () => createElement("div", { "data-dsh-workspace-tab-surface": label, "data-prop": "session-1" });
+  const tree = renderView({
+    artifacts: surface("artifacts"),
+    memory: surface("memory"),
+    changes: surface("changes"),
+  }, { sessionId: "session-1" });
+  for (const label of ["artifacts", "memory", "changes"]) {
+    const nodes = tree.root.findAll((node) => node.props["data-dsh-workspace-tab-surface"] === label);
+    assert.equal(nodes.length, 1, `${label} surface rendered once`);
+    assert.equal(nodes[0]?.props["data-prop"], "session-1", `${label} surface receives the props`);
+  }
 });

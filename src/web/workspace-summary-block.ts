@@ -1,9 +1,40 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { WorkspaceSummaryData } from "../host/workspace-summary.ts";
-import { t } from "./workspace-i18n.ts";
+import { t, useWorkspaceLocale } from "./workspace-i18n.ts";
 import { workspaceEmptyState } from "./workspace-primitives.ts";
 import { friendlyRemoteMessage, remoteCode } from "./workspace-remote.ts";
+
+/**
+ * Shape guards so a partial/garbled summary payload can never paint
+ * `undefined files · undefined added · …` (wayfinder #119). A missing numeric
+ * field or an empty/invalid workspace name marks the whole payload unusable,
+ * which the component downgrades to the "unavailable" state instead of
+ * rendering raw `undefined` into the DOM.
+ */
+function validCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function validWorkspaceName(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 200 && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+export function validSummaryShape(value: unknown): value is WorkspaceSummaryData {
+  if (!value || typeof value !== "object") return false;
+  const summary = value as Partial<WorkspaceSummaryData>;
+  return validCount(summary.filesTouched)
+    && validCount(summary.changes)
+    && validCount(summary.artifacts)
+    && validCount(summary.filesCreated)
+    && validCount(summary.filesModified)
+    && validCount(summary.filesDeleted)
+    && validCount(summary.firstObservedAt)
+    && validCount(summary.lastObservedAt)
+    && validCount(summary.memoryCount)
+    && validCount(summary.decisionCount)
+    && validWorkspaceName(summary.workspaceName);
+}
 
 export interface WorkspaceSummaryRemote {
   /**
@@ -48,6 +79,8 @@ export function workspaceSummaryBlockComponent(options: WorkspaceSummaryBlockOpt
     const [message, setMessage] = useState<string | undefined>();
     const [loaded, setLoaded] = useState(false);
     const request = useRef(0);
+    // Re-render on locale change so the summary labels follow the app language.
+    useWorkspaceLocale();
 
     useEffect(() => {
       let active = true;
@@ -61,7 +94,8 @@ export function workspaceSummaryBlockComponent(options: WorkspaceSummaryBlockOpt
         try {
           const value = await activeRemote.workspaceSummary();
           if (!active || token !== request.current) return;
-          setSummary(value);
+          // Drop partial/garbled payloads instead of painting `undefined` counts.
+          setSummary(value && validSummaryShape(value) ? value : undefined);
           setMessage(undefined);
         } catch (error) {
           if (!active || token !== request.current) return;
@@ -77,7 +111,11 @@ export function workspaceSummaryBlockComponent(options: WorkspaceSummaryBlockOpt
     }, [activeRemote, sessionId, options.refreshMs]);
 
     if (!sessionId || !loaded) return null;
-    if (!summary) return null;
+    // A remote error: surface the friendly message once.
+    if (message) return workspaceEmptyState(message);
+    // No usable summary (missing session, unbound workspace, or a dropped
+    // payload): show the unavailable state rather than raw `undefined`.
+    if (!summary) return workspaceEmptyState(t("summary.unavailable"));
 
     const span = formatActiveSpan(summary.firstObservedAt, summary.lastObservedAt);
     return createElement(

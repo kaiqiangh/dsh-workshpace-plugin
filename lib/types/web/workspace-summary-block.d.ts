@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import type { WorkspaceSummaryData } from "../host/workspace-summary.ts";
+export declare function validSummaryShape(value: unknown): value is WorkspaceSummaryData;
 export interface WorkspaceSummaryRemote {
     /**
      * Derive the current session summary (unwrapped value; undefined when the

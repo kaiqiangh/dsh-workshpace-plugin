@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from "react";
 
 import type { WorkspaceSurfaceComponent } from "./workspace-styles.ts";
-import { t } from "./workspace-i18n.ts";
+import { t, useWorkspaceLocale } from "./workspace-i18n.ts";
 
 /** The public Harness conversation view ring: one list entry per view tab. */
 export const WORKSPACE_VIEW_SLOT = "conversation.view" as const;
@@ -37,7 +37,7 @@ export function workspaceConversationViewRegistration(): WorkspaceConversationVi
     id: WORKSPACE_VIEW_ENTRY_KEY,
     order: WORKSPACE_VIEW_ORDER,
     locale: WORKSPACE_VIEW_LOCALE_NS,
-    label: () => WORKSPACE_VIEW_LABEL,
+    label: () => t("view.workspace"),
     inject: (sessionId: string) => Object.freeze({ useSessions: () => sessionId }),
   });
 }
@@ -69,6 +69,9 @@ export interface WorkspaceConversationViewOptions {
  */
 export function createWorkspaceConversationViewComponent(options: WorkspaceConversationViewOptions): (props: Record<string, unknown>) => ReactNode {
   return function WorkspaceConversationView(props: Record<string, unknown>): ReactNode {
+    // Re-render on locale change; child surfaces (artifacts/memory/changes/
+    // summary) cascade from this single subscription.
+    useWorkspaceLocale();
     const children: ReactNode[] = [];
     if (options.summary) children.push(createElement(options.summary, props));
     children.push(

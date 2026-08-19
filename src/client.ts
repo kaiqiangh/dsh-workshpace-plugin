@@ -35,6 +35,7 @@ import {
 } from "./web/workspace-view.ts";
 import { workspaceSummaryBlockComponent, type WorkspaceSummaryRemote } from "./web/workspace-summary-block.ts";
 import type { WorkspaceSummaryData } from "./host/workspace-summary.ts";
+import { startWorkspaceLocaleSync } from "./web/workspace-i18n.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -160,6 +161,10 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
       };
       return disposeConversation;
     }, "dsh Workspace client contribution");
+    // Follow the host application locale (wayfinder #118/#126). The host has
+    // no public locale event/hook, so we observe <html lang> + languagechange
+    // and update the shared Workspace locale, which re-renders every surface.
+    ctx.effect(() => startWorkspaceLocaleSync(), "dsh Workspace locale sync");
   } catch (error) {
     await remoteDispose();
     throw error;
