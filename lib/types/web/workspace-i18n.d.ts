@@ -7,10 +7,32 @@
  */
 export type WorkspaceLocale = "en" | "zh";
 export type WorkspaceMessageKey = "refresh" | "cancel" | "search" | "download" | "downloading" | "cancelDownload" | "downloadStarted" | "loading" | "copy" | "artifacts.title" | "artifacts.count" | "artifacts.countOne" | "artifacts.requireSession" | "artifacts.unavailable" | "artifacts.loading" | "artifacts.empty" | "artifacts.noMatch" | "artifacts.searchLabel" | "artifacts.searchPlaceholder" | "artifacts.hiddenSkipped" | "artifacts.selectHint" | "artifacts.loadingPreview" | "artifacts.previewUnavailable" | "artifacts.category.documents" | "artifacts.category.data" | "artifacts.category.images" | "artifacts.category.other" | "artifacts.provenance" | "artifacts.source" | "artifacts.downloadUnsupported" | "artifacts.previewUnsupported" | "memory.title" | "memory.requireSession" | "memory.unavailable" | "memory.loading" | "memory.scope" | "memory.scope.project" | "memory.scope.session" | "memory.scope.user" | "memory.scope.sharedProject" | "memory.searchLabel" | "memory.typeFilter" | "memory.statusFilter" | "memory.allTypes" | "memory.export" | "memory.import" | "memory.records" | "memory.recordOne" | "memory.governance" | "memory.operationFailed" | "memory.newerSchema" | "memory.warnings" | "memory.locally" | "memory.empty" | "memory.create" | "memory.edit" | "memory.titleField" | "memory.typeField" | "memory.contentField" | "memory.save" | "memory.saveChanges" | "memory.archive" | "memory.forget" | "memory.restore" | "memory.verify" | "memory.reverify" | "memory.reject" | "memory.pin" | "memory.unpin" | "memory.saved" | "memory.origin" | "memory.verification" | "memory.retention" | "memory.revision" | "memory.sources" | "memory.conflictGroup" | "memory.expires" | "memory.none" | "memory.conflictHint" | "memory.conflictTitle" | "memory.keepVersion" | "memory.selected" | "memory.conflict" | "memory.review" | "memory.readOnly" | "memory.reviewOnly" | "memory.forgetTitle" | "memory.forgetDescription" | "memory.forgetRecord" | "memory.ackSharedWrite" | "memory.userProfile" | "memory.proposal" | "memory.archived" | "memory.forgotten" | "memory.verified" | "memory.reverified" | "memory.pinned" | "memory.unpinned" | "memory.restored" | "memory.rejected" | "memory.exportReady" | "memory.imported" | "memory.keptVersion" | "memory.conflictResolved" | "memory.sharedWriteAck" | "memory.importSizeLimit" | "memory.recordSummary.never" | "changes.title" | "changes.count" | "changes.countPlural" | "changes.requireSession" | "changes.unavailable" | "changes.loading" | "changes.empty" | "changes.filter" | "changes.filter.all" | "changes.filter.added" | "changes.filter.modified" | "changes.filter.deleted" | "changes.filter.untracked" | "changes.filter.staged" | "changes.noFiltered" | "changes.selectHint" | "changes.loadingDiff" | "changes.diffUnavailable" | "changes.copyDiff" | "changes.copyUnavailable" | "changes.noDiffText" | "changes.copyFailed" | "changes.copyCopied" | "changes.newChanges" | "changes.diffTruncated" | "changes.untrackedNotice" | "changes.diffCollapsed" | "changes.staged" | "changes.unstaged" | "changes.noDiffContent" | "changes.collapseDiff" | "changes.expandDiff" | "changes.previousFile" | "changes.nextFile" | "changes.diffMode" | "changes.unified" | "changes.split" | "changes.hiddenLines" | "changes.hiddenLine" | "changes.group.staged" | "changes.group.unstaged" | "changes.group.untracked" | "changes.status.index" | "changes.status.worktree" | "changes.status.untracked" | "preview.status" | "preview.jsonLabel" | "preview.csvTitle" | "preview.csvTruncatedTitle" | "preview.truncatedNote" | "preview.downloadName" | "preview.imageAlt" | "preview.resourceUnavailable" | "preview.previewUnavailable" | "preview.downloadUnavailable" | "preview.downloadAction" | "view.artifacts" | "view.memory" | "view.changes" | "view.workspace" | "summary.workspaceName" | "summary.files" | "summary.artifacts" | "summary.memory" | "summary.active" | "summary.justNow" | "summary.unavailable" | "error.gitUnavailable" | "error.notGitRepository" | "error.gitTimeout" | "error.gitOutputTooLarge" | "error.pathOutsideWorkspace" | "error.providerUnavailable" | "error.projectUnavailable" | "error.resourceStale" | "error.resourceExpired" | "error.fileTooLarge" | "error.symlinkEscape";
-/** The active locale (defaults to the browser language; override in tests/plugins). */
+/** Register a listener invoked whenever the active locale changes. Returns a disposer. */
+export declare function subscribeWorkspaceLocale(listener: () => void): () => void;
+/**
+ * React 18 external-store hook: re-renders the calling component whenever the
+ * active locale changes, so a language switch in the host app propagates to
+ * every Workspace surface without a manual refresh.
+ */
+export declare function useWorkspaceLocale(): WorkspaceLocale;
+/** The active locale (defaults to the browser/app language; override in tests/plugins). */
 export declare function workspaceLocale(): WorkspaceLocale;
 export declare function setWorkspaceLocale(locale: WorkspaceLocale): void;
 /** Look up one message with `{placeholder}` interpolation. */
 export declare function t(key: WorkspaceMessageKey, vars?: Record<string, string | number>): string;
 /** Plural-aware file-count label (English plural; Chinese is invariant). */
 export declare function tCount(key: WorkspaceMessageKey, count: number, vars?: Record<string, string | number>): string;
+/**
+ * Begin following the host application locale at runtime.
+ *
+ * The DeepSeek Harness host does not (yet) expose a public locale event or
+ * hook for plugins (wayfinder #118), so we follow the app language the same
+ * way the host itself does: by observing the `<html lang>` attribute (which
+ * the host sets on every language switch) and the browser `languagechange`
+ * event. This is host-independent, zero-dependency, and reacts to in-app
+ * language changes without a manual refresh.
+ *
+ * Returns a disposer that stops observing. Call once from the client
+ * contribution lifecycle.
+ */
+export declare function startWorkspaceLocaleSync(): () => void;

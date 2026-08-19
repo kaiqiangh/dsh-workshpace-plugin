@@ -6,6 +6,8 @@
  * `workspaceLocale()`.
  */
 
+import { useSyncExternalStore } from "react";
+
 export type WorkspaceLocale = "en" | "zh";
 
 export type WorkspaceMessageKey =
@@ -400,20 +402,56 @@ const table: MessageTable = {
 
 let activeLocale: WorkspaceLocale = "en";
 
+const localeListeners = new Set<() => void>();
+
+/** Register a listener invoked whenever the active locale changes. Returns a disposer. */
+export function subscribeWorkspaceLocale(listener: () => void): () => void {
+  localeListeners.add(listener);
+  return () => { localeListeners.delete(listener); };
+}
+
+// Stable reference for React's useSyncExternalStore (subscribe must be referentially stable).
+const stableLocaleSubscribe = (listener: () => void): (() => void) => subscribeWorkspaceLocale(listener);
+
+/**
+ * React 18 external-store hook: re-renders the calling component whenever the
+ * active locale changes, so a language switch in the host app propagates to
+ * every Workspace surface without a manual refresh.
+ */
+export function useWorkspaceLocale(): WorkspaceLocale {
+  return useSyncExternalStore(stableLocaleSubscribe, workspaceLocale, workspaceLocale);
+}
+
 function detectLocale(): WorkspaceLocale {
+  // The host app sets <html lang="zh-CN"> / "en"; prefer it over the raw
+  // browser language so the Workspace UI follows the app, not the OS.
+  if (typeof document !== "undefined" && typeof document.documentElement?.getAttribute === "function") {
+    const lang = document.documentElement.getAttribute("lang");
+    if (lang && /^zh/i.test(lang)) return "zh";
+  }
   if (typeof navigator !== "undefined" && typeof navigator.language === "string") {
     return /^zh/i.test(navigator.language) ? "zh" : "en";
   }
   return "en";
 }
 
-/** The active locale (defaults to the browser language; override in tests/plugins). */
+/** The active locale (defaults to the browser/app language; override in tests/plugins). */
 export function workspaceLocale(): WorkspaceLocale {
   return activeLocale;
 }
 
 export function setWorkspaceLocale(locale: WorkspaceLocale): void {
-  activeLocale = locale === "zh" ? "zh" : "en";
+  const next = locale === "zh" ? "zh" : "en";
+  if (next === activeLocale) return;
+  activeLocale = next;
+  // Notify subscribers (React components using useWorkspaceLocale) so they re-render.
+  for (const listener of [...localeListeners]) {
+    try {
+      listener();
+    } catch {
+      // A faulty listener must never break locale propagation.
+    }
+  }
 }
 
 /** Look up one message with `{placeholder}` interpolation. */
@@ -439,4 +477,43 @@ try {
   activeLocale = detectLocale();
 } catch {
   activeLocale = "en";
+}
+
+/**
+ * Begin following the host application locale at runtime.
+ *
+ * The DeepSeek Harness host does not (yet) expose a public locale event or
+ * hook for plugins (wayfinder #118), so we follow the app language the same
+ * way the host itself does: by observing the `<html lang>` attribute (which
+ * the host sets on every language switch) and the browser `languagechange`
+ * event. This is host-independent, zero-dependency, and reacts to in-app
+ * language changes without a manual refresh.
+ *
+ * Returns a disposer that stops observing. Call once from the client
+ * contribution lifecycle.
+ */
+export function startWorkspaceLocaleSync(): () => void {
+  const sync = (): void => {
+    if (typeof document === "undefined" || typeof document.documentElement?.getAttribute !== "function") return;
+    const lang = document.documentElement.getAttribute("lang");
+    if (lang) setWorkspaceLocale(/^zh/i.test(lang) ? "zh" : "en");
+  };
+  // Apply the current attribute immediately (covers the case where the host
+  // already set lang before the contribution mounted).
+  sync();
+  let observer: MutationObserver | undefined;
+  if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+    observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+  }
+  const onLanguageChange = (): void => sync();
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("languagechange", onLanguageChange);
+  }
+  return () => {
+    observer?.disconnect();
+    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+      window.removeEventListener("languagechange", onLanguageChange);
+    }
+  };
 }

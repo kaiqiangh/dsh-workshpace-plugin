@@ -194,12 +194,20 @@ export class WorkspaceService extends TypertRemoteService {
 
   @Remote("artifactMetadata")
   async artifactMetadata(agentId: AgentId): Promise<readonly WorkspaceDeliverable[]> {
-    return (await this.carrier(this.agent(agentId)))?.metadata() ?? [];
+    // A missing/unregistered agent must degrade to the empty state (the web
+    // surface shows "No session artifacts yet"), not throw PROJECT_UNAVAILABLE
+    // which the surface renders as the misleading "artifacts are unavailable"
+    // notice (wayfinder #120). Only a resolvable agent reaches the carrier.
+    const agent = this.ctx.agents.get(agentId);
+    if (!agent) return [];
+    return (await this.carrier(agent))?.metadata() ?? [];
   }
 
   @Remote("previewArtifact")
   async previewArtifact(agentId: AgentId, id: string): Promise<WorkspaceArtifactPreview> {
-    const carrier = await this.carrier(this.agent(agentId));
+    const agent = this.ctx.agents.get(agentId);
+    if (!agent) return { type: "error", code: "PROVIDER_UNAVAILABLE", message: "Workspace artifact carrier is unavailable" };
+    const carrier = await this.carrier(agent);
     return carrier ? carrier.previewArtifact(id) : { type: "error", code: "PROVIDER_UNAVAILABLE", message: "Workspace artifact carrier is unavailable" };
   }
 
