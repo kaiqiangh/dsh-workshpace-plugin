@@ -88,7 +88,7 @@ test("selecting a commit shows the summary block, files-changed, and per-file di
   // The tip commit is auto-selected; detail loads its summary + diff.
   const summary = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-commit-detail");
   assert.equal(summary.length, 1);
-  const subject = tree.root.find((node) => node.props["data-dsh-workspace"] === "history-commit-subject" && node.type === "h3");
+  const subject = tree.root.find((node) => node.props["data-dsh-workspace"] === "history-detail-subject");
   assert.equal(subject.children.join(""), "feat: introduce history");
   const files = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-file");
   assert.equal(files.length, 2);
@@ -107,8 +107,8 @@ test("selecting a commit shows the summary block, files-changed, and per-file di
   const older = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-commit-select").find((node) => node.children.some((child) => typeof child === "object" && (child as { children?: unknown[] }).children?.join("") === "bbbbbbb"));
   await act(async () => { older!.props.onClick(); });
   await act(async () => {});
-  const h3 = tree.root.find((node) => node.props["data-dsh-workspace"] === "history-commit-subject" && node.type === "h3");
-  assert.equal(h3.children.join(""), "fix: initial commit");
+  const detail = tree.root.find((node) => node.props["data-dsh-workspace"] === "history-detail-subject");
+  assert.equal(detail.children.join(""), "fix: initial commit");
 });
 
 test("renders an empty state when the repository has no commits", async () => {

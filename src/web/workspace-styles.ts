@@ -1369,6 +1369,7 @@ const WORKSPACE_VIEW_STYLES = `
   flex: 1 1 180px;
   min-width: 180px;
   max-width: 100%;
+  width: auto;
   margin: 0;
 }
 
@@ -1385,8 +1386,7 @@ const WORKSPACE_VIEW_STYLES = `
   width: auto;
 }
 
-[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-field"],
-[data-dsh-workspace="view"] [data-dsh-workspace="memory-filter-field"] {
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-field"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1394,10 +1394,20 @@ const WORKSPACE_VIEW_STYLES = `
   white-space: nowrap;
 }
 
-[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-field"] input:not([type="checkbox"]),
-[data-dsh-workspace="view"] [data-dsh-workspace="memory-filter-field"] select {
+/* Type/status filters are bare selects in the primary toolbar row. */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-filter-field"] {
   width: auto;
   min-width: 120px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-field"] input:not([type="checkbox"]) {
+  width: auto;
+  min-width: 120px;
+}
+
+/* Pushes Export/Import to the right edge of the toolbar (prototype #123). */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar-spacer"] {
+  flex: 1 1 auto;
 }
 
 /* Scope buttons and governance terms get the dotted-underline tip affordance. */
@@ -1416,13 +1426,14 @@ const WORKSPACE_VIEW_STYLES = `
   border-left: 2px solid transparent;
 }
 
+/* Unselected cards never shift: hover only tints the background (no border jitter). */
 [data-dsh-workspace="view"] [data-dsh-workspace="memory-card"]:hover {
-  border-left-color: var(--dsw-border-strong);
+  border-left-color: transparent;
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="memory-card"][data-selected="true"],
 [data-dsh-workspace="view"] [data-dsh-workspace="memory-card"][data-selected="true"]:hover {
-  border-color: color-mix(in srgb, Highlight 55%, transparent);
+  border-color: var(--dsw-border);
   border-left-color: var(--dsw-accent);
   background: var(--dsw-accent-soft);
 }
@@ -1617,6 +1628,17 @@ const WORKSPACE_VIEW_STYLES = `
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-refs"] li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
 /* ============ v0.7: Git tab — repo status header ============ */
 
 [data-dsh-workspace="view"] [data-dsh-workspace="git-repo-header"] {
@@ -1769,13 +1791,6 @@ const WORKSPACE_VIEW_STYLES = `
   list-style: none;
 }
 
-[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-refs"] li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
 [data-dsh-workspace="view"] [data-dsh-workspace="history-commit"] {
   display: grid;
   gap: 2px 8px;
@@ -1959,6 +1974,283 @@ const WORKSPACE_VIEW_STYLES = `
 [data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-code"] {
   border: 0;
   border-radius: 0;
+}
+
+/* ============ v0.7: History detail — hash-first summary block ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-detail-hash"] {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-md);
+  font-weight: 650;
+  color: color-mix(in srgb, Highlight 85%, CanvasText 15%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-detail-deco"] {
+  margin: 4px 0 0;
+  color: color-mix(in srgb, Highlight 80%, CanvasText 20%);
+  font-size: var(--dsw-type-xs);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-detail-subject"] {
+  margin: 4px 0 0;
+  font-size: var(--dsw-type-md);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+/* ============ v0.7: Git Changes pane (prototype #124) ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--dsw-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] button {
+  min-height: 30px;
+  padding: 6px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-md);
+  cursor: pointer;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] button:hover:not([aria-pressed="true"]) {
+  color: var(--dsw-text);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-segment"] button[aria-pressed="true"] {
+  border-bottom-color: var(--dsw-accent);
+  background: transparent;
+  color: var(--dsw-text);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-changes-filter"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-changes-columns"] {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-items: start;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+@media (max-width: 860px) {
+  [data-dsh-workspace="view"] [data-dsh-workspace="git-changes-columns"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-changes-list"],
+[data-dsh-workspace="view"] [data-dsh-workspace="git-changes-detail"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-groups"] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-group-title"] {
+  margin: 0 0 4px;
+  font-size: var(--dsw-type-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dsw-faint);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-list"] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  overflow: hidden;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-row"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsw-border);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-row"]:last-child {
+  border-bottom: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-row"]:hover {
+  background: var(--dsw-surface-hover);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-row"][data-selected="true"] {
+  background: var(--dsw-accent-soft);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-status"] {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-size: var(--dsw-type-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-status"][data-status="added"] {
+  color: var(--dsw-success);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-status"][data-status="modified"] {
+  color: var(--dsw-warning);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-status"][data-status="deleted"] {
+  color: var(--dsw-danger);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-status"][data-status="untracked"] {
+  color: var(--dsw-faint);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-select"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-sm);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-select"]:hover,
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-select"]:focus-visible {
+  border: 1px solid color-mix(in srgb, Highlight 55%, transparent);
+  border-radius: 6px;
+  outline: none;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-file-sig"] {
+  flex: none;
+  color: var(--dsw-faint);
+  font-size: var(--dsw-type-xs);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff"] {
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  overflow: hidden;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-header"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-border);
+  background: var(--dsw-diff-band);
+  font-size: var(--dsw-type-sm);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-path"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-mode"] {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--dsw-border);
+  border-radius: 6px;
+  background: Canvas;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-code"] {
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  max-height: 340px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-sm);
+  line-height: 1.55;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-line"] {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-num"] {
+  flex: none;
+  width: 3.4em;
+  padding: 0 6px;
+  text-align: right;
+  color: var(--dsw-faint);
+  font-size: var(--dsw-type-xs);
+  user-select: none;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 10px 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-line"][data-kind="add"] {
+  background: var(--dsw-diff-add-bg);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-line"][data-kind="remove"] {
+  background: var(--dsw-diff-del-bg);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-line"][data-kind="hunk"] {
+  background: var(--dsw-diff-hunk-bg);
+  color: var(--dsw-muted);
+  font-weight: 600;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-line"][data-kind="header"] {
+  color: var(--dsw-faint);
 }
 `;
 

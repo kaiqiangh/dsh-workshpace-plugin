@@ -64,7 +64,7 @@ test("keeps a single governance Pin control (no UI-only Pin for review)", async 
   assert.equal(buttons.includes("Pinned for review"), false);
 });
 
-test("renders model-suggested proposals with a Proposal badge", async () => {
+test("model-suggested proposals render as type + verification chips only (max 2)", async () => {
   const record = {
     schemaVersion: 1 as const,
     id: "memory:proposal-1",
@@ -102,9 +102,29 @@ test("renders model-suggested proposals with a Proposal badge", async () => {
   const render = createWorkspaceMemorySurfaceComponent({ remote });
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
-  const badges = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "memory-badge").map((node) => node.children.join(""));
-  assert.ok(badges.includes("Proposal"));
+  const cardChips = tree.root.find((node) => node.props["data-dsh-workspace"] === "memory-card-chips");
+  const badges = cardChips.findAll((node) => node.props["data-dsh-workspace"] === "memory-badge").map((node) => node.children.join(""));
+  assert.equal(badges.length, 2, "the card keeps at most two chips (type + verification)");
+  assert.ok(badges.includes("convention"));
   assert.ok(badges.includes("unverified"));
+  assert.equal(badges.includes("Proposal"), false, "no separate proposal chip on the card");
+  const governance = tree.root.find((node) => node.props["data-dsh-workspace"] === "memory-governance");
+  const ddTexts = governance.findAllByType("dd").map((node) => node.children.join(""));
+  assert.ok(ddTexts.includes("model-suggested"), "the governance table keeps the model-suggested origin");
+});
+
+test("toolbar aligns Export/Import to the right with a spacer and keeps the type/status filters", async () => {
+  const { remote } = remoteFixture([]);
+  const render = createWorkspaceMemorySurfaceComponent({ remote });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "memory-toolbar-spacer").length, 1, "a spacer pushes the right-edge actions");
+  const exportButton = tree.root.findAllByType("button").find((node) => node.children.join("") === "Export Memory");
+  assert.ok(exportButton, "Export button renders in the toolbar");
+  const importLabel = tree.root.find((node) => node.props["data-dsh-workspace"] === "memory-import");
+  assert.ok(importLabel, "Import control renders in the toolbar");
+  assert.equal(tree.root.findAll((node) => node.props["aria-label"] === "Type filter").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["aria-label"] === "Status filter").length, 1);
 });
 
 test("renders a two-column list | detail layout", async () => {

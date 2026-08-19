@@ -350,9 +350,12 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       "aria-pressed": scope === value,
       onClick: () => { setScope(value); setSharedProject(value === "shared-project"); setSharedWriteAcknowledged(false); },
     }, scopeLabel(value))));
+
+    // Record list cards (prototype #123): title+time row, at most two chips
+    // (type + verification), one-line content preview. The scope label rides
+    // the relative-time meta line so the chip row never overflows.
     const recordList = createElement("ul", { "aria-label": t("memory.records"), "data-dsh-workspace": "memory-list" }, records.map((record) => {
       const governance = displayGovernance(record);
-      const proposal = governance.origin === "model-suggested";
       return createElement("li", { key: record.id, "data-dsh-workspace": "memory-card", "data-selected": String(record.id === selectedId) },
         createElement("div", { "data-dsh-workspace": "memory-card-title-row" },
           createElement("button", {
@@ -368,11 +371,11 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         createElement("div", { "data-dsh-workspace": "memory-card-chips" },
           createElement("span", { "data-dsh-workspace": "memory-badge", "data-dsh-workspace-type": record.type, title: t(typeHints[record.type]) }, record.type),
           createElement("span", { "data-dsh-workspace": "memory-badge", "data-dsh-workspace-verification": governance.verification, title: t("memory.verifiedHint") }, verificationLabel(governance.verification)),
-          proposal && createElement("span", { "data-dsh-workspace": "memory-badge", "data-dsh-workspace-proposal": "true", title: t("memory.type.proposalHint") }, t("memory.proposal")),
         ),
         createElement("span", { "data-dsh-workspace": "memory-preview" }, record.content.slice(0, 96)),
       );
     }));
+
     const editor = createElement("details", { key: "editor", ref: editorRef, "data-dsh-workspace": "memory-editor" },
       createElement("summary", null, selected ? `${t("memory.edit")} ${selected.title}` : t("memory.create")),
       createElement("form", { onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); void save(); }, "aria-label": selected ? t("memory.edit") : t("memory.create") },
@@ -386,6 +389,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         ),
       ),
     );
+
     const governanceTable = selected && selectedGovernance && createElement("dl", { key: "governance", "aria-label": t("memory.governance"), "data-dsh-workspace": "memory-governance" },
       createElement("dt", null, workspaceTip(t("memory.origin"), t("memory.originHint"))), createElement("dd", null, selectedGovernance.origin),
       createElement("dt", null, workspaceTip(t("memory.verification"), t("memory.verifiedHint"))), createElement("dd", null, verificationLabel(selectedGovernance.verification)),
@@ -397,6 +401,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       selectedGovernance.expiresAt !== undefined && createElement("dt", null, workspaceTip(t("memory.expires"), t("memory.expiresHint"))),
       selectedGovernance.expiresAt !== undefined && createElement("dd", null, formatTimestamp(selectedGovernance.expiresAt)),
     );
+
     const sourcePanel = selected && selectedGovernance && viewSource && createElement("div", { key: "source", "data-dsh-workspace": "memory-source-panel" },
       createElement("h4", null, t("memory.sourceInfo")),
       createElement("dl", { "data-dsh-workspace": "memory-source-detail" },
@@ -419,6 +424,9 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           ),
         )),
     );
+
+    // Action row (prototype #123): Edit opens the inline editor; destructive
+    // ops are last and tinted; every button carries a tooltip.
     const actions = selected && selectedGovernance && createElement("div", { key: "actions", "data-dsh-workspace": "memory-actions" },
       createElement("button", { type: "button", "data-dsw-primary": "true", title: t("memory.editHint"), disabled: editingDisabled, onClick: openEditor }, t("memory.edit")),
       selectedGovernance.verification === "unverified" && createElement("button", { type: "button", title: t("memory.verifyHint"), disabled: editingDisabled, onClick: () => void mutate("verify") }, t("memory.verify")),
@@ -429,6 +437,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("button", { type: "button", title: t("memory.copyHint"), onClick: () => void copyContent() }, t("memory.copy")),
       createElement("button", { type: "button", title: t("memory.viewSourceHint"), onClick: () => setViewSource((current) => !current) }, t("memory.viewSource")),
     );
+
     const conflictUi = selected && hasConflict && createElement("aside", { key: "conflict", "aria-label": t("memory.conflictTitle"), "data-dsh-workspace": "memory-conflict" },
       createElement("h3", null, t("memory.conflictTitle")),
       createElement("button", { type: "button", disabled: !writesAllowed, onClick: () => void resolveConflict() }, t("memory.keepVersion")),
@@ -449,25 +458,29 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         }),
       ),
     );
+
+    const toolbar = createElement("div", { "data-dsh-workspace": "memory-toolbar" },
+      createElement("div", { "data-dsw-row": "true" },
+        scopeButtons,
+        createElement("input", { "data-dsh-workspace": "memory-search", type: "search", value: query, placeholder: t("memory.searchPlaceholder"), "aria-label": t("memory.searchLabel"), onChange: onSearchChange }),
+        createElement("select", { "data-dsh-workspace": "memory-filter-field", value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": t("memory.typeFilter") }, createElement("option", { value: "" }, t("memory.allTypes")), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value))),
+        createElement("select", { "data-dsh-workspace": "memory-filter-field", value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": t("memory.statusFilter") }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, t(statusLabels[value])))),
+        createElement("span", { "data-dsh-workspace": "memory-toolbar-spacer" }),
+        createElement("button", { type: "button", title: t("memory.exportHint"), onClick: () => void exportMemory() }, t("memory.export")),
+        createElement("label", { title: t("memory.importHint"), "data-dsh-workspace": "memory-import" }, `${t("memory.import")} `, createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
+      ),
+      (scope === "user" || scope === "shared-project") && createElement("div", { "data-dsw-row": "true" },
+        scope === "user" && createElement("label", { "data-dsh-workspace": "memory-scope-field" }, `${t("memory.userProfile")} `, createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": t("memory.userProfile") })),
+        scope === "shared-project" && createElement("label", { "data-dsh-workspace": "memory-scope-field" }, createElement("input", { type: "checkbox", checked: sharedWriteAcknowledged, onChange: (event: { target: { checked: boolean } }) => setSharedWriteAcknowledged(event.target.checked) }), t("memory.ackSharedWrite")),
+      ),
+    );
+
     const body = status === "loading"
       ? createElement("p", { role: "status" }, t("memory.loading"))
       : status === "degraded"
         ? workspaceNotice("error", message ?? t("memory.unavailable"))
         : createElement("div", { "data-dsh-workspace": "memory-surface" },
-          createElement("div", { "data-dsh-workspace": "memory-toolbar" },
-            createElement("div", { "data-dsw-row": "true" },
-              scopeButtons,
-              createElement("input", { "data-dsh-workspace": "memory-search", type: "search", value: query, placeholder: t("memory.searchPlaceholder"), "aria-label": t("memory.searchLabel"), onChange: onSearchChange }),
-              createElement("button", { type: "button", title: t("memory.exportHint"), onClick: () => void exportMemory() }, t("memory.export")),
-              createElement("label", { title: t("memory.importHint"), "data-dsh-workspace": "memory-import" }, `${t("memory.import")} `, createElement("input", { type: "file", disabled: !writesAllowed, accept: "application/json,.json,.jsonl", onChange: (event: { target: { files?: readonly { size?: number; text: () => Promise<string> }[] } }) => void importMemory(event) })),
-            ),
-            createElement("div", { "data-dsw-row": "true" },
-              scope === "user" && createElement("label", { "data-dsh-workspace": "memory-scope-field" }, `${t("memory.userProfile")} `, createElement("input", { value: userId, onChange: (event: { target: { value: string } }) => setUserId(event.target.value), "aria-label": t("memory.userProfile") })),
-              scope === "shared-project" && createElement("label", { "data-dsh-workspace": "memory-scope-field" }, createElement("input", { type: "checkbox", checked: sharedWriteAcknowledged, onChange: (event: { target: { checked: boolean } }) => setSharedWriteAcknowledged(event.target.checked) }), t("memory.ackSharedWrite")),
-              createElement("label", { "data-dsh-workspace": "memory-filter-field" }, `${t("memory.typeFilter")} `, createElement("select", { value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": t("memory.typeFilter") }, createElement("option", { value: "" }, t("memory.allTypes")), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value)))),
-              createElement("label", { "data-dsh-workspace": "memory-filter-field" }, `${t("memory.statusFilter")} `, createElement("select", { value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": t("memory.statusFilter") }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, t(statusLabels[value]))))),
-            ),
-          ),
+          toolbar,
           workspaceSurfaceHeader({ title: t("memory.title"), count: workspaceCountBadge(`${records.length} ${records.length === 1 ? t("memory.recordOne") : t("memory.records")}`) }),
           workspaceListDetail(
             records.length === 0
@@ -503,6 +516,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
             ),
           ),
         );
+
     const confirmation = forgetPending && selected && createElement("div", { role: "alertdialog", "aria-modal": "true", "aria-labelledby": "memory-forget-title", "aria-describedby": "memory-forget-description" },
       createElement("h3", { id: "memory-forget-title" }, t("memory.forgetTitle")),
       createElement("p", { id: "memory-forget-description" }, t("memory.forgetDescription", { scope: scopeLabel(selected.scope) })),

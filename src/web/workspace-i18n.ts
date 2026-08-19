@@ -293,7 +293,13 @@ export type WorkspaceMessageKey =
   | "memory.updatedAt"
   | "memory.selectHint"
   | "memory.version"
-  | "memory.rev";
+  | "memory.rev"
+  // v0.7 prototype alignment (#123/#124): git status pill, change sigs, history detail
+  | "git.onBranchPrefix"
+  | "git.onBranchSuffix"
+  | "git.sigNew"
+  | "git.modeUnified"
+  | "history.time";
 
 type MessageTable = Record<WorkspaceMessageKey, { readonly en: string; readonly zh: string }>;
 
@@ -580,6 +586,12 @@ const table: MessageTable = {
   "memory.selectHint": { en: "Select a record to inspect its content and governance.", zh: "选择一条记录以查看其内容与治理信息。" },
   "memory.version": { en: "Version", zh: "版本" },
   "memory.rev": { en: "rev", zh: "修订" },
+
+  "git.onBranchPrefix": { en: "On", zh: "在" },
+  "git.onBranchSuffix": { en: "", zh: "上" },
+  "git.sigNew": { en: "new", zh: "新增" },
+  "git.modeUnified": { en: "unified", zh: "统一" },
+  "history.time": { en: "Time", zh: "时间" },
 };
 
 let activeLocale: WorkspaceLocale = "en";

@@ -1,9 +1,9 @@
 import { type ReactNode } from "react";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { GitRepoInfo } from "../domain/git.ts";
-import { type WorkspaceChangesRemote } from "./workspace-changes-surface.ts";
 import { type WorkspaceHistoryRemote } from "./workspace-history-surface.ts";
-/** Reserved for shared host-rendering primitives; v0.7 embeds the existing Changes surface and the diff parser directly. */
+import { type WorkspaceChangesRemote } from "./workspace-changes-surface.ts";
+/** Reserved for shared host-rendering primitives; v0.7 renders the Changes pane and History pane in the tab. */
 export interface WorkspaceGitPrimitives {
 }
 export interface WorkspaceGitRemote extends WorkspaceChangesRemote, WorkspaceHistoryRemote {
@@ -14,15 +14,19 @@ export interface WorkspaceGitSurfaceOptions {
     readonly remote?: WorkspaceGitRemote;
     /** Polling cadence in ms; 0 disables auto-refresh (used by tests). */
     readonly refreshMs?: number;
-    /** Carrier width in px for the embedded Changes split-view breakpoint; tests inject it. */
+    /**
+     * Reserved: carrier width in px for the Changes split-view breakpoint of the
+     * standalone Changes surface (the Git tab's compact pane is always unified).
+     */
     readonly carrierWidth?: number;
-    /** Which carrier the embedded Changes surface lives in (split-view preference memory). */
+    /** Reserved: which carrier the standalone Changes surface lives in. */
     readonly carrier?: string;
 }
 /**
- * The single Git tab (IA #125): repo status header + an internal
- * Changes/History segmented switch. The Changes pane embeds the existing
- * changes surface; the History pane embeds the commit-history surface. A
- * non-Git workspace renders one centered empty state (no spinner, no error).
+ * The single Git tab (prototype #124): repo status header + a Changes/History
+ * segmented switch. The Changes pane renders filter chips, grouped file rows
+ * (status letter + path + `+N -M`), and a unified diff. The History pane embeds
+ * the commit-history surface. A non-Git workspace renders one centered empty
+ * state (no spinner, no error).
  */
 export declare function createWorkspaceGitSurfaceComponent(remote: WorkspaceGitRemote | undefined, primitives?: WorkspaceGitPrimitives, options?: WorkspaceGitSurfaceOptions): (props: Record<string, unknown>) => ReactNode;
