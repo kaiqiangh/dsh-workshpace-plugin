@@ -39,14 +39,15 @@ export interface WorkspaceViewSlotRegistry {
 export interface WorkspaceConversationViewOptions {
     readonly artifacts: WorkspaceSurfaceComponent;
     readonly memory: WorkspaceSurfaceComponent;
-    readonly changes: WorkspaceSurfaceComponent;
+    readonly git: WorkspaceSurfaceComponent;
     /** Optional read-only summary block rendered above the surface tabs. */
     readonly summary?: WorkspaceSurfaceComponent;
 }
 /**
- * Conversation view tab body: the Artifacts/Memory/Changes switch rendered in
- * the tab row's body, reusing the existing surfaces unchanged. Session-scoped
- * slot components receive the global `useSessions` seat, which the surfaces
- * already read, so no remote-resolution changes are needed.
+ * Conversation view tab body: the Artifacts/Memory/Git switch rendered in the
+ * tab row's body (IA #125: tab order Artifacts → Memory → Git; the Git tab
+ * hosts the Changes/History segmented switch internally). Session-scoped slot
+ * components receive the global `useSessions` seat, which the surfaces already
+ * read, so no remote-resolution changes are needed.
  */
 export declare function createWorkspaceConversationViewComponent(options: WorkspaceConversationViewOptions): (props: Record<string, unknown>) => ReactNode;

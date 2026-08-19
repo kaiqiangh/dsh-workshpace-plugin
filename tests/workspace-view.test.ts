@@ -87,13 +87,3 @@ test("passes props through to all surfaces", () => {
     assert.equal(nodes[0]?.props["data-prop"], "session-1", `${label} surface receives the props`);
   }
 });
-
-test("falls back to a changes-only option shape for backward compat", () => {
-  const tree = renderView({
-    artifacts: () => createElement("div"),
-    memory: () => createElement("div"),
-    changes: () => createElement("div", { "data-dsh-workspace-tab-surface": "changes" }),
-  });
-  assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-changes").length, 1);
-  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "changes").length, 1);
-});

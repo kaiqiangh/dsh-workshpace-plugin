@@ -43,6 +43,10 @@ export { createWorkspaceMemorySurfaceComponent, workspaceMemoryRecordSummary, wo
 export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";
 export { createWorkspaceChangesSurfaceComponent, } from "./web/workspace-changes-surface.ts";
 export type { WorkspaceChangesRemote, WorkspaceChangesSurfaceOptions } from "./web/workspace-changes-surface.ts";
+export { createWorkspaceGitSurfaceComponent, } from "./web/workspace-git-surface.ts";
+export type { WorkspaceGitPrimitives, WorkspaceGitRemote, WorkspaceGitSurfaceOptions } from "./web/workspace-git-surface.ts";
+export { createWorkspaceHistorySurfaceComponent, } from "./web/workspace-history-surface.ts";
+export type { WorkspaceHistoryRemote, WorkspaceHistorySurfaceOptions } from "./web/workspace-history-surface.ts";
 export { installWorkspaceStyles } from "./web/workspace-styles.ts";
 export type { WorkspaceSurfaceComponent } from "./web/workspace-styles.ts";
 export { createWorkspaceConversationViewComponent, workspaceConversationViewRegistration, WORKSPACE_VIEW_ENTRY_KEY, WORKSPACE_VIEW_LABEL, WORKSPACE_VIEW_ORDER, WORKSPACE_VIEW_SLOT, } from "./web/workspace-view.ts";

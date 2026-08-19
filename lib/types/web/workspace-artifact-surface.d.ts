@@ -18,6 +18,12 @@ export interface WorkspaceArtifactSurfaceOptions {
     readonly refreshMs?: number;
     readonly resolveRemote?: (sessionId: string | undefined) => WorkspaceArtifactRemote | undefined;
 }
+/**
+ * Humanize a filesystem mtime as a short relative time ("2h ago"). Renders
+ * "—" when the mtime is unavailable so the row never shows `undefined`, and
+ * clamps future/clock-skewed stamps to "just now".
+ */
+export declare function formatRelativeTime(mtimeMs: number | undefined, now?: number): string;
 export type WorkspaceArtifactCategory = "documents" | "data" | "images" | "other";
 /** Deterministic PRD-style grouping by media type (documents / data / images / other). */
 export declare function workspaceArtifactCategory(mediaType: string): WorkspaceArtifactCategory;

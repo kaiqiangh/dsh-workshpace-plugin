@@ -57,8 +57,6 @@ export interface WorkspaceConversationViewOptions {
   readonly artifacts: WorkspaceSurfaceComponent;
   readonly memory: WorkspaceSurfaceComponent;
   readonly git: WorkspaceSurfaceComponent;
-  /** Backward-compat alias for the pre-v0.7 Changes tab (rendered when `git` is absent). */
-  readonly changes?: WorkspaceSurfaceComponent;
   /** Optional read-only summary block rendered above the surface tabs. */
   readonly summary?: WorkspaceSurfaceComponent;
 }
@@ -75,27 +73,22 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
     // Re-render on locale change; child surfaces (artifacts/memory/git/
     // summary) cascade from this single subscription.
     useWorkspaceLocale();
-    // v0.7: the third tab is the Git tab; a `changes`-only caller (older
-    // option shape) still works as a trivial fallback.
-    const gitSurface = options.git ?? options.changes;
-    const gitTab = options.git ? "git" : "changes";
-    const gitTabId = options.git ? "dsh-workspace-view-tab-git" : "dsh-workspace-view-tab-changes";
-    const gitTabLabel = options.git ? t("view.git") : t("view.changes");
+    // v0.7 (IA #125): the third tab is the Git tab (hosts Changes/History).
     const children: ReactNode[] = [];
     if (options.summary) children.push(createElement(options.summary, props));
     children.push(
       createElement("input", { id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": t("view.artifacts") }),
       createElement("input", { id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.memory") }),
-      createElement("input", { id: gitTabId, name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": gitTabLabel }),
+      createElement("input", { id: "dsh-workspace-view-tab-git", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.git") }),
       createElement("div", { role: "group", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
         createElement("label", { htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, t("view.artifacts")),
         createElement("label", { htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, t("view.memory")),
-        createElement("label", { htmlFor: gitTabId, "data-dsh-workspace": "panel-tab" }, gitTabLabel),
+        createElement("label", { htmlFor: "dsh-workspace-view-tab-git", "data-dsh-workspace": "panel-tab" }, t("view.git")),
       ),
       createElement("div", { "data-dsh-workspace": "panel-content" },
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
         createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
-        createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": gitTab }, createElement(gitSurface, props)),
+        createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "git" }, createElement(options.git, props)),
       ),
     );
     return createElement("section", { role: "region", "aria-label": t("view.workspace"), "data-dsh-workspace": "view" }, children);

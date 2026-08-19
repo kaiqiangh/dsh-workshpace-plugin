@@ -16,11 +16,14 @@ export interface WorkspaceDeliverable {
     readonly resourceId?: string;
     readonly downloadName: string;
     readonly altText?: string;
+    /** Filesystem last-modified time in epoch ms (surfaces show a relative time). */
+    readonly mtimeMs?: number;
 }
 export interface WorkspaceDeliverableOptions {
     readonly name?: string;
     readonly mediaType?: string;
     readonly version?: string;
+    readonly mtimeMs?: number;
 }
 export declare class WorkspaceDeliverableError extends Error {
     constructor(message: string);
