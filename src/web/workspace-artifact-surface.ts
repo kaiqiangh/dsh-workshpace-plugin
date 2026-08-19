@@ -12,7 +12,7 @@ import {
   type WorkspaceDownloadRuntime,
 } from "./workspace-deliverables.ts";
 import { createWorkspacePreviewRenderer, type WorkspacePrimitiveSet } from "./workspace-preview-adapters.ts";
-import { t } from "./workspace-i18n.ts";
+import { t, useWorkspaceLocale } from "./workspace-i18n.ts";
 import { friendlyRemoteMessage, remoteCode, unwrapRemote } from "./workspace-remote.ts";
 import { workspaceCountBadge, workspaceEmptyState, workspaceListDetail, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
 import type { WorkspaceArtifactPreview, WorkspaceJsonValue } from "../host/workspace-artifacts.ts";
@@ -62,6 +62,40 @@ function formatSize(sizeBytes: number): string {
   return `${Math.round(sizeBytes / (102.4 * 1024)) / 10} MB`;
 }
 
+/**
+ * Humanize a filesystem mtime as a short relative time ("2h ago"). Renders
+ * "—" when the mtime is unavailable so the row never shows `undefined`, and
+ * clamps future/clock-skewed stamps to "just now".
+ */
+export function formatRelativeTime(mtimeMs: number | undefined, now: number = Date.now()): string {
+  if (typeof mtimeMs !== "number" || !Number.isFinite(mtimeMs)) return "—";
+  const delta = now - mtimeMs;
+  if (!Number.isFinite(delta) || delta < 60_000) return t("artifacts.time.justNow");
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 60) return t("artifacts.time.minutesAgo", { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t("artifacts.time.hoursAgo", { count: hours });
+  const days = Math.floor(hours / 24);
+  if (days < 7) return t("artifacts.time.daysAgo", { count: days });
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return t("artifacts.time.weeksAgo", { count: weeks });
+  const date = new Date(mtimeMs);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Friendly, localized row label for a deliverable preview status. */
+function artifactPreviewLabel(preview: WorkspaceDeliverable["preview"]): string {
+  switch (preview) {
+    case "unsupported": return t("artifacts.previewUnsupported");
+    case "oversized": return t("artifacts.previewOversized");
+    case "stale": return t("artifacts.previewStale");
+    default: return t("artifacts.previewAvailable");
+  }
+}
+
 export type WorkspaceArtifactCategory = "documents" | "data" | "images" | "other";
 
 const documentTypes = new Set(["text/markdown", "text/plain", "application/pdf", "text/html", "application/x-yaml", "text/yaml", "application/x-toml"]);
@@ -96,13 +130,9 @@ function artifactTypeBadge(artifact: WorkspaceDeliverable): string {
   return extension;
 }
 
-function artifactStatus(artifact: WorkspaceDeliverable): string {
-  return artifact.preview;
-}
-
 function artifactIdentity(artifact: WorkspaceDeliverable | undefined): string {
   if (!artifact) return "";
-  return [artifact.id, artifact.resourceId, artifact.version, artifact.sizeBytes, artifact.preview, artifact.mediaType].join("\u0000");
+  return [artifact.id, artifact.resourceId, artifact.version, artifact.sizeBytes, artifact.mtimeMs, artifact.preview, artifact.mediaType].join("\u0000");
 }
 
 /** Convert a path-free Host preview into the existing bounded renderer contract. */
@@ -135,6 +165,8 @@ export function createWorkspaceArtifactSurfaceComponent(
   options: WorkspaceArtifactSurfaceOptions = {},
 ): (props: Record<string, unknown>) => ReactNode {
   return function WorkspaceArtifactSurface(props: Record<string, unknown>): ReactNode {
+    // Re-render every label when the host language flips (wayfinder #126).
+    useWorkspaceLocale();
     const useSessions = props.useSessions as ((selector: (state: { readonly current?: string }) => string | undefined) => string | undefined) | undefined;
     const sessionId = useSessions?.((state) => state.current);
     const activeRemote = options.resolveRemote ? options.resolveRemote(sessionId) : remote;
@@ -284,11 +316,20 @@ export function createWorkspaceArtifactSurfaceComponent(
         }
         const descriptor = descriptorFor(artifact, result.value);
         const detailValue = createWorkspaceArtifactDetail(artifact, descriptor);
-        const state = { descriptor: detailValue.descriptor, status: detailValue.status, message: detailValue.message };
+        // Distinct, friendly copy for typed non-previewable states; a real
+        // error keeps its readable host message (friendly error path).
+        const statusMessage = detailValue.status === "unsupported"
+          ? t("artifacts.previewUnsupported")
+          : detailValue.status === "oversized"
+            ? t("artifacts.previewOversized")
+            : detailValue.status === "stale"
+              ? t("artifacts.previewStale")
+              : detailValue.message;
+        const state = { descriptor: detailValue.descriptor, status: detailValue.status, message: statusMessage };
         setTabStates((states) => new Map(states).set(artifact.id, state));
         setDetail(detailValue.descriptor);
         setDetailStatus(detailValue.status);
-        setMessage(detailValue.message);
+        setMessage(statusMessage);
       }).catch((error) => {
         if (token !== request.current) return;
         const state = { status: "error", message: friendlyRemoteMessage(remoteCode(error), t("artifacts.previewUnavailable")) };
@@ -358,6 +399,42 @@ export function createWorkspaceArtifactSurfaceComponent(
       }
     };
 
+    const copyPath = async (): Promise<void> => {
+      const artifact = selected;
+      if (!artifact) return;
+      const path = artifact.name;
+      const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+      if (clipboard && typeof clipboard.writeText === "function") {
+        try {
+          await clipboard.writeText(path);
+          setMessage(t("artifacts.copied"));
+          return;
+        } catch {
+          setMessage(t("artifacts.copyUnsupported"));
+          return;
+        }
+      }
+      if (typeof document !== "undefined" && typeof document.execCommand === "function") {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = path;
+          textarea.setAttribute("readonly", "true");
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          const copied = document.execCommand("copy");
+          document.body.removeChild(textarea);
+          setMessage(copied ? t("artifacts.copied") : t("artifacts.copyUnsupported"));
+          return;
+        } catch {
+          setMessage(t("artifacts.copyUnsupported"));
+          return;
+        }
+      }
+      setMessage(t("artifacts.copyUnsupported"));
+    };
+
     const groupList = (group: readonly WorkspaceDeliverable[], groupIndex: number): ReactNode => {
       const category = categoryOrder[groupIndex] as WorkspaceArtifactCategory;
       return createElement(
@@ -386,8 +463,8 @@ export function createWorkspaceArtifactSurfaceComponent(
             },
             artifact.name,
           ),
-          createElement("span", { "data-dsh-workspace": "artifact-meta", "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${artifact.preview}` }, `${formatSize(artifact.sizeBytes)} · ${artifact.preview}`),
-          createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-status-chip", "data-status": artifactStatus(artifact) }, artifactStatus(artifact)),
+          createElement("span", { "data-dsh-workspace": "artifact-meta", "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${formatRelativeTime(artifact.mtimeMs)}, ${artifactPreviewLabel(artifact.preview)}` }, `${formatSize(artifact.sizeBytes)} · ${formatRelativeTime(artifact.mtimeMs)} · ${artifactPreviewLabel(artifact.preview)}`),
+          createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-status-chip", "data-status": artifact.preview }, artifactPreviewLabel(artifact.preview)),
         ))),
       );
     };
@@ -403,6 +480,7 @@ export function createWorkspaceArtifactSurfaceComponent(
         createElement("p", { "aria-label": t("artifacts.provenance"), "data-dsh-workspace": "artifact-provenance" }, `${t("artifacts.source")} ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
         createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
         createElement("div", { role: "group" },
+          createElement("button", { type: "button", "data-dsh-workspace": "artifact-copy-path", onClick: () => { void copyPath(); } }, t("artifacts.copyPath")),
           selected.resourceId && createElement("button", { type: "button", onClick: () => { void downloadArtifact(); } }, download.status === "loading" ? t("downloading") : t("download")),
           download.status === "loading" && createElement("button", { type: "button", onClick: () => downloadController.current?.cancel() }, t("cancelDownload")),
         ),
@@ -476,6 +554,7 @@ export function createWorkspaceArtifactSurfaceComponent(
             skipped > 0 && createElement("span", { "data-dsh-workspace": "status-chip", "data-status": "stale" }, `${skipped} ${t("artifacts.hiddenSkipped")}`),
           ),
           artifacts.length === 0 && workspaceEmptyState(t("artifacts.empty")),
+          artifacts.length === 0 && createElement("p", { role: "status", "data-dsh-workspace": "artifact-empty-explainer" }, t("artifacts.emptyExplainer")),
           artifacts.length > 0 && workspaceListDetail(
             filtered.length === 0
               ? workspaceEmptyState(t("artifacts.noMatch"))

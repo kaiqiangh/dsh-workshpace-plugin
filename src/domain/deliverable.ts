@@ -23,12 +23,15 @@ export interface WorkspaceDeliverable {
   readonly resourceId?: string;
   readonly downloadName: string;
   readonly altText?: string;
+  /** Filesystem last-modified time in epoch ms (surfaces show a relative time). */
+  readonly mtimeMs?: number;
 }
 
 export interface WorkspaceDeliverableOptions {
   readonly name?: string;
   readonly mediaType?: string;
   readonly version?: string;
+  readonly mtimeMs?: number;
 }
 
 export class WorkspaceDeliverableError extends Error {
@@ -97,6 +100,7 @@ export function createWorkspaceDeliverable(
   if (options.name !== undefined) assertText(options.name, "Deliverable name", 256);
   if (options.mediaType !== undefined) assertText(options.mediaType, "Deliverable media type", 256);
   if (options.version !== undefined) assertText(options.version, "Deliverable version", 512);
+  if (options.mtimeMs !== undefined && (typeof options.mtimeMs !== "number" || !Number.isFinite(options.mtimeMs) || options.mtimeMs < 0)) throw new WorkspaceDeliverableError("Deliverable mtime is invalid");
   let path: WorkspacePath | undefined;
   if ("path" in descriptor) {
     assertText(descriptor.path, "Descriptor path", 4_096);
@@ -130,6 +134,7 @@ export function createWorkspaceDeliverable(
     ...(resourceId === undefined ? {} : { resourceId }),
     downloadName: safeDownloadName(path ?? name, mediaType),
     ...(mediaType.startsWith("image/") ? { altText: name } : {}),
+    ...(options.mtimeMs === undefined ? {} : { mtimeMs: options.mtimeMs }),
   });
 }
 
