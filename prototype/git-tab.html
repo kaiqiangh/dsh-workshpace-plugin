@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workspace Git tab — v0.7 prototype (#124)</title>
+<style>
+  :root {
+    --dsw-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --dsw-bg: #ffffff;
+    --dsw-surface: #f7f7f8;
+    --dsw-surface-hover: #efeff1;
+    --dsw-border: #e3e3e8;
+    --dsw-border-strong: #d0d0d8;
+    --dsw-text: #1d1d20;
+    --dsw-muted: #6b6b74;
+    --dsw-faint: #8f8f98;
+    --dsw-accent: #2b5fce;
+    --dsw-accent-soft: #e8effb;
+    --dsw-success: #2e9e5b;
+    --dsw-danger: #d4565b;
+    --dsw-warning: #c98a1b;
+    --dsw-radius: 12px;
+    --dsw-radius-sm: 8px;
+    --dsw-diff-add-bg: #e7f5ec;
+    --dsw-diff-add-word: #b8e3c8;
+    --dsw-diff-del-bg: #fbeaea;
+    --dsw-diff-del-word: #f2c6c8;
+    --dsw-diff-hunk-bg: #f2f2f5;
+    --dsw-diff-band: #f7f7f8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--dsw-font); background: var(--dsw-bg); color: var(--dsw-text); font-size: 13px; line-height: 1.5; padding: 24px; }
+  h1 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--dsw-muted); font-size: 12px; margin-bottom: 16px; }
+  .surface { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius); overflow: hidden; }
+  /* ---- repo header ---- */
+  .repo { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--dsw-border); flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--dsw-border); background: var(--dsw-surface); }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot.clean { background: var(--dsw-success); }
+  .dot.dirty { background: var(--dsw-warning); }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .branch { font-weight: 600; }
+  .ahead-behind { color: var(--dsw-muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .btn { padding: 6px 12px; border: 1px solid var(--dsw-border-strong); border-radius: var(--dsw-radius-sm); background: var(--dsw-bg); color: var(--dsw-text); font-size: 12px; cursor: pointer; }
+  .btn:hover { background: var(--dsw-surface-hover); }
+  /* ---- segmented switch ---- */
+  .switch { display: flex; padding: 10px 16px 0; gap: 4px; border-bottom: 1px solid var(--dsw-border); }
+  .switch button { border: 0; background: transparent; padding: 7px 16px; font-size: 13px; color: var(--dsw-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .switch button.active { color: var(--dsw-text); font-weight: 600; border-bottom-color: var(--dsw-accent); }
+  .switch button:hover:not(.active) { color: var(--dsw-text); }
+  .pane { padding: 12px 16px 16px; }
+  /* ---- changes ---- */
+  .chips { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .chip { font-size: 11.5px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--dsw-border); color: var(--dsw-muted); cursor: pointer; }
+  .chip.active { background: var(--dsw-accent-soft); border-color: var(--dsw-accent); color: var(--dsw-accent); }
+  .columns { display: grid; grid-template-columns: 260px 1fr; gap: 12px; }
+  @media (max-width: 860px) { .columns { grid-template-columns: 1fr; } }
+  .filelist { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); overflow: auto; max-height: 420px; }
+  .group { font-size: 11px; color: var(--dsw-faint); text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px 4px; }
+  .file { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; }
+  .file:hover { background: var(--dsw-surface-hover); }
+  .file.selected { background: var(--dsw-accent-soft); }
+  .file .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .sig { font-size: 11px; color: var(--dsw-faint); white-space: nowrap; }
+  .st { font-size: 11px; width: 14px; text-align: center; font-weight: 700; }
+  .st.A { color: var(--dsw-success); } .st.M { color: var(--dsw-warning); } .st.D { color: var(--dsw-danger); } .st.U { color: var(--dsw-faint); }
+  /* ---- diff ---- */
+  .diff { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); overflow: hidden; }
+  .diffhead { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--dsw-border); background: var(--dsw-diff-band); font-size: 12px; }
+  .diffhead .path { flex: 1; font-family: ui-monospace, Menlo, monospace; }
+  .diffhead .mode { border: 1px solid var(--dsw-border); border-radius: 6px; padding: 1px 8px; font-size: 11px; background: var(--dsw-bg); }
+  pre.code { margin: 0; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.55; overflow: auto; max-height: 340px; }
+  .ln { display: block; white-space: pre; }
+  .ln .n { display: inline-block; width: 3.2em; text-align: right; color: var(--dsw-faint); user-select: none; margin-right: 8px; font-size: 11px; }
+  .ln.add { background: var(--dsw-diff-add-bg); } .ln.add .n { background: transparent; }
+  .ln.del { background: var(--dsw-diff-del-bg); } .ln.del .n { background: transparent; }
+  .ln.hunk { background: var(--dsw-diff-hunk-bg); color: var(--dsw-faint); }
+  /* ---- history ---- */
+  .commits { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); overflow: auto; max-height: 420px; }
+  .graph-bar { padding: 6px 12px; border-bottom: 1px dashed var(--dsw-border); font-size: 11px; color: var(--dsw-faint); font-family: ui-monospace, Menlo, monospace; background: var(--dsw-diff-band); white-space: pre; }
+  .commit { display: flex; gap: 10px; padding: 8px 12px; cursor: pointer; align-items: baseline; }
+  .commit:hover { background: var(--dsw-surface-hover); }
+  .commit.selected { background: var(--dsw-accent-soft); }
+  .commit .hash { font-family: ui-monospace, Menlo, monospace; color: var(--dsw-accent); font-size: 12px; width: 60px; flex-shrink: 0; }
+  .commit .subject { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .commit .meta { color: var(--dsw-faint); font-size: 11.5px; white-space: nowrap; }
+  .deco { font-size: 10.5px; color: var(--dsw-accent); font-weight: 600; }
+  .commitdetail { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); padding: 12px; margin-top: 10px; }
+  .commitdetail h3 { font-size: 13px; margin-bottom: 6px; }
+  .commitdetail .kv { font-size: 12px; color: var(--dsw-muted); margin-bottom: 3px; }
+  .files { margin: 10px 0; border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); overflow: hidden; }
+  .files .frow { display: flex; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--dsw-border); font-size: 12px; align-items: center; }
+  .files .frow:last-child { border-bottom: 0; }
+  .files .fpath { flex: 1; font-family: ui-monospace, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files .plus { color: var(--dsw-success); font-family: ui-monospace, Menlo, monospace; } .files .minus { color: var(--dsw-danger); font-family: ui-monospace, Menlo, monospace; }
+  /* non-git empty */
+  .empty { text-align: center; padding: 56px 24px; color: var(--dsw-muted); }
+  .empty .big { font-size: 14px; font-weight: 600; color: var(--dsw-text); margin-bottom: 6px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Workspace Git tab — v0.7 prototype</h1>
+<p class="sub">Throwaway interactive stub — wayfinder #124. Repo status header · Changes / History switch · commit list + per-commit diff. Non-Git workspace empty state included below the switch.</p>
+
+<div class="surface">
+  <div class="repo">
+    <span class="pill" id="statusPill"><span class="dot clean" id="statusDot"></span><span id="statusText">On <span class="branch mono">main</span> · clean</span></span>
+    <span class="ahead-behind mono" id="ab">↑0 ↓0</span>
+    <span class="pill">staged <b>0</b></span>
+    <span class="pill">unstaged <b>0</b></span>
+    <span class="pill">untracked <b>0</b></span>
+    <span class="spacer"></span>
+    <button class="btn" id="refresh">Refresh</button>
+  </div>
+
+  <div class="switch">
+    <button class="active" data-pane="changes">Changes</button>
+    <button data-pane="history">History</button>
+  </div>
+
+  <div class="pane" id="pane-changes">
+    <div class="chips">
+      <span class="chip active">All</span><span class="chip">Added</span><span class="chip">Modified</span><span class="chip">Deleted</span><span class="chip">Untracked</span><span class="chip">Staged</span>
+    </div>
+    <div class="columns">
+      <div class="filelist" id="filelist"></div>
+      <div class="diff" id="diffview"></div>
+    </div>
+  </div>
+
+  <div class="pane hidden" id="pane-history">
+    <div class="columns">
+      <div class="commits">
+        <div class="graph-bar">* HEAD -> main&#10;* 11f89ca feat(web): reactive locale layer + summary defensive render</div>
+        <div id="commitlist"></div>
+      </div>
+      <div class="commitdetail" id="commitdetail"></div>
+    </div>
+  </div>
+
+  <div class="pane hidden" id="pane-nongit">
+    <div class="empty">
+      <div class="big">This workspace is not a Git repository.</div>
+      <div>Git changes and history are unavailable here. Initialize a repository to see them.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const IS_GIT = true; // flip to false to preview the non-git empty state
+  const FILES = [
+    { st: "M", path: "src/web/workspace-i18n.ts", sig: "+81 -2" },
+    { st: "M", path: "src/web/workspace-summary-block.ts", sig: "+44 -6" },
+    { st: "A", path: "tests/workspace-i18n-subscriber.test.ts", sig: "+72" },
+    { st: "A", path: "tests/workspace-summary-block.test.ts", sig: "+113" },
+    { st: "U", path: "notes/draft.md", sig: "new" },
+    { st: "D", path: "src/legacy/proto-surface.ts", sig: "-38" },
+  ];
+  const DIFF = [
+    { n: "@@ -380,6 +380,7 @@", hunk: true, text: "@@ -380,6 +380,7 @@" },
+    { n: " 380", text: "export function subscribeWorkspaceLocale(listener) {" },
+    { n: " 381", text: "  localeListeners.add(listener);" },
+    { n: " 382", text: "  return () => { localeListeners.delete(listener); };" },
+    { n: " 383", text: "}" },
+    { n: "+383", add: true, text: "+// Stable subscribe reference for React's useSyncExternalStore." },
+    { n: "+384", add: true, text: "+const stableLocaleSubscribe = (l) => subscribeWorkspaceLocale(l);" },
+    { n: " 384", text: "export function useWorkspaceLocale() {" },
+    { n: " 385", text: "  return useSyncExternalStore(stableLocaleSubscribe, workspaceLocale, workspaceLocale);" },
+    { n: " 386", text: "}" },
+  ];
+  const COMMITS = [
+    { hash: "11f89ca", subject: "feat(web): reactive locale layer + summary defensive render", author: "kai", time: "2h ago", deco: "HEAD -> main", files: [["src/web/workspace-i18n.ts", "+81", "-2"], ["src/web/workspace-summary-block.ts", "+44", "-6"], ["src/client.ts", "+5", "-0"]] },
+    { hash: "90571a3", subject: "research (#119): root cause = missing validSummaryShape guard", author: "agent", time: "5h ago", deco: "", files: [["research/summary-undefined.md", "+149", "-0"]] },
+    { hash: "caec1f4", subject: "fix(web): adapt client apply to dsh 0.1.0-rc.7 protocol (#116)", author: "kai", time: "1d ago", deco: "", files: [["src/client.ts", "+12", "-18"]] },
+    { hash: "98ecfaa", subject: "fix(web): address code-review findings", author: "kai", time: "2d ago", deco: "tag: v0.6", files: [["src/web/workspace-mermaid.ts", "+30", "-9"]] },
+  ];
+
+  const fileListEl = document.getElementById("filelist");
+  const diffEl = document.getElementById("diffview");
+  const commitListEl = document.getElementById("commitlist");
+  const commitDetailEl = document.getElementById("commitdetail");
+  let selectedFile = 0, selectedCommit = 0;
+
+  function renderFiles() {
+    fileListEl.innerHTML = [
+      `<div class="group">Staged</div>` + FILES.filter((f) => f.st === "A" || f.st === "D").map((f, i) => row(f, i)).join(""),
+      `<div class="group">Unstaged</div>` + FILES.filter((f) => f.st === "M").map((f, i) => row(f, i)).join(""),
+      `<div class="group">Untracked</div>` + FILES.filter((f) => f.st === "U").map((f, i) => row(f, i)).join(""),
+    ].join("");
+    fileListEl.querySelectorAll(".file").forEach((el) => el.addEventListener("click", () => { selectedFile = +el.dataset.i; renderFiles(); renderDiff(); }));
+  }
+  function row(f, i) { return `<div class="file ${selectedFile === i ? "selected" : ""}" data-i="${i}"><span class="st ${f.st}">${f.st}</span><span class="name">${f.path}</span><span class="sig">${f.sig}</span></div>`; }
+
+  function renderDiff() {
+    const f = FILES[selectedFile];
+    diffEl.innerHTML = `<div class="diffhead"><span class="st ${f.st}">${f.st}</span><span class="path">${f.path}</span><span class="mode">unified</span></div>` +
+      `<pre class="code">` + DIFF.map((l) => `<span class="ln ${l.hunk ? "hunk" : ""} ${l.add ? "add" : ""}"><span class="n">${l.n}</span>${l.text}</span>`).join("") + `</pre>`;
+  }
+
+  function renderCommits() {
+    commitListEl.innerHTML = COMMITS.map((c, i) => `
+      <div class="commit ${selectedCommit === i ? "selected" : ""}" data-i="${i}">
+        <span class="hash">${c.hash}</span>
+        <span class="subject">${c.subject} ${c.deco ? `<span class="deco">${c.deco}</span>` : ""}</span>
+        <span class="meta">${c.author} · ${c.time}</span>
+      </div>`).join("");
+    commitListEl.querySelectorAll(".commit").forEach((el) => el.addEventListener("click", () => { selectedCommit = +el.dataset.i; renderCommits(); renderCommitDetail(); }));
+  }
+
+  function renderCommitDetail() {
+    const c = COMMITS[selectedCommit];
+    commitDetailEl.innerHTML = `
+      <h3 class="mono">${c.hash} <span class="deco">${c.deco}</span></h3>
+      <div class="kv">${c.subject}</div>
+      <div class="kv">Author: ${c.author} · ${c.time} · parents: ${c.hash.slice(0, 7)}^</div>
+      <div class="files">${c.files.map(([p, pl, mi]) => `<div class="frow"><span class="fpath">${p}</span><span class="plus">+${pl}</span><span class="minus">-${mi}</span></div>`).join("")}</div>
+      <div class="diff"><div class="diffhead"><span class="path mono">${c.files[0][0]}</span><span class="mode">unified</span></div>
+      <pre class="code">${DIFF.map((l) => `<span class="ln ${l.hunk ? "hunk" : ""} ${l.add ? "add" : ""}"><span class="n">${l.n}</span>${l.text}</span>`).join("")}</pre></div>`;
+  }
+
+  document.querySelectorAll(".switch button").forEach((btn) => btn.addEventListener("click", () => {
+    document.querySelectorAll(".switch button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const pane = btn.dataset.pane;
+    document.getElementById("pane-changes").classList.toggle("hidden", pane !== "changes");
+    document.getElementById("pane-history").classList.toggle("hidden", pane !== "history");
+    document.getElementById("pane-nongit").classList.toggle("hidden", pane !== "nongit");
+    if (!IS_GIT) { document.getElementById("pane-nongit").classList.remove("hidden"); }
+  }));
+  document.getElementById("refresh").addEventListener("click", () => { renderFiles(); renderCommits(); });
+  document.querySelectorAll(".chips .chip").forEach((c) => c.addEventListener("click", () => {
+    document.querySelectorAll(".chips .chip").forEach((x) => x.classList.remove("active"));
+    c.classList.add("active");
+  }));
+
+  renderFiles();
+  renderDiff();
+  renderCommits();
+  renderCommitDetail();
+</script>
+</body>
+</html>
