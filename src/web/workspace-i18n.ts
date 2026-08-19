@@ -214,7 +214,60 @@ export type WorkspaceMessageKey =
   | "error.resourceStale"
   | "error.resourceExpired"
   | "error.fileTooLarge"
-  | "error.symlinkEscape";
+  | "error.symlinkEscape"
+  // Memory surface redesign (#128): scope / type / governance / action tips + labels
+  | "memory.scope.projectHint"
+  | "memory.scope.sessionHint"
+  | "memory.scope.userHint"
+  | "memory.scope.sharedHint"
+  | "memory.type.factHint"
+  | "memory.type.decisionHint"
+  | "memory.type.preferenceHint"
+  | "memory.type.conventionHint"
+  | "memory.type.proposalHint"
+  | "memory.originHint"
+  | "memory.verifiedHint"
+  | "memory.retentionHint"
+  | "memory.revisionHint"
+  | "memory.sourcesHint"
+  | "memory.expiresHint"
+  | "memory.editHint"
+  | "memory.verifyHint"
+  | "memory.reverifyHint"
+  | "memory.archiveHint"
+  | "memory.forgetHint"
+  | "memory.pinHint"
+  | "memory.unpinHint"
+  | "memory.copyHint"
+  | "memory.viewSourceHint"
+  | "memory.exportHint"
+  | "memory.importHint"
+  | "memory.status.active"
+  | "memory.status.archived"
+  | "memory.status.forgotten"
+  | "memory.unverified"
+  | "memory.stale"
+  | "memory.relative.justNow"
+  | "memory.relative.minutes"
+  | "memory.relative.hours"
+  | "memory.relative.days"
+  | "memory.copy"
+  | "memory.copyCopied"
+  | "memory.copyFailed"
+  | "memory.copyUnavailable"
+  | "memory.viewSource"
+  | "memory.sourceInfo"
+  | "memory.provenance.kind"
+  | "memory.provenance.session"
+  | "memory.provenance.eventSeq"
+  | "memory.provenance.note"
+  | "memory.contentHash"
+  | "memory.saveDisabled"
+  | "memory.searchPlaceholder"
+  | "memory.updatedAt"
+  | "memory.selectHint"
+  | "memory.version"
+  | "memory.rev";
 
 type MessageTable = Record<WorkspaceMessageKey, { readonly en: string; readonly zh: string }>;
 
@@ -422,6 +475,59 @@ const table: MessageTable = {
   "error.resourceExpired": { en: "This item expired; refresh to reload it.", zh: "此项已过期；刷新以重新加载。" },
   "error.fileTooLarge": { en: "This item is too large to preview.", zh: "此项过大，无法预览。" },
   "error.symlinkEscape": { en: "This item points outside the Workspace and is blocked.", zh: "此项指向 Workspace 之外，已被拦截。" },
+
+  "memory.scope.projectHint": { en: "Project memory: persisted per workspace root, shared by every session.", zh: "项目记忆：按工作区根目录持久化，所有会话共享。" },
+  "memory.scope.sessionHint": { en: "Session memory: scoped to the current Harness session only.", zh: "会话记忆：仅限当前 Harness 会话。" },
+  "memory.scope.userHint": { en: "User memory: personal, crosses projects for this account.", zh: "用户记忆：个人记忆，跨项目，归属于此账号。" },
+  "memory.scope.sharedHint": { en: "Shared Project: read-mostly, requires acknowledgement to edit.", zh: "共享项目：以只读为主，编辑需先确认。" },
+  "memory.type.factHint": { en: "A statement believed true about the workspace.", zh: "关于工作区的事实陈述。" },
+  "memory.type.decisionHint": { en: "A recorded decision (ADR-style) with rationale.", zh: "已记录的决策（ADR 风格）及理由。" },
+  "memory.type.preferenceHint": { en: "A personal or team preference, e.g. reply style.", zh: "个人或团队的偏好，如回复风格。" },
+  "memory.type.conventionHint": { en: "A standing convention to follow in this workspace.", zh: "此工作区应遵循的约定。" },
+  "memory.type.proposalHint": { en: "Model-suggested item awaiting review.", zh: "模型建议、待审阅的条目。" },
+  "memory.originHint": { en: "Where this record came from (agent-derived vs human-entered).", zh: "此记录的来源（智能体推导或人工录入）。" },
+  "memory.verifiedHint": { en: "Whether a human has confirmed this record; unverified items are review-only until confirmed.", zh: "是否已有人工确认此记录；未验证项仅可审阅，确认后方可用。" },
+  "memory.retentionHint": { en: "How long the record is kept and where it persists.", zh: "记录的保留时长与存放位置。" },
+  "memory.revisionHint": { en: "Version of this record; edits and governance actions bump the revision.", zh: "此记录的版本；编辑与治理操作会递增修订号。" },
+  "memory.sourcesHint": { en: "Provenance links that produced this record.", zh: "生成此记录的溯源链接。" },
+  "memory.expiresHint": { en: "When verified records lapse to stale; none means no expiry.", zh: "已验证记录的过期时间；无则永不过期。" },
+  "memory.editHint": { en: "Open the inline editor to change this record.", zh: "打开内联编辑器修改此记录。" },
+  "memory.verifyHint": { en: "Confirm this record as correct.", zh: "确认此记录正确。" },
+  "memory.reverifyHint": { en: "Refresh this stale record after checking the facts.", zh: "核验事实后刷新此过期记录。" },
+  "memory.archiveHint": { en: "Remove from active memory (recoverable).", zh: "移出活跃记忆（可恢复）。" },
+  "memory.forgetHint": { en: "Tombstone this record permanently.", zh: "永久删除此记录。" },
+  "memory.pinHint": { en: "Keep this record pinned above the list.", zh: "将记录置顶显示。" },
+  "memory.unpinHint": { en: "Release the pin on this record.", zh: "取消此记录的置顶。" },
+  "memory.copyHint": { en: "Copy the full content to the clipboard.", zh: "复制完整内容到剪贴板。" },
+  "memory.viewSourceHint": { en: "Show provenance and source references.", zh: "显示来源与溯源信息。" },
+  "memory.exportHint": { en: "Download the current scope as JSON.", zh: "将当前范围导出为 JSON 下载。" },
+  "memory.importHint": { en: "Import a JSON memory file into the current scope.", zh: "将 JSON 记忆文件导入当前范围。" },
+  "memory.status.active": { en: "Active", zh: "活跃" },
+  "memory.status.archived": { en: "Archived", zh: "已归档" },
+  "memory.status.forgotten": { en: "Forgotten", zh: "已遗忘" },
+  "memory.unverified": { en: "unverified", zh: "未验证" },
+  "memory.stale": { en: "stale", zh: "已过期" },
+  "memory.relative.justNow": { en: "just now", zh: "刚刚" },
+  "memory.relative.minutes": { en: "{count}m ago", zh: "{count} 分钟前" },
+  "memory.relative.hours": { en: "{count}h ago", zh: "{count} 小时前" },
+  "memory.relative.days": { en: "{count}d ago", zh: "{count} 天前" },
+  "memory.copy": { en: "Copy", zh: "复制" },
+  "memory.copyCopied": { en: "Content copied to the clipboard.", zh: "内容已复制到剪贴板。" },
+  "memory.copyFailed": { en: "Copy failed; select the content manually.", zh: "复制失败；请手动选择内容。" },
+  "memory.copyUnavailable": { en: "Copy is unavailable in this browser.", zh: "当前浏览器不支持复制。" },
+  "memory.viewSource": { en: "View source", zh: "查看来源" },
+  "memory.sourceInfo": { en: "Source information", zh: "来源信息" },
+  "memory.provenance.kind": { en: "Kind", zh: "类型" },
+  "memory.provenance.session": { en: "Session", zh: "会话" },
+  "memory.provenance.eventSeq": { en: "Event seq", zh: "事件序号" },
+  "memory.provenance.note": { en: "Note", zh: "备注" },
+  "memory.contentHash": { en: "Content hash", zh: "内容哈希" },
+  "memory.saveDisabled": { en: "This Memory file is read-only; editing is disabled.", zh: "此记忆文件为只读；编辑已被禁用。" },
+  "memory.searchPlaceholder": { en: "Search memory…", zh: "搜索记忆…" },
+  "memory.updatedAt": { en: "updated {when}", zh: "更新于 {when}" },
+  "memory.selectHint": { en: "Select a record to inspect its content and governance.", zh: "选择一条记录以查看其内容与治理信息。" },
+  "memory.version": { en: "Version", zh: "版本" },
+  "memory.rev": { en: "rev", zh: "修订" },
 };
 
 let activeLocale: WorkspaceLocale = "en";
