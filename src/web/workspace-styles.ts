@@ -1358,6 +1358,275 @@ const WORKSPACE_VIEW_STYLES = `
   border-radius: 8px;
   background: var(--dsw-surface-hover);
 }
+
+/* ============ v0.7: Memory surface redesign (#128) ============ */
+
+/* Toolbar: the search input grows and pins Export/Import to the right edge. */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-search"] {
+  flex: 1 1 180px;
+  min-width: 180px;
+  max-width: 100%;
+  margin: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-import"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-import"] input {
+  width: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-field"],
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-filter-field"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-field"] input:not([type="checkbox"]),
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-filter-field"] select {
+  width: auto;
+  min-width: 120px;
+}
+
+/* Scope buttons and governance terms get the dotted-underline tip affordance. */
+[data-dsh-workspace="view"] [data-dsw-segment] button[data-tip],
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-tip"] {
+  border-bottom: 1px dotted var(--dsw-border-strong);
+  cursor: help;
+}
+
+/* Record list cards: title + time row, chip row, one-line preview. */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card"] {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-left: 2px solid transparent;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card"]:hover {
+  border-left-color: var(--dsw-border-strong);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card"][data-selected="true"],
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card"][data-selected="true"]:hover {
+  border-color: color-mix(in srgb, Highlight 55%, transparent);
+  border-left-color: var(--dsw-accent);
+  background: var(--dsw-accent-soft);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-title-row"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-title-row"] [data-dsh-workspace="memory-select"] {
+  flex: 1 1 auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-time"] {
+  flex: none;
+  color: var(--dsw-faint);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-chips"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Chips: max two per card (type + verification) plus the model-suggested marker. */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-badge"] {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+  padding: 1px 7px;
+  border: 1px solid var(--dsw-border-strong);
+  border-radius: 999px;
+  color: var(--dsw-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-badge"][data-dsh-workspace-type] {
+  border-color: color-mix(in srgb, Highlight 40%, transparent);
+  background: var(--dsw-accent-soft);
+  color: color-mix(in srgb, Highlight 82%, CanvasText 18%);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-badge"][data-dsh-workspace-verification="verified"] {
+  border-color: color-mix(in srgb, var(--dsw-success) 50%, transparent);
+  background: color-mix(in srgb, var(--dsw-success) 12%, transparent);
+  color: var(--dsw-success);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-badge"][data-dsh-workspace-verification="unverified"] {
+  border-color: color-mix(in srgb, CanvasText 24%, transparent);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-badge"][data-dsh-workspace-proposal="true"] {
+  border-color: color-mix(in srgb, var(--dsw-warning) 50%, transparent);
+  background: color-mix(in srgb, var(--dsw-warning) 12%, transparent);
+  color: var(--dsw-warning);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-preview"] {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Detail: scrollable monospace content + governance + action row. */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail-header"] {
+  margin: 0 0 8px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail-header"] h3 {
+  font-size: var(--dsw-type-lg);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail-meta"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 0;
+  color: var(--dsw-muted);
+  font-size: 11px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail-meta-text"] {
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-content"] {
+  margin: 0 0 12px;
+  padding: 12px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Long source ids truncate with an ellipsis; the full value is in title. */
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source"] {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button {
+  min-height: 32px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button[data-dsw-tone="danger"] {
+  border-color: color-mix(in srgb, var(--dsw-danger) 45%, transparent);
+  color: var(--dsw-danger);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button[data-dsw-tone="danger"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dsw-danger) 60%, transparent);
+  background: color-mix(in srgb, var(--dsw-danger) 10%, transparent);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-panel"] {
+  margin: 12px 0 0;
+  padding: 10px;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-surface);
+  font-size: 11px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-panel"] h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--dsw-muted);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-panel"] h4 + h4 {
+  margin-top: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-detail"] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 11px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-detail"] dt {
+  color: var(--dsw-faint);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-detail"] dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-refs"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-source-refs"] li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
 `;
 
 let styleUsers = 0;
