@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { GIT_HISTORY_MAX_COMMITS, GitError, gitCommit, gitHistory, gitRepoInfo } from "../src/domain/git.ts";
+import { GIT_HISTORY_MAX_COMMITS, GitError, gitCommit, gitHistory, gitRepoInfo, type GitCommit } from "../src/domain/git.ts";
+import { buildWorkspaceGitGraph } from "../src/web/workspace-history-surface.ts";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -65,6 +66,37 @@ test("gitHistory applies limit and offset pagination", async () => {
   const page = await gitHistory(root, { limit: 2, offset: 1 });
   assert.deepEqual(page.map((commit) => commit.subject), ["second", "first"]);
   await rm(root, { recursive: true, force: true });
+});
+
+test("gitHistory localBranches includes commits reachable from other local branches", async () => {
+  const root = await repo();
+  await commitFile(root, "base.txt", "base\n", "base");
+  run(root, ["checkout", "-qb", "feature/graph"]);
+  await commitFile(root, "feature.txt", "feature\n", "feature branch commit");
+  const featureSha = run(root, ["rev-parse", "HEAD"]);
+  run(root, ["checkout", "-q", "main"]);
+  await commitFile(root, "main.txt", "main\n", "main branch commit");
+
+  const head = await gitHistory(root);
+  const localBranches = await gitHistory(root, { scope: "localBranches" });
+  assert.equal(head.some((commit) => commit.sha === featureSha), false);
+  assert.ok(localBranches.some((commit) => commit.sha === featureSha));
+  assert.ok(localBranches.some((commit) => commit.decorations.includes("feature/graph")));
+  await rm(root, { recursive: true, force: true });
+});
+
+test("buildWorkspaceGitGraph keeps merge parents on stable lanes", () => {
+  const commits: GitCommit[] = [
+    { sha: "merge", parents: ["feature", "main"], author: "Test", time: 1, subject: "merge", decorations: "" },
+    { sha: "feature", parents: ["base"], author: "Test", time: 1, subject: "feature", decorations: "" },
+    { sha: "main", parents: ["base"], author: "Test", time: 1, subject: "main", decorations: "" },
+    { sha: "base", parents: [], author: "Test", time: 1, subject: "base", decorations: "" },
+  ];
+  const graph = buildWorkspaceGitGraph(commits);
+  assert.equal(graph.length, commits.length);
+  assert.equal(graph[0]?.parentLanes.length, 2);
+  assert.equal(graph[1]?.lane, 0);
+  assert.equal(graph[2]?.lane, 1);
 });
 
 test("gitHistory clamps to GIT_HISTORY_MAX_COMMITS", async () => {

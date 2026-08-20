@@ -155,6 +155,11 @@ export function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet
  * Rendered markdown body plus the mermaid enhancement lifecycle: fresh blocks
  * render once per html, completed diagrams re-render on shell theme flips.
  */
+export function createWorkspaceMarkdownContent(text: string): ReactNode {
+  const html = renderWorkspaceMarkdown(sanitizeWorkspaceMarkdown(text), { resolveImageSrc: () => null });
+  return createElement(WorkspaceMarkdownView, { html });
+}
+
 function WorkspaceMarkdownView({ html }: { readonly html: string }): ReactNode {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {

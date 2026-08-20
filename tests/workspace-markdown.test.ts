@@ -18,6 +18,13 @@ test("drops unsafe link and image targets", () => {
   assert.ok(html.includes("<a" ) === false);
 });
 
+test("keeps relative document links inert in the review surface", () => {
+  const html = renderWorkspaceMarkdown("[context](./CONTEXT.md) [anchor](#section) [web](https://example.com)");
+  assert.ok(!html.includes('href="./CONTEXT.md"'));
+  assert.ok(html.includes('href="#section"'));
+  assert.ok(html.includes('href="https://example.com"'));
+});
+
 test("mermaid fences carry the source data attribute for re-render", () => {
   const html = renderWorkspaceMarkdown("```mermaid\ngraph TD\n  A-->B\n```");
   assert.ok(html.includes('class="language-mermaid"'));

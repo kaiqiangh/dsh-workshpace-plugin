@@ -17,6 +17,7 @@
     "lib/typert.remote-client.d.ts",
     "lib/types",
     "lib/style.css",
+    "lib/assets",
     "cordis.patch.yml",
     "package.json"
   ],

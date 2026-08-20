@@ -33,7 +33,7 @@ export declare const inject: readonly ["slots", "remote"];
 export declare function apply(ctx: ClientContributionContext): Promise<() => Promise<void>>;
 export { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, workspaceConversationDefinition, workspaceConversationView, };
 export type { WorkspaceConversationContributionOptions };
-export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
+export { createWorkspaceMarkdownContent, createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
 export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";
 export { buildWorkspaceResourceUrl, createWorkspaceArtifactDetail, createWorkspaceArtifactView, createWorkspaceDownloadController, normalizeWorkspaceArtifacts, } from "./web/workspace-deliverables.ts";
 export { createWorkspaceArtifactSurfaceComponent, workspaceArtifactPreviewDescriptor, workspaceArtifactResourceUrl, WORKSPACE_ARTIFACT_SLOT_NAME, } from "./web/workspace-artifact-surface.ts";

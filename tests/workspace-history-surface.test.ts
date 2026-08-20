@@ -73,8 +73,8 @@ test("renders the commit list with short hash, subject, decorations, author, and
   assert.ok(decos.includes("HEAD -> main, tag: v0.1"));
   const meta = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-commit-meta").map((node) => node.children.join(""));
   assert.ok(meta.some((text) => text.includes("kai ·")), "author and relative time render");
-  // The branch-graph placeholder bar is reserved above the list.
-  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-graph-bar").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-graph").length, 2);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-scope").length, 1);
 });
 
 test("selecting a commit shows the summary block, files-changed, and per-file diff", async () => {

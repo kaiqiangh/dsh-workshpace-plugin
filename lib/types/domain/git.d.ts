@@ -29,7 +29,10 @@ export interface GitHistoryOptions {
     readonly limit?: number;
     /** Skip this many commits for page-ahead pagination. */
     readonly offset?: number;
+    /** `head` follows the current branch; `localBranches` includes local branch refs. */
+    readonly scope?: GitHistoryScope;
 }
+export type GitHistoryScope = "head" | "localBranches";
 export interface GitCommitFile {
     readonly path: string;
     readonly additions: number;

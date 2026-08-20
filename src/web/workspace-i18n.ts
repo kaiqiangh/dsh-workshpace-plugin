@@ -42,6 +42,10 @@ export type WorkspaceMessageKey =
   | "artifacts.category.other"
   | "artifacts.provenance"
   | "artifacts.source"
+  | "artifacts.mediaType"
+  | "artifacts.size"
+  | "artifacts.modified"
+  | "artifacts.preview"
   | "artifacts.downloadUnsupported"
   | "artifacts.previewUnsupported"
   | "artifacts.previewAvailable"
@@ -66,6 +70,10 @@ export type WorkspaceMessageKey =
   | "memory.scope.session"
   | "memory.scope.user"
   | "memory.scope.sharedProject"
+  | "memory.scopeRail"
+  | "memory.location"
+  | "memory.scopeKey"
+  | "memory.contentPreview"
   | "memory.searchLabel"
   | "memory.typeFilter"
   | "memory.statusFilter"
@@ -206,6 +214,10 @@ export type WorkspaceMessageKey =
   | "history.selectCommit"
   | "history.commitDetail"
   | "history.decorations"
+  | "history.scope"
+  | "history.scope.head"
+  | "history.scope.localBranches"
+  | "history.graph"
   // Preview adapters
   | "preview.status"
   | "preview.jsonLabel"
@@ -337,6 +349,10 @@ const table: MessageTable = {
   "artifacts.category.other": { en: "Other", zh: "其他" },
   "artifacts.provenance": { en: "Artifact provenance", zh: "产物来源" },
   "artifacts.source": { en: "Source", zh: "来源" },
+  "artifacts.mediaType": { en: "Media type", zh: "媒体类型" },
+  "artifacts.size": { en: "Size", zh: "大小" },
+  "artifacts.modified": { en: "Modified", zh: "修改时间" },
+  "artifacts.preview": { en: "Preview", zh: "预览" },
   "artifacts.downloadUnsupported": { en: "Download is unsupported in this browser.", zh: "当前浏览器不支持下载。" },
   "artifacts.previewUnsupported": { en: "Preview unavailable", zh: "预览不可用" },
   "artifacts.previewAvailable": { en: "Preview available", zh: "可预览" },
@@ -345,7 +361,7 @@ const table: MessageTable = {
   "artifacts.copyPath": { en: "Copy path", zh: "复制路径" },
   "artifacts.copied": { en: "Path copied", zh: "路径已复制" },
   "artifacts.copyUnsupported": { en: "Copy is unavailable in this browser; select the path manually.", zh: "当前浏览器不支持复制；请手动选择路径。" },
-  "artifacts.emptyExplainer": { en: "Artifacts appear when the agent creates files during this session. Deleted or non-previewable files are not listed.", zh: "当智能体在此会话中创建文件时，产物会出现在这里。已删除或无法预览的文件不会列出。" },
+  "artifacts.emptyExplainer": { en: "Artifacts appear when the agent creates files during this session. Deleted files are hidden; unsupported or oversized files remain as metadata-only entries.", zh: "当智能体在此会话中创建文件时，产物会出现在这里。已删除文件会隐藏；不支持或过大的文件仍会以仅元数据条目显示。" },
   "artifacts.time.justNow": { en: "just now", zh: "刚刚" },
   "artifacts.time.minutesAgo": { en: "{count}m ago", zh: "{count} 分钟前" },
   "artifacts.time.hoursAgo": { en: "{count}h ago", zh: "{count} 小时前" },
@@ -361,6 +377,10 @@ const table: MessageTable = {
   "memory.scope.session": { en: "Session", zh: "会话" },
   "memory.scope.user": { en: "User", zh: "用户" },
   "memory.scope.sharedProject": { en: "Shared Project", zh: "共享项目" },
+  "memory.scopeRail": { en: "Scopes", zh: "范围" },
+  "memory.location": { en: "Logical location", zh: "逻辑位置" },
+  "memory.scopeKey": { en: "Scope identity", zh: "范围标识" },
+  "memory.contentPreview": { en: "Rendered content", zh: "渲染内容" },
   "memory.searchLabel": { en: "Search Memory", zh: "搜索记忆" },
   "memory.typeFilter": { en: "Type filter", zh: "类型筛选" },
   "memory.statusFilter": { en: "Status filter", zh: "状态筛选" },
@@ -501,6 +521,10 @@ const table: MessageTable = {
   "history.selectCommit": { en: "Select a commit to view its summary and diff.", zh: "选择一个提交以查看其摘要与 diff。" },
   "history.commitDetail": { en: "Commit detail", zh: "提交详情" },
   "history.decorations": { en: "Refs", zh: "引用" },
+  "history.scope": { en: "History scope", zh: "历史范围" },
+  "history.scope.head": { en: "Current branch", zh: "当前分支" },
+  "history.scope.localBranches": { en: "Local branches", zh: "本地分支" },
+  "history.graph": { en: "Commit graph", zh: "提交图" },
 
   "preview.status": { en: "status", zh: "状态" },
   "preview.jsonLabel": { en: "Workspace JSON", zh: "Workspace JSON" },

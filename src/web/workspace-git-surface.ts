@@ -407,6 +407,7 @@ export function createWorkspaceGitSurfaceComponent(
                   createElement("div", { "data-dsh-workspace": "git-diff-header" },
                     createElement("span", { "data-dsh-workspace": "git-file-status", "data-status": selected?.status ?? "modified" }, selected ? statusLetters[selected.status] : "M"),
                     createElement("span", { "data-dsh-workspace": "git-diff-path" }, selectedPath),
+                    parsedDiff && createElement("span", { "data-dsh-workspace": "git-diff-stats", "aria-label": `${parsedDiff.insertions} additions, ${parsedDiff.deletions} deletions` }, `+${parsedDiff.insertions} −${parsedDiff.deletions}`),
                     createElement("span", { "data-dsh-workspace": "git-diff-mode" }, t("git.modeUnified")),
                   ),
                   diff.truncated && workspaceNotice("warning", t("changes.diffTruncated")),

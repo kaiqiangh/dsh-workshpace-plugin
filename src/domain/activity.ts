@@ -141,7 +141,7 @@ export function resumeActivityProjection(
 
 export function deriveArtifacts(projection: ActivityProjection): readonly ArtifactProjection[] {
   return [...projection.files.values()]
-    .filter((file) => file.createdInSession && file.current === "present" && file.previewable
+    .filter((file) => file.createdInSession && file.current === "present"
       && (file.attribution === "agent-evidenced" || file.attribution === "session-observed"))
     .map((file) => ({
       path: file.path,

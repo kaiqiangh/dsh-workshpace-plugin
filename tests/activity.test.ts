@@ -97,3 +97,11 @@ test("does not derive pre-existing or uncertain creations as current Artifacts",
   ]);
   assert.deepEqual(deriveArtifacts(projection), [{ path: "session-report.csv", createdAt: 3 }]);
 });
+
+test("keeps unsupported session creations as metadata-only Artifacts", () => {
+  const projection = reduceActivity(identity, [{
+    id: "session-archive", identity, path: "bundle.zip", kind: "CREATED", observedAt: 4,
+    source: "git", attribution: "session-observed", previewable: false,
+  }]);
+  assert.deepEqual(deriveArtifacts(projection), [{ path: "bundle.zip", createdAt: 4 }]);
+});

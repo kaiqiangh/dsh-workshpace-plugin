@@ -75,20 +75,20 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
     useWorkspaceLocale();
     // v0.7 (IA #125): the third tab is the Git tab (hosts Changes/History).
     const children: ReactNode[] = [];
-    if (options.summary) children.push(createElement(options.summary, props));
+    if (options.summary) children.push(createElement(options.summary, { ...props, key: "workspace-summary" }));
     children.push(
-      createElement("input", { id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": t("view.artifacts") }),
-      createElement("input", { id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.memory") }),
-      createElement("input", { id: "dsh-workspace-view-tab-git", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.git") }),
-      createElement("div", { role: "group", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
-        createElement("label", { htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, t("view.artifacts")),
-        createElement("label", { htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, t("view.memory")),
-        createElement("label", { htmlFor: "dsh-workspace-view-tab-git", "data-dsh-workspace": "panel-tab" }, t("view.git")),
+      createElement("input", { key: "tab-input-artifacts", id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": t("view.artifacts") }),
+      createElement("input", { key: "tab-input-memory", id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.memory") }),
+      createElement("input", { key: "tab-input-git", id: "dsh-workspace-view-tab-git", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.git") }),
+      createElement("div", { key: "panel-tabs", role: "group", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
+        createElement("label", { key: "tab-artifacts", htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, t("view.artifacts")),
+        createElement("label", { key: "tab-memory", htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, t("view.memory")),
+        createElement("label", { key: "tab-git", htmlFor: "dsh-workspace-view-tab-git", "data-dsh-workspace": "panel-tab" }, t("view.git")),
       ),
-      createElement("div", { "data-dsh-workspace": "panel-content" },
-        createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
-        createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
-        createElement("div", { "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "git" }, createElement(options.git, props)),
+      createElement("div", { key: "panel-content", "data-dsh-workspace": "panel-content" },
+        createElement("div", { key: "tab-content-artifacts", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
+        createElement("div", { key: "tab-content-memory", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
+        createElement("div", { key: "tab-content-git", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "git" }, createElement(options.git, props)),
       ),
     );
     return createElement("section", { role: "region", "aria-label": t("view.workspace"), "data-dsh-workspace": "view" }, children);

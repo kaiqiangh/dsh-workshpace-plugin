@@ -173,7 +173,7 @@ export function renderWorkspaceInline(text: string, options?: WorkspaceMarkdownR
           const label = text.slice(i + 1, close);
           const href = text.slice(close + 2, parenEnd);
           const safe = safeWorkspaceUrl(href);
-          if (safe === null) {
+          if (safe === null || (!/^(?:https?|mailto):/iu.test(safe) && !safe.startsWith("#"))) {
             out += renderWorkspaceInline(label, options);
           } else {
             out += `<a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${renderWorkspaceInline(label, options)}</a>`;
