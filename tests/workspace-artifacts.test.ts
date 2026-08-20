@@ -100,7 +100,7 @@ test("replays a DSH bash redirection as a Markdown artifact", async () => {
   const workspace = startWorkspace({ sessionId: "session-shell-write", processCwd: root });
   const callId = "call-shell-write";
   const events = [
-    { seq: 0, type: "tool/call", data: { callId, name: "bash", arguments: JSON.stringify({ command: "cat > report.md << 'EOF'\n# Report\nEOF" }) } },
+    { seq: 0, type: "tool/call", data: { callId, name: "bash", arguments: JSON.stringify({ command: "cat > report.md << 'EOF'\n# Report\n> body text is not another path\nEOF" }) } },
     {
       seq: 1,
       time: 1,
@@ -193,8 +193,8 @@ test("ignores create prose from non-write tools", async () => {
 });
 
 test("keeps shell replay bounded to explicit relative write targets", () => {
-  const recordFor = (command: string) => sessionToolRecords([
-    { seq: 0, type: "tool/call", data: { callId: "call-shell-boundary", name: "bash", arguments: JSON.stringify({ command }) } },
+  const recordFor = (command: string, tool = "bash") => sessionToolRecords([
+    { seq: 0, type: "tool/call", data: { callId: "call-shell-boundary", name: tool, arguments: JSON.stringify({ command }) } },
     { seq: 1, type: "tool/result", data: { message: { source: { kind: "tool", callId: "call-shell-boundary" }, content: [{ type: "tool-result", toolCallId: "call-shell-boundary" }] }, meta: {} } },
   ])[0]?.data?.result as { readonly paths?: readonly string[] };
   assert.deepEqual(recordFor("printf x > notes.md" ).paths, ["notes.md"]);
@@ -208,6 +208,9 @@ test("keeps shell replay bounded to explicit relative write targets", () => {
   assert.deepEqual(recordFor("if (( a > b )); then echo > good-arith.md; fi").paths, ["good-arith.md"]);
   assert.deepEqual(recordFor("printf x \\> false.md").paths, undefined);
   assert.deepEqual(recordFor("echo ok # > false.md").paths, undefined);
+  assert.deepEqual(recordFor("cat > file:///tmp/secret.md").paths, undefined);
+  assert.deepEqual(recordFor("cat > bad\u0000name.md").paths, undefined);
+  assert.deepEqual(recordFor("Write-Output x > windows.md", "pwsh").paths, ["windows.md"]);
   assert.deepEqual(recordFor("cat README.md").paths, undefined);
 });
 

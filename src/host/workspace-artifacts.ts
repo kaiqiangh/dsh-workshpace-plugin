@@ -111,6 +111,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 const PATH_FIELDS = ["path", "file", "filePath", "file_path", "filename", "target"] as const;
 const PATH_COLLECTIONS = ["paths", "files", "locations", "diffs"] as const;
+const SHELL_WRITE_TOOLS = /^(?:bash|sh|zsh|shell|terminal|exec|pwsh|powershell)$/i;
 
 function workspaceRelativePath(value: string, root?: string): string | undefined {
   const input = value.trim();
@@ -182,6 +183,20 @@ function shellWordAt(command: string, start: number): string | undefined {
   return value || undefined;
 }
 
+function shellHeredocEnd(command: string, start: number, delimiter: string): number {
+  let lineStart = command.indexOf("\n", start);
+  if (lineStart < 0) return command.length;
+  lineStart += 1;
+  while (lineStart <= command.length) {
+    const lineEnd = command.indexOf("\n", lineStart);
+    const end = lineEnd < 0 ? command.length : lineEnd;
+    if (command.slice(lineStart, end).replace(/\r$/u, "") === delimiter) return end;
+    if (lineEnd < 0) return command.length;
+    lineStart = lineEnd + 1;
+  }
+  return command.length;
+}
+
 function shellRedirectionPaths(command: string, add: (value: string | undefined) => void): void {
   let quote: "'" | '"' | undefined;
   let segmentStart = 0;
@@ -200,6 +215,12 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     if (conditional === "((" && character === ")" && command[index + 1] === ")") { conditional = undefined; index += 1; continue; }
     if (conditional === undefined && character === "[" && command[index + 1] === "[") { conditional = "[["; index += 1; continue; }
     if (conditional === undefined && character === "(" && command[index + 1] === "(") { conditional = "(("; index += 1; continue; }
+    if (character === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
+      const delimiter = shellWordAt(command, index + 2);
+      if (delimiter !== undefined) index = shellHeredocEnd(command, index + 2, delimiter);
+      else index += 1;
+      continue;
+    }
     if (/[;&|]/u.test(character)) { segmentStart = index + 1; continue; }
     if (character !== ">" || conditional !== undefined || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
     const append = command[index + 1] === ">";
@@ -209,15 +230,15 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
 }
 
 function shellWritePaths(tool: string | undefined, args: unknown): readonly string[] {
-  if (tool === undefined || !/^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(tool)) return [];
+  if (tool === undefined || !SHELL_WRITE_TOOLS.test(tool)) return [];
   const command = record(args)?.command;
   if (typeof command !== "string") return [];
   // ponytail: parse only explicit shell write targets; generated-script output
   // still needs filesystem reconciliation rather than unsafe command inference.
   const paths: string[] = [];
   const add = (value: string | undefined): void => {
-    const path = value?.trim().replaceAll("\\", "/");
-    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split("/").includes("..") || /[$`*?{}&]/u.test(path)) return;
+    const path = value === undefined ? undefined : workspaceRelativePath(value);
+    if (!path || /[$`*?{}&]/u.test(path)) return;
     if (!paths.includes(path)) paths.push(path);
   };
   shellRedirectionPaths(command, add);
@@ -278,7 +299,7 @@ function toSessionToolRecords(events: readonly SessionEventLike[], workspaceRoot
     const meta = sanitizeToolPayload(record(data.meta) ?? { locations: [] }, workspaceRoot) as Record<string, unknown>;
     const shellCreatedPaths = shellCreationPaths(call?.name, call?.arguments);
     const operation = operationFromResult(call?.name, call?.arguments, content, shellCreatedPaths);
-    const shellTool = call?.name !== undefined && /^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(call.name);
+    const shellTool = call?.name !== undefined && SHELL_WRITE_TOOLS.test(call.name);
     records.push({
       seq: event.seq,
       time: event.time,
