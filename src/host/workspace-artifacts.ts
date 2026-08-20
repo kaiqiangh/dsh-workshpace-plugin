@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 
 import type { ActivityProjection } from "../domain/activity.ts";
 import { deriveArtifacts } from "../domain/activity.ts";
@@ -115,6 +115,9 @@ const PATH_COLLECTIONS = ["paths", "files", "locations", "diffs"] as const;
 function workspaceRelativePath(value: string, root?: string): string | undefined {
   const input = value.trim();
   if (!input) return undefined;
+  // A Windows/UNC absolute path is foreign on POSIX hosts. Do not feed it to
+  // POSIX resolve(), which would turn it into a misleading relative path.
+  if (!isAbsolute(input) && win32.isAbsolute(input)) return undefined;
   if (!isAbsolute(input) && !/^[A-Za-z]:[\\/]/u.test(input)) return input;
   if (!root) return undefined;
   const relativePath = relative(resolve(root), resolve(input));
@@ -147,6 +150,53 @@ function sanitizeToolPayload(value: unknown, root?: string): unknown {
   return sanitized;
 }
 
+function shellWordAt(command: string, start: number): string | undefined {
+  let value = "";
+  let quote: "'" | '"' | undefined;
+  let index = start;
+  while (index < command.length && /\s/u.test(command[index] ?? "")) index += 1;
+  for (; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote !== undefined) {
+      if (character === quote) { quote = undefined; continue; }
+      if (character === "\\" && quote === '"' && index + 1 < command.length) {
+        value += command[index + 1];
+        index += 1;
+        continue;
+      }
+      value += character;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "\\" && index + 1 < command.length) {
+      value += command[index + 1];
+      index += 1;
+      continue;
+    }
+    if (/\s|[;&|]/u.test(character)) break;
+    value += character;
+  }
+  return value || undefined;
+}
+
+function shellRedirectionPaths(command: string, add: (value: string | undefined) => void, includeAppend = true): void {
+  let quote: "'" | '"' | undefined;
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else if (character === "\\" && quote === '"') index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character !== ">") continue;
+    const append = command[index + 1] === ">";
+    if (append) index += 1;
+    if (append && !includeAppend) continue;
+    add(shellWordAt(command, index + 1));
+  }
+}
+
 function shellWritePaths(tool: string | undefined, args: unknown): readonly string[] {
   if (tool === undefined || !/^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(tool)) return [];
   const command = record(args)?.command;
@@ -156,18 +206,30 @@ function shellWritePaths(tool: string | undefined, args: unknown): readonly stri
   const paths: string[] = [];
   const add = (value: string | undefined): void => {
     const path = value?.trim();
-    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split(/[\\/]/u).includes("..") || /[$`*?{}]/u.test(path)) return;
+    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split(/[\\/]/u).includes("..") || /[$`*?{}&]/u.test(path)) return;
     if (!paths.includes(path)) paths.push(path);
   };
-  const redirection = /(?:^|[\s;&|])\d*>>?\s*(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/gu;
-  for (const match of command.matchAll(redirection)) add(match[1] ?? match[2] ?? match[3]);
+  shellRedirectionPaths(command, add);
   const directTarget = /(?:^|[;&|]\s*)(?:tee|touch)(?:\s+-[^\s]+)*\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/gu;
   for (const match of command.matchAll(directTarget)) add(match[1] ?? match[2] ?? match[3]);
   return paths;
 }
 
-function operationFromResult(tool: string | undefined, args: unknown, content: readonly unknown[]): "create" | "update" | undefined {
-  const shellPaths = shellWritePaths(tool, args);
+function shellCreationPaths(tool: string | undefined, args: unknown): readonly string[] {
+  if (tool === undefined || !/^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(tool)) return [];
+  const command = record(args)?.command;
+  if (typeof command !== "string") return [];
+  const paths: string[] = [];
+  const add = (value: string | undefined): void => {
+    const path = value?.trim();
+    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split(/[\\/]/u).includes("..") || /[$`*?{}&]/u.test(path)) return;
+    if (!paths.includes(path)) paths.push(path);
+  };
+  shellRedirectionPaths(command, add, false);
+  return paths;
+}
+
+function operationFromResult(tool: string | undefined, args: unknown, content: readonly unknown[], shellPaths = shellWritePaths(tool, args)): "create" | "update" | undefined {
   const firstPartyWrite = tool !== undefined && /^(?:write|write[-_]file|file[-_]write|create[-_]file)$/i.test(tool);
   if (!firstPartyWrite && shellPaths.length === 0) return undefined;
   const textParts: string[] = [];
@@ -213,8 +275,9 @@ function toSessionToolRecords(events: readonly SessionEventLike[], workspaceRoot
     if (!callId) continue;
     const call = calls.get(callId);
     const meta = sanitizeToolPayload(record(data.meta) ?? { locations: [] }, workspaceRoot) as Record<string, unknown>;
-    const shellPaths = shellWritePaths(call?.name, call?.arguments);
-    const operation = operationFromResult(call?.name, call?.arguments, content);
+    const shellCreatedPaths = shellCreationPaths(call?.name, call?.arguments);
+    const operation = operationFromResult(call?.name, call?.arguments, content, shellCreatedPaths);
+    const shellTool = call?.name !== undefined && /^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(call.name);
     records.push({
       seq: event.seq,
       time: event.time,
@@ -222,11 +285,13 @@ function toSessionToolRecords(events: readonly SessionEventLike[], workspaceRoot
       data: {
         tool: call?.name ?? "tool",
         callId,
-        arguments: call?.arguments ?? {},
+        // Keep shell commands out of the replay path extractor. Only the
+        // bounded paths copied into result.paths may become observations.
+        arguments: shellTool ? {} : call?.arguments ?? {},
         result: operation === undefined ? meta : {
           ...meta,
           operation,
-          ...(shellPaths.length > 0 ? { paths: shellPaths } : {}),
+          ...(shellCreatedPaths.length > 0 ? { paths: shellCreatedPaths } : {}),
         },
         ok: block?.isError !== true,
       },

@@ -81,6 +81,13 @@ test("replays standard DSH read paths without leaking host paths into the domain
   const records = sessionToolRecords(events, root);
   assert.equal((records[1]?.data?.arguments as { readonly file_path?: string })?.file_path, "browser-artifact.md");
   assert.equal((records[1]?.data?.result as { readonly path?: string })?.path, "browser-artifact.md");
+  const foreignPathEvents = [
+    { seq: 4, type: "tool/call", data: { callId: "call-foreign-read", name: "read", arguments: JSON.stringify({ file_path: "C:\\\\outside\\\\secret.md" }) } },
+    { seq: 5, type: "tool/result", data: { message: { source: { callId: "call-foreign-read" }, content: [{ type: "tool-result", toolCallId: "call-foreign-read" }] }, meta: { path: "C:\\\\outside\\\\secret.md" } } },
+  ] as const;
+  const foreignRecords = sessionToolRecords(foreignPathEvents, root);
+  assert.equal((foreignRecords[0]?.data?.arguments as { readonly file_path?: string })?.file_path, undefined);
+  assert.equal((foreignRecords[0]?.data?.result as { readonly path?: string })?.path, undefined);
   const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => records });
   assert.equal((await carrier.metadata()).length, 1);
   carrier.dispose();
@@ -191,8 +198,9 @@ test("keeps shell replay bounded to explicit relative write targets", () => {
     { seq: 1, type: "tool/result", data: { message: { source: { kind: "tool", callId: "call-shell-boundary" }, content: [{ type: "tool-result", toolCallId: "call-shell-boundary" }] }, meta: {} } },
   ])[0]?.data?.result as { readonly paths?: readonly string[] };
   assert.deepEqual(recordFor("printf x > notes.md" ).paths, ["notes.md"]);
-  assert.deepEqual(recordFor("touch empty.txt && tee copied.txt").paths, ["empty.txt", "copied.txt"]);
+  assert.deepEqual(recordFor("touch empty.txt && tee copied.txt").paths, undefined);
   assert.deepEqual(recordFor("cat > /tmp/out.md && cat > ../secret.md").paths, undefined);
+  assert.deepEqual(recordFor("printf 'not a write > false.md'").paths, undefined);
   assert.deepEqual(recordFor("cat README.md").paths, undefined);
 });
 
