@@ -269,13 +269,15 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
         if (head?.toLowerCase() === "touch") {
           const directTargets: string[] = [];
           let optionsValid = true;
+          let optionsEnded = false;
           while (target !== undefined && !["#", "<", ">"].includes(target)) {
             if (target === "--") {
+              optionsEnded = true;
               targetStart = shellTokenEnd(command, targetStart);
               target = shellWordOnLine(command, targetStart);
               continue;
             }
-            if (target.startsWith("-")) { optionsValid = false; break; }
+            if (!optionsEnded && target.startsWith("-")) { optionsValid = false; break; }
             directTargets.push(target);
             targetStart = shellTokenEnd(command, targetStart);
             target = shellWordOnLine(command, targetStart);
@@ -284,13 +286,15 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
         } else {
           let optionsValid = true;
           const directTargets: string[] = [];
+          let optionsEnded = false;
           while (target !== undefined && !["#", "<", ">"].includes(target)) {
             if (target === "--") {
+              optionsEnded = true;
               targetStart = shellTokenEnd(command, targetStart);
               target = shellWordOnLine(command, targetStart);
               continue;
             }
-            if (target.startsWith("-")) {
+            if (!optionsEnded && target.startsWith("-")) {
               if (!["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) && !target.startsWith("--output-error=")) { optionsValid = false; break; }
             } else directTargets.push(target);
             targetStart = shellTokenEnd(command, targetStart);
