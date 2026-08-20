@@ -15,6 +15,8 @@ export interface WorkspaceDeliverableSource {
 export interface WorkspaceDeliverable {
   readonly id: string;
   readonly name: string;
+  /** Normalized Workspace Path; never an absolute host path. */
+  readonly logicalPath?: string;
   readonly mediaType: string;
   readonly sizeBytes: number;
   readonly version?: string;
@@ -126,6 +128,7 @@ export function createWorkspaceDeliverable(
   return Object.freeze({
     id,
     name,
+    ...(path === undefined ? {} : { logicalPath: path }),
     mediaType,
     sizeBytes,
     ...(version === undefined ? {} : { version }),

@@ -42,6 +42,7 @@ export type WorkspaceMessageKey =
   | "artifacts.category.other"
   | "artifacts.provenance"
   | "artifacts.source"
+  | "artifacts.location"
   | "artifacts.mediaType"
   | "artifacts.size"
   | "artifacts.modified"
@@ -349,6 +350,7 @@ const table: MessageTable = {
   "artifacts.category.other": { en: "Other", zh: "其他" },
   "artifacts.provenance": { en: "Artifact provenance", zh: "产物来源" },
   "artifacts.source": { en: "Source", zh: "来源" },
+  "artifacts.location": { en: "Logical location", zh: "逻辑位置" },
   "artifacts.mediaType": { en: "Media type", zh: "媒体类型" },
   "artifacts.size": { en: "Size", zh: "大小" },
   "artifacts.modified": { en: "Modified", zh: "修改时间" },

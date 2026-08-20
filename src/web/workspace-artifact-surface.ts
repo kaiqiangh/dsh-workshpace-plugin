@@ -464,6 +464,7 @@ export function createWorkspaceArtifactSurfaceComponent(
             artifact.name,
           ),
           createElement("span", { "data-dsh-workspace": "artifact-meta", "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${formatRelativeTime(artifact.mtimeMs)}, ${artifactPreviewLabel(artifact.preview)}` }, `${formatSize(artifact.sizeBytes)} · ${formatRelativeTime(artifact.mtimeMs)} · ${artifactPreviewLabel(artifact.preview)}`),
+          createElement("code", { "data-dsh-workspace": "artifact-path", title: artifact.logicalPath ?? artifact.name }, artifact.logicalPath ?? artifact.name),
           createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-status-chip", "data-status": artifact.preview }, artifactPreviewLabel(artifact.preview)),
         ))),
       );
@@ -480,6 +481,8 @@ export function createWorkspaceArtifactSurfaceComponent(
         createElement("dl", { "data-dsh-workspace": "artifact-metadata", "aria-label": t("artifacts.provenance") },
           createElement("dt", null, t("artifacts.mediaType")),
           createElement("dd", null, selected.mediaType),
+          createElement("dt", null, t("artifacts.location")),
+          createElement("dd", null, selected.logicalPath ?? selected.name),
           createElement("dt", null, t("artifacts.size")),
           createElement("dd", null, formatSize(selected.sizeBytes)),
           createElement("dt", null, t("artifacts.modified")),

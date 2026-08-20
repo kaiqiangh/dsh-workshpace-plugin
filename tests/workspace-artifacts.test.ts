@@ -31,6 +31,7 @@ test("derives path-free session artifact metadata and typed previews", async () 
   const metadata = await carrier.metadata();
   assert.equal(metadata.length, 1);
   assert.equal(metadata[0]?.name, "report.md");
+  assert.equal(metadata[0]?.logicalPath, "report.md");
   assert.equal("path" in (metadata[0] ?? {}), false);
   const preview = await carrier.previewArtifact(metadata[0]!.id);
   assert.deepEqual(preview, { type: "markdown", renderer: "ui-primitives", content: "# Report\n", truncated: false, policy: { allowRawHtml: false, allowRemoteImages: false, allowedLinkSchemes: ["http", "https", "mailto"] } });

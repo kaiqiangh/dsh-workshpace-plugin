@@ -2327,6 +2327,16 @@ const WORKSPACE_VIEW_STYLES = `
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-path"] {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ============ v0.8: Memory scope rail and rendered detail ============ */
 
 [data-dsh-workspace="view"] [data-dsh-workspace="memory-list-stack"] {
