@@ -207,14 +207,15 @@ function shellWordOnLine(command: string, start: number): string | undefined {
   return command[index] === "\n" ? undefined : shellWordAt(command, index);
 }
 
-function shellHeredocEnd(command: string, start: number, delimiter: string): number {
+function shellHeredocEnd(command: string, start: number, delimiter: string, stripTabs = false): number {
   let lineStart = command.indexOf("\n", start);
   if (lineStart < 0) return command.length;
   lineStart += 1;
   while (lineStart <= command.length) {
     const lineEnd = command.indexOf("\n", lineStart);
     const end = lineEnd < 0 ? command.length : lineEnd;
-    if (command.slice(lineStart, end).replace(/\r$/u, "") === delimiter) return end;
+    const line = command.slice(lineStart, end).replace(/\r$/u, "");
+    if ((stripTabs ? line.replace(/^\t+/u, "") : line) === delimiter) return end;
     if (lineEnd < 0) return command.length;
     lineStart = lineEnd + 1;
   }
@@ -250,9 +251,11 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     if (conditional === undefined && character === "[" && command[index + 1] === "[") { conditional = "[["; index += 1; continue; }
     if (conditional === undefined && character === "(" && command[index + 1] === "(") { conditional = "(("; index += 1; continue; }
     if (character === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
-      const delimiter = shellWordAt(command, index + 2);
+      const stripTabs = command[index + 2] === "-";
+      const delimiterStart = index + 2 + (stripTabs ? 1 : 0);
+      const delimiter = shellWordAt(command, delimiterStart);
       const bodyStart = command.indexOf("\n", index + 2);
-      if (delimiter !== undefined && bodyStart >= 0) heredocSkipEnd = shellHeredocEnd(command, index + 2, delimiter);
+      if (delimiter !== undefined && bodyStart >= 0) heredocSkipEnd = shellHeredocEnd(command, delimiterStart, delimiter, stripTabs);
       else index += 1;
       continue;
     }
