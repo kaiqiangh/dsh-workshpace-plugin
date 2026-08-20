@@ -177,7 +177,7 @@ function shellWordAt(command: string, start: number): string | undefined {
       index += 1;
       continue;
     }
-    if (/\s|[;&|]/u.test(character)) break;
+    if (/\s|[;&|<>]/u.test(character)) break;
     value += character;
   }
   return value || undefined;
@@ -196,7 +196,7 @@ function shellTokenEnd(command: string, start: number): number {
     }
     if (character === "'" || character === '"') { quote = character; continue; }
     if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
-    if (/\s|[;&|]/u.test(character)) return index;
+    if (/\s|[;&|<>]/u.test(character)) return index;
   }
   return command.length;
 }
@@ -283,6 +283,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
           if (optionsValid) for (const directTarget of directTargets) add(directTarget);
         } else {
           let optionsValid = true;
+          const directTargets: string[] = [];
           while (target !== undefined && !["#", "<", ">"].includes(target)) {
             if (target === "--") {
               targetStart = shellTokenEnd(command, targetStart);
@@ -291,11 +292,11 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
             }
             if (target.startsWith("-")) {
               if (!["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) && !target.startsWith("--output-error=")) { optionsValid = false; break; }
-            } else add(target);
+            } else directTargets.push(target);
             targetStart = shellTokenEnd(command, targetStart);
             target = shellWordOnLine(command, targetStart);
           }
-          if (!optionsValid) continue;
+          if (optionsValid) for (const directTarget of directTargets) add(directTarget);
         }
       }
     }
