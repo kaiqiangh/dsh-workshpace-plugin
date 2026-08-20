@@ -42,13 +42,17 @@ export function buildWorkspaceGitGraph(commits: readonly GitCommit[]): readonly 
     const lane = Math.max(0, lanes.indexOf(commit.sha));
     if (lanes.indexOf(commit.sha) === -1) lanes.splice(lane, 0, commit.sha);
     const before = [...lanes];
-    const parentLanes = (commit.parents ?? []).map((parent) => {
-      const existing = before.indexOf(parent);
-      return existing === -1 ? lane : existing;
+    lanes.splice(lane, 1);
+    const parentLanes = (commit.parents ?? []).map((parent, index) => {
+      const existing = lanes.indexOf(parent);
+      if (existing !== -1) return existing;
+      const insertion = Math.min(lane + index, lanes.length);
+      lanes.splice(insertion, 0, parent);
+      return insertion;
     });
-    lanes.splice(lane, 1, ...(commit.parents ?? []));
-    const unique = lanes.filter((sha, index) => lanes.indexOf(sha) === index);
-    lanes.splice(0, lanes.length, ...unique);
+    // ponytail: the history query is already bounded; keep one lane per
+    // unseen parent so merge ancestry remains distinguishable without a full
+    // commit graph layout engine.
     rows.push(Object.freeze({ sha: commit.sha, lane, lanes: Object.freeze(before), parentLanes: Object.freeze(parentLanes) }));
   }
   return Object.freeze(rows);

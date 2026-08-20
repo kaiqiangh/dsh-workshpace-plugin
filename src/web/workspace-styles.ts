@@ -942,12 +942,18 @@ const WORKSPACE_VIEW_STYLES = `
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="oversized"],
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="parse-error"],
 [data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="stale"] {
   border-color: color-mix(in srgb, var(--dsw-warning) 50%, transparent);
   color: var(--dsw-warning);
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="error"] {
+  border-color: color-mix(in srgb, var(--dsw-danger) 50%, transparent);
+  color: var(--dsw-danger);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="unavailable"] {
   border-color: color-mix(in srgb, var(--dsw-danger) 50%, transparent);
   color: var(--dsw-danger);
 }
@@ -2265,7 +2271,9 @@ const WORKSPACE_VIEW_STYLES = `
 /* ============ v0.8: centered inspection shell ============ */
 
 [data-dsh-workspace="view"] {
+  box-sizing: border-box;
   width: min(100%, 1240px);
+  max-width: 100%;
   margin-inline: auto;
   padding: 14px 20px 40px;
   overflow-wrap: anywhere;
@@ -2566,6 +2574,111 @@ const WORKSPACE_VIEW_STYLES = `
   overflow: hidden;
 }
 
+/* v0.8 follow-up: keep the three surfaces centered and readable at narrow widths. */
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"],
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-title"],
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-actions"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-text);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-header"] > *,
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-title"] h3 {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-title"] h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-actions"] {
+  justify-content: flex-end;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar"] [data-dsw-row] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar"] [data-dsw-row]:first-child > :first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar"] select {
+  min-width: 120px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-title-row"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: start;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-select"] {
+  display: -webkit-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--dsw-text);
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-time"] {
+  min-width: 0;
+  max-width: 10rem;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-preview"] {
+  align-self: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail-header"] h3 {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--dsw-text);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] {
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-border);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button[data-dsw-primary="true"] {
+  border-color: Highlight;
+  background: Highlight;
+  color: HighlightText;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button[data-dsw-tone="danger"] {
+  border-color: color-mix(in srgb, var(--dsw-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--dsw-danger) 10%, Canvas);
+  color: var(--dsw-danger);
+}
+
 @media (max-width: 759px) {
   [data-dsh-workspace="view"] {
     padding-inline: 12px;
@@ -2584,6 +2697,15 @@ const WORKSPACE_VIEW_STYLES = `
     position: static;
     max-height: none;
     overflow: visible;
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="memory-card-title-row"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="memory-card-time"] {
+    max-width: 100%;
+    text-align: left;
   }
 }
 `;

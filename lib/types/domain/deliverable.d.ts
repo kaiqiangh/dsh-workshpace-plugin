@@ -1,5 +1,5 @@
 import type { PreviewDescriptor } from "./preview.ts";
-export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale" | "deleted";
+export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "parse-error" | "stale" | "deleted" | "unavailable";
 export interface WorkspaceDeliverableSource {
     readonly sessionId: string;
     readonly workspaceId: string;

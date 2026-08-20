@@ -4,7 +4,7 @@ import { normalizeWorkspacePath } from "../domain/path.ts";
 
 export type { WorkspaceDeliverable, WorkspaceDeliverablePreview, WorkspaceDeliverableSource } from "../domain/deliverable.ts";
 
-export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "stale" | "deleted" | "error";
+export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "parse-error" | "stale" | "deleted" | "unavailable" | "error";
 
 export interface WorkspaceArtifactView {
   readonly items: readonly WorkspaceDeliverable[];
@@ -39,7 +39,7 @@ export interface WorkspaceDownloadRuntime {
   readonly revokeObjectURL: (url: string) => void;
 }
 
-const previewStatuses: readonly WorkspaceDeliverable["preview"][] = ["available", "unsupported", "oversized", "stale", "deleted"];
+const previewStatuses: readonly WorkspaceDeliverable["preview"][] = ["available", "unsupported", "oversized", "parse-error", "stale", "deleted", "unavailable"];
 const safeOpaque = /^[A-Za-z0-9:_-]+$/u;
 const safeMediaType = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u;
 
@@ -115,8 +115,10 @@ function detailStatus(descriptor: PreviewDescriptor): WorkspaceArtifactDetailSta
   if (descriptor.type === "unsupported") return "unsupported";
   if (descriptor.type !== "error") return "ready";
   if (descriptor.code === "FILE_TOO_LARGE") return "oversized";
+  if (descriptor.code === "INVALID_JSON" || descriptor.code === "INVALID_CSV") return "parse-error";
   if (descriptor.code === "RESOURCE_STALE") return "stale";
   if (descriptor.code === "FILE_NOT_FOUND") return "deleted";
+  if (descriptor.code === "PERMISSION_DENIED" || descriptor.code === "PROVIDER_UNAVAILABLE") return "unavailable";
   return "error";
 }
 

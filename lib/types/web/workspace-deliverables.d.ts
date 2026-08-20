@@ -1,7 +1,7 @@
 import type { WorkspaceDeliverable } from "../domain/deliverable.ts";
 import type { PreviewDescriptor } from "../domain/preview.ts";
 export type { WorkspaceDeliverable, WorkspaceDeliverablePreview, WorkspaceDeliverableSource } from "../domain/deliverable.ts";
-export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "stale" | "deleted" | "error";
+export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "parse-error" | "stale" | "deleted" | "unavailable" | "error";
 export interface WorkspaceArtifactView {
     readonly items: readonly WorkspaceDeliverable[];
     readonly selected?: WorkspaceDeliverable;

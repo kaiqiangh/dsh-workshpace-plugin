@@ -40,6 +40,8 @@ dsh web
 
 Open [http://127.0.0.1:3080/](http://127.0.0.1:3080/) in a browser. Restart the Web UI after rebuilding the plugin so it loads the latest bundle.
 
+For a source change, run `npm run build`, stop the current `dsh web` process, and start `dsh web` again. Re-run `dsh plugin --profile web add ...` only when the plugin registration or linked path changed; rebuilding a linked plugin only requires a Web restart.
+
 ## Use Workspace
 
 1. Open the Harness Web UI and select a model.

@@ -51,8 +51,10 @@ export type WorkspaceMessageKey =
   | "artifacts.previewUnsupported"
   | "artifacts.previewAvailable"
   | "artifacts.previewOversized"
+  | "artifacts.previewParseError"
   | "artifacts.previewStale"
   | "artifacts.previewDeleted"
+  | "artifacts.previewUnavailableState"
   | "artifacts.copyPath"
   | "artifacts.copied"
   | "artifacts.copyUnsupported"
@@ -232,6 +234,9 @@ export type WorkspaceMessageKey =
   | "preview.imageAlt"
   | "preview.resourceUnavailable"
   | "preview.previewUnavailable"
+  | "preview.mermaidDiagram"
+  | "preview.mermaidSource"
+  | "preview.mermaidLimit"
   | "preview.downloadUnavailable"
   | "preview.downloadAction"
   | "preview.mermaidReady"
@@ -364,8 +369,10 @@ const table: MessageTable = {
   "artifacts.previewUnsupported": { en: "Preview unavailable", zh: "预览不可用" },
   "artifacts.previewAvailable": { en: "Preview available", zh: "可预览" },
   "artifacts.previewOversized": { en: "Too large to preview", zh: "过大，无法预览" },
+  "artifacts.previewParseError": { en: "Preview data is malformed", zh: "预览数据格式错误" },
   "artifacts.previewStale": { en: "Preview outdated", zh: "预览已过期" },
   "artifacts.previewDeleted": { en: "Deleted in this session", zh: "已在本会话中删除" },
+  "artifacts.previewUnavailableState": { en: "Source is unavailable", zh: "源文件当前不可用" },
   "artifacts.copyPath": { en: "Copy path", zh: "复制路径" },
   "artifacts.copied": { en: "Path copied", zh: "路径已复制" },
   "artifacts.copyUnsupported": { en: "Copy is unavailable in this browser; select the path manually.", zh: "当前浏览器不支持复制；请手动选择路径。" },
@@ -545,6 +552,9 @@ const table: MessageTable = {
   "preview.imageAlt": { en: "Workspace image", zh: "工作区图片" },
   "preview.resourceUnavailable": { en: "Preview resource is unavailable", zh: "预览资源不可用" },
   "preview.previewUnavailable": { en: "Preview unavailable: {reason}. Download is unavailable for this file.", zh: "预览不可用：{reason}。此文件不支持下载。" },
+  "preview.mermaidDiagram": { en: "Mermaid diagram", zh: "Mermaid 图表" },
+  "preview.mermaidSource": { en: "Mermaid source", zh: "Mermaid 源码" },
+  "preview.mermaidLimit": { en: "Only the first 16 Mermaid diagrams are rendered in this preview.", zh: "此预览最多渲染前 16 个 Mermaid 图表。" },
   "preview.downloadUnavailable": { en: "Download is unavailable for this file.", zh: "此文件不支持下载。" },
   "preview.downloadAction": { en: "Download {name}", zh: "下载{name}" },
   "preview.mermaidReady": { en: "Mermaid diagram rendered.", zh: "Mermaid 图表已渲染。" },

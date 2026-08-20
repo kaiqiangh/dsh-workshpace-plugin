@@ -163,12 +163,14 @@ export function createWorkspaceMarkdownContent(text: string): ReactNode {
 function WorkspaceMarkdownView({ html }: { readonly html: string }): ReactNode {
   const ref = useRef<HTMLDivElement | null>(null);
   const [mermaidStatus, setMermaidStatus] = useState<"idle" | "ready" | "fallback">("idle");
+  const [mermaidLimited, setMermaidLimited] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (el === null) return undefined;
     let active = true;
     void enhanceMermaidBlocks(el, mermaidTheme(shellIsDark())).then((count) => {
       if (!active) return;
+      setMermaidLimited(el.dataset.dshMermaidTruncated === "true");
       setMermaidStatus(count === 0 ? "idle" : el.querySelector(".dsh-workspace-mermaid") ? "ready" : "fallback");
     });
     const stopTheme = watchShellTheme((isDark) => {
@@ -179,6 +181,7 @@ function WorkspaceMarkdownView({ html }: { readonly html: string }): ReactNode {
   return createElement("div", { "data-dsh-workspace-preview": "markdown" },
     mermaidStatus === "ready" && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-status" }, t("preview.mermaidReady")),
     mermaidStatus === "fallback" && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-status" }, t("preview.mermaidFallback")),
+    mermaidLimited && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-limit" }, t("preview.mermaidLimit")),
     createElement("div", { ref, dangerouslySetInnerHTML: { __html: html } }),
   );
 }

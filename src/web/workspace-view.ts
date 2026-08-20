@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import { createElement, useState, type ReactNode } from "react";
 
 import type { WorkspaceSurfaceComponent } from "./workspace-styles.ts";
 import { t, useWorkspaceLocale } from "./workspace-i18n.ts";
@@ -61,15 +61,33 @@ export interface WorkspaceConversationViewOptions {
   readonly summary?: WorkspaceSurfaceComponent;
 }
 
+const WORKSPACE_TAB_IDS = [
+  "dsh-workspace-view-tab-artifacts",
+  "dsh-workspace-view-tab-memory",
+  "dsh-workspace-view-tab-git",
+] as const;
+
 function activateWorkspaceTab(event: { readonly key?: string; readonly currentTarget?: { readonly htmlFor?: string }; preventDefault: () => void }): void {
-  if (event.key !== "Enter" && event.key !== " ") return;
+  const key = event.key;
+  if (key !== "Enter" && key !== " " && key !== "ArrowRight" && key !== "ArrowLeft" && key !== "Home" && key !== "End") return;
   const id = event.currentTarget?.htmlFor;
   if (!id || typeof document === "undefined") return;
-  const input = document.getElementById(id) as HTMLInputElement | null;
+  const current = WORKSPACE_TAB_IDS.indexOf(id as typeof WORKSPACE_TAB_IDS[number]);
+  const next = key === "ArrowRight"
+    ? WORKSPACE_TAB_IDS[(current + 1) % WORKSPACE_TAB_IDS.length]
+    : key === "ArrowLeft"
+      ? WORKSPACE_TAB_IDS[(current - 1 + WORKSPACE_TAB_IDS.length) % WORKSPACE_TAB_IDS.length]
+      : key === "Home"
+        ? WORKSPACE_TAB_IDS[0]
+        : key === "End"
+          ? WORKSPACE_TAB_IDS[WORKSPACE_TAB_IDS.length - 1]
+          : id;
+  const input = document.getElementById(next) as HTMLInputElement | null;
   if (!input) return;
   event.preventDefault();
   input.click();
-  input.focus();
+  const label = document.querySelector(`[for="${next}"]`) as HTMLElement | null;
+  label?.focus();
 }
 
 /**
@@ -85,21 +103,40 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
     // summary) cascade from this single subscription.
     useWorkspaceLocale();
     // v0.7 (IA #125): the third tab is the Git tab (hosts Changes/History).
+    const [activeTab, setActiveTab] = useState<typeof WORKSPACE_TAB_IDS[number]>(WORKSPACE_TAB_IDS[0]);
+    const tab = (id: typeof WORKSPACE_TAB_IDS[number], label: string, panelId: string): ReactNode => createElement("label", {
+      key: id,
+      role: "tab",
+      tabIndex: activeTab === id ? 0 : -1,
+      "aria-selected": activeTab === id,
+      "aria-controls": panelId,
+      htmlFor: id,
+      "data-dsh-workspace": "panel-tab",
+      onKeyDown: activateWorkspaceTab,
+    }, label);
     const children: ReactNode[] = [];
     if (options.summary) children.push(createElement(options.summary, { ...props, key: "workspace-summary" }));
     children.push(
-      createElement("input", { key: "tab-input-artifacts", id: "dsh-workspace-view-tab-artifacts", name: "dsh-workspace-view-tab", type: "radio", defaultChecked: true, "data-dsh-workspace": "tab-input", "aria-label": t("view.artifacts") }),
-      createElement("input", { key: "tab-input-memory", id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.memory") }),
-      createElement("input", { key: "tab-input-git", id: "dsh-workspace-view-tab-git", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.git") }),
-      createElement("div", { key: "panel-tabs", role: "group", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
-        createElement("label", { key: "tab-artifacts", tabIndex: 0, htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab", onKeyDown: activateWorkspaceTab }, t("view.artifacts")),
-        createElement("label", { key: "tab-memory", tabIndex: 0, htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab", onKeyDown: activateWorkspaceTab }, t("view.memory")),
-        createElement("label", { key: "tab-git", tabIndex: 0, htmlFor: "dsh-workspace-view-tab-git", "data-dsh-workspace": "panel-tab", onKeyDown: activateWorkspaceTab }, t("view.git")),
+      ...WORKSPACE_TAB_IDS.map((id, index) => createElement("input", {
+        key: `tab-input-${id}`,
+        id,
+        name: "dsh-workspace-view-tab",
+        type: "radio",
+        checked: activeTab === id,
+        onChange: () => setActiveTab(id),
+        "data-dsh-workspace": "tab-input",
+        "aria-hidden": "true",
+        tabIndex: -1,
+      })),
+      createElement("div", { key: "panel-tabs", role: "tablist", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
+        tab(WORKSPACE_TAB_IDS[0], t("view.artifacts"), "dsh-workspace-view-panel-artifacts"),
+        tab(WORKSPACE_TAB_IDS[1], t("view.memory"), "dsh-workspace-view-panel-memory"),
+        tab(WORKSPACE_TAB_IDS[2], t("view.git"), "dsh-workspace-view-panel-git"),
       ),
       createElement("div", { key: "panel-content", "data-dsh-workspace": "panel-content" },
-        createElement("div", { key: "tab-content-artifacts", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
-        createElement("div", { key: "tab-content-memory", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
-        createElement("div", { key: "tab-content-git", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "git" }, createElement(options.git, props)),
+        createElement("div", { key: "tab-content-artifacts", id: "dsh-workspace-view-panel-artifacts", role: "tabpanel", "aria-labelledby": WORKSPACE_TAB_IDS[0], hidden: activeTab !== WORKSPACE_TAB_IDS[0], "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),
+        createElement("div", { key: "tab-content-memory", id: "dsh-workspace-view-panel-memory", role: "tabpanel", "aria-labelledby": WORKSPACE_TAB_IDS[1], hidden: activeTab !== WORKSPACE_TAB_IDS[1], "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "memory" }, createElement(options.memory, props)),
+        createElement("div", { key: "tab-content-git", id: "dsh-workspace-view-panel-git", role: "tabpanel", "aria-labelledby": WORKSPACE_TAB_IDS[2], hidden: activeTab !== WORKSPACE_TAB_IDS[2], "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "git" }, createElement(options.git, props)),
       ),
     );
     return createElement("section", { role: "region", "aria-label": t("view.workspace"), "data-dsh-workspace": "view" }, children);

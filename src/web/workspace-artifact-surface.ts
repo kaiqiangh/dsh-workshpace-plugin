@@ -91,8 +91,10 @@ function artifactPreviewLabel(preview: WorkspaceDeliverable["preview"]): string 
   switch (preview) {
     case "unsupported": return t("artifacts.previewUnsupported");
     case "oversized": return t("artifacts.previewOversized");
+    case "parse-error": return t("artifacts.previewParseError");
     case "stale": return t("artifacts.previewStale");
     case "deleted": return t("artifacts.previewDeleted");
+    case "unavailable": return t("artifacts.previewUnavailableState");
     default: return t("artifacts.previewAvailable");
   }
 }
@@ -322,11 +324,15 @@ export function createWorkspaceArtifactSurfaceComponent(
         const statusMessage = detailValue.status === "unsupported"
           ? t("artifacts.previewUnsupported")
           : detailValue.status === "oversized"
-            ? t("artifacts.previewOversized")
+              ? t("artifacts.previewOversized")
+            : detailValue.status === "parse-error"
+              ? t("artifacts.previewParseError")
               : detailValue.status === "stale"
                 ? t("artifacts.previewStale")
                 : detailValue.status === "deleted"
                   ? t("artifacts.previewDeleted")
+                  : detailValue.status === "unavailable"
+                    ? t("artifacts.previewUnavailableState")
                 : detailValue.message;
         const state = { descriptor: detailValue.descriptor, status: detailValue.status, message: statusMessage };
         setTabStates((states) => new Map(states).set(artifact.id, state));

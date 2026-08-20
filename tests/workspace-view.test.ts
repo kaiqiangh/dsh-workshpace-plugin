@@ -47,14 +47,18 @@ test("renders one Workspace conversation view with artifact, memory, and git tab
   assert.equal(section.props["data-dsh-workspace"], "view");
   // Tab inputs: artifacts is the default (checked) tab.
   const artifactsInput = tree.root.find((node) => node.props.id === "dsh-workspace-view-tab-artifacts");
-  assert.equal(artifactsInput.props.defaultChecked, true);
+  assert.equal(artifactsInput.props.checked, true);
   assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-memory").length, 1);
   assert.equal(tree.root.findAll((node) => node.props.id === "dsh-workspace-view-tab-git").length, 1);
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "panel-tabs").length, 1);
+  assert.equal(tree.root.find((node) => node.props["data-dsh-workspace"] === "panel-tabs").props.role, "tablist");
+  assert.equal(tree.root.findAll((node) => node.props.role === "tab").length, 3);
   // Each surface is mounted in its own tab-content panel.
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "artifacts").length, 1);
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "memory").length, 1);
   assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-tab"] === "git").length, 1);
+  assert.equal(tree.root.find((node) => node.props["data-dsh-workspace-tab"] === "artifacts").props.hidden, false);
+  assert.equal(tree.root.find((node) => node.props["data-dsh-workspace-tab"] === "memory").props.hidden, true);
 });
 
 test("renders the summary block above the tabs when provided", () => {

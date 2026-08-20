@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import type { PreviewDescriptor } from "./preview.ts";
 import { normalizeWorkspacePath, type WorkspacePath } from "./workspace.ts";
 
-export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale" | "deleted";
+export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "parse-error" | "stale" | "deleted" | "unavailable";
 
 export interface WorkspaceDeliverableSource {
   readonly sessionId: string;
@@ -76,7 +76,11 @@ export function safeDownloadName(pathInput: string, mediaType = "application/oct
 function previewState(descriptor: PreviewDescriptor): WorkspaceDeliverablePreview {
   if (descriptor.type === "error") {
     if (descriptor.code === "FILE_NOT_FOUND") return "deleted";
-    return descriptor.code === "FILE_TOO_LARGE" ? "oversized" : descriptor.code === "RESOURCE_STALE" ? "stale" : "unsupported";
+    if (descriptor.code === "FILE_TOO_LARGE") return "oversized";
+    if (descriptor.code === "RESOURCE_STALE") return "stale";
+    if (descriptor.code === "INVALID_JSON" || descriptor.code === "INVALID_CSV") return "parse-error";
+    if (descriptor.code === "PERMISSION_DENIED" || descriptor.code === "PROVIDER_UNAVAILABLE") return "unavailable";
+    return "unsupported";
   }
   if (descriptor.type === "unsupported") return descriptor.reason.includes("large") ? "oversized" : "unsupported";
   return "available";

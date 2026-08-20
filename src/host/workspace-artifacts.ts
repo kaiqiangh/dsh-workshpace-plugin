@@ -109,8 +109,29 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
 }
 
-function operationFromResult(tool: string | undefined, content: readonly unknown[]): "create" | "update" | undefined {
-  if (tool === undefined || !/^(?:write|write[-_]file|file[-_]write|create[-_]file)$/i.test(tool)) return undefined;
+function shellWritePaths(tool: string | undefined, args: unknown): readonly string[] {
+  if (tool === undefined || !/^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(tool)) return [];
+  const command = record(args)?.command;
+  if (typeof command !== "string") return [];
+  // ponytail: parse only explicit shell write targets; generated-script output
+  // still needs filesystem reconciliation rather than unsafe command inference.
+  const paths: string[] = [];
+  const add = (value: string | undefined): void => {
+    const path = value?.trim();
+    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split(/[\\/]/u).includes("..") || /[$`*?{}]/u.test(path)) return;
+    if (!paths.includes(path)) paths.push(path);
+  };
+  const redirection = /(?:^|[\s;&|])\d*>>?\s*(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/gu;
+  for (const match of command.matchAll(redirection)) add(match[1] ?? match[2] ?? match[3]);
+  const directTarget = /(?:^|[;&|]\s*)(?:tee|touch)(?:\s+-[^\s]+)*\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/gu;
+  for (const match of command.matchAll(directTarget)) add(match[1] ?? match[2] ?? match[3]);
+  return paths;
+}
+
+function operationFromResult(tool: string | undefined, args: unknown, content: readonly unknown[]): "create" | "update" | undefined {
+  const shellPaths = shellWritePaths(tool, args);
+  const firstPartyWrite = tool !== undefined && /^(?:write|write[-_]file|file[-_]write|create[-_]file)$/i.test(tool);
+  if (!firstPartyWrite && shellPaths.length === 0) return undefined;
   const textParts: string[] = [];
   const collectText = (items: readonly unknown[]): void => {
     for (const item of items) {
@@ -124,6 +145,7 @@ function operationFromResult(tool: string | undefined, content: readonly unknown
   const text = textParts.join("\n");
   if (/\bCreated file\b/i.test(text)) return "create";
   if (/\bUpdated file\b/i.test(text)) return "update";
+  if (shellPaths.length > 0) return "create";
   return undefined;
 }
 
@@ -153,7 +175,8 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
     if (!callId) continue;
     const call = calls.get(callId);
     const meta = record(data.meta) ?? { locations: [] };
-    const operation = operationFromResult(call?.name, content);
+    const shellPaths = shellWritePaths(call?.name, call?.arguments);
+    const operation = operationFromResult(call?.name, call?.arguments, content);
     records.push({
       seq: event.seq,
       time: event.time,
@@ -162,7 +185,11 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
         tool: call?.name ?? "tool",
         callId,
         arguments: call?.arguments ?? {},
-        result: operation === undefined ? meta : { ...meta, operation },
+        result: operation === undefined ? meta : {
+          ...meta,
+          operation,
+          ...(shellPaths.length > 0 ? { paths: shellPaths } : {}),
+        },
         ok: block?.isError !== true,
       },
     });
@@ -255,8 +282,9 @@ export class WorkspaceArtifactCarrier {
         next.set(artifact.id, { path: item.path, artifact, descriptor });
         continue;
       }
+      let info: { readonly size: number; readonly mtimeMs: number } | undefined;
       try {
-        const info = await statArtifact(this.root, item.path);
+        info = await statArtifact(this.root, item.path);
         const cached = this.descriptorCache.get(item.path);
         let descriptor: PreviewDescriptor;
         if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
@@ -272,10 +300,20 @@ export class WorkspaceArtifactCarrier {
           { name: item.path, mtimeMs: info.mtimeMs },
         );
         next.set(artifact.id, { path: item.path, artifact, descriptor });
-      } catch {
-        // A deleted/moved artifact is dropped from this snapshot; the projection
-        // decides what remains in scope, not a transient stat failure.
-        continue;
+      } catch (error) {
+        const code = error instanceof PreviewPanelError ? error.code : "PROVIDER_UNAVAILABLE";
+        const descriptor: PreviewDescriptor = {
+          type: "error",
+          code,
+          message: error instanceof Error ? error.message : "Artifact is unavailable",
+        };
+        const artifact = createWorkspaceDeliverable(
+          descriptor,
+          { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
+          info?.size ?? 0,
+          { logicalPath: item.path, mediaType: "application/octet-stream", mtimeMs: info?.mtimeMs ?? item.createdAt },
+        );
+        next.set(artifact.id, { path: item.path, artifact, descriptor });
       }
     }
     this.artifacts = next;
