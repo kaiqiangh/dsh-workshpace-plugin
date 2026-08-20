@@ -76,7 +76,7 @@ export function workspaceSummaryFor(agent: SummaryAgent): WorkspaceSummaryData |
   // Operational Budget guard: folding a very large session log stays bounded
   // (wayfinder #112). The most recent records dominate the summary, so a tail
   // window preserves the useful signal without unbounded resume cost.
-  const records = sessionToolRecords(agent.session?.events ?? []);
+  const records = sessionToolRecords(agent.session?.events ?? [], root);
   const folded = records.length > SUMMARY_FOLD_MAX_RECORDS ? records.slice(-SUMMARY_FOLD_MAX_RECORDS) : records;
   observer.resume(folded);
   const files = [...observer.projection.files.values()];

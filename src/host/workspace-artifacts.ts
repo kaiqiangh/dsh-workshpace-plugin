@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { ActivityProjection } from "../domain/activity.ts";
 import { deriveArtifacts } from "../domain/activity.ts";
@@ -109,6 +109,44 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
 }
 
+const PATH_FIELDS = ["path", "file", "filePath", "file_path", "filename", "target"] as const;
+const PATH_COLLECTIONS = ["paths", "files", "locations", "diffs"] as const;
+
+function workspaceRelativePath(value: string, root?: string): string | undefined {
+  const input = value.trim();
+  if (!input) return undefined;
+  if (!isAbsolute(input) && !/^[A-Za-z]:[\\/]/u.test(input)) return input;
+  if (!root) return undefined;
+  const relativePath = relative(resolve(root), resolve(input));
+  if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return undefined;
+  return relativePath.split(sep).join("/");
+}
+
+function sanitizeToolPayload(value: unknown, root?: string): unknown {
+  const source = record(value);
+  if (!source) return value;
+  const sanitized = { ...source };
+  for (const field of PATH_FIELDS) {
+    const path = sanitized[field];
+    if (typeof path !== "string") continue;
+    const relativePath = workspaceRelativePath(path, root);
+    if (relativePath === undefined) delete sanitized[field];
+    else sanitized[field] = relativePath;
+  }
+  for (const field of PATH_COLLECTIONS) {
+    const collection = sanitized[field];
+    if (!Array.isArray(collection)) continue;
+    sanitized[field] = collection.flatMap((item) => {
+      if (typeof item === "string") {
+        const relativePath = workspaceRelativePath(item, root);
+        return relativePath === undefined ? [] : [relativePath];
+      }
+      return [sanitizeToolPayload(item, root)];
+    });
+  }
+  return sanitized;
+}
+
 function shellWritePaths(tool: string | undefined, args: unknown): readonly string[] {
   if (tool === undefined || !/^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(tool)) return [];
   const command = record(args)?.command;
@@ -149,7 +187,7 @@ function operationFromResult(tool: string | undefined, args: unknown, content: r
   return undefined;
 }
 
-function toSessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[] {
+function toSessionToolRecords(events: readonly SessionEventLike[], workspaceRoot?: string): readonly NativeDurableToolRecord[] {
   const calls = new Map<string, { readonly name: string; readonly arguments: unknown }>();
   const records: NativeDurableToolRecord[] = [];
   for (const event of events) {
@@ -160,7 +198,7 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
       if (typeof callId === "string" && typeof name === "string") {
         let args: unknown = {};
         if (typeof data.arguments === "string") {
-          try { args = JSON.parse(data.arguments) as unknown; } catch { args = {}; }
+          try { args = sanitizeToolPayload(JSON.parse(data.arguments) as unknown, workspaceRoot); } catch { args = {}; }
         }
         calls.set(callId, { name, arguments: args });
       }
@@ -174,7 +212,7 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
     const callId = typeof source?.callId === "string" ? source.callId : typeof block?.toolCallId === "string" ? block.toolCallId : undefined;
     if (!callId) continue;
     const call = calls.get(callId);
-    const meta = record(data.meta) ?? { locations: [] };
+    const meta = sanitizeToolPayload(record(data.meta) ?? { locations: [] }, workspaceRoot) as Record<string, unknown>;
     const shellPaths = shellWritePaths(call?.name, call?.arguments);
     const operation = operationFromResult(call?.name, call?.arguments, content);
     records.push({
@@ -357,6 +395,6 @@ export class WorkspaceArtifactCarrier {
   }
 }
 
-export function sessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[] {
-  return toSessionToolRecords(events);
+export function sessionToolRecords(events: readonly SessionEventLike[], workspaceRoot?: string): readonly NativeDurableToolRecord[] {
+  return toSessionToolRecords(events, workspaceRoot);
 }

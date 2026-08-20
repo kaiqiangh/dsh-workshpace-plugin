@@ -10,7 +10,7 @@ import {
 import { createElement, useEffect, useState } from "react";
 import { CodeBlock, JsonTree, MarkdownText } from "@deepseek-ai/dsh-client-ui-primitives";
 import { TYPERT_REMOTE } from "./typert.remote-client.js";
-import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
+import type { RemoteResult, TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
 import { createWorkspacePreviewRenderer, type WorkspacePreviewRenderOptions } from "./web/workspace-preview-adapters.ts";
 import type { PreviewDescriptor } from "./domain/preview.ts";
 import {
@@ -35,6 +35,7 @@ import {
   type WorkspaceViewSlotRegistry,
 } from "./web/workspace-view.ts";
 import { workspaceSummaryBlockComponent, type WorkspaceSummaryRemote } from "./web/workspace-summary-block.ts";
+import { unwrapRemote } from "./web/workspace-remote.ts";
 import type { WorkspaceSummaryData } from "./host/workspace-summary.ts";
 import { startWorkspaceLocaleSync } from "./web/workspace-i18n.ts";
 
@@ -106,7 +107,7 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             gitHistory: (options: Parameters<WorkspaceGitRemote["gitHistory"]>[0]) => call("gitHistory", options),
             gitCommit: (sha: Parameters<WorkspaceGitRemote["gitCommit"]>[0]) => call("gitCommit", sha),
             gitRepoInfo: () => call("gitRepoInfo"),
-            workspaceSummary: () => call<WorkspaceSummaryData | undefined>("workspaceSummary"),
+            workspaceSummary: async () => unwrapRemote(await call<RemoteResult<WorkspaceSummaryData | undefined>>("workspaceSummary")),
             memoryOpen: (request: Parameters<WorkspaceMemoryRemote["memoryOpen"]>[0]) => call("memoryOpen", request),
             memoryList: (request: Parameters<WorkspaceMemoryRemote["memoryList"]>[0], options: Parameters<WorkspaceMemoryRemote["memoryList"]>[1]) => call("memoryList", request, options),
             memorySearch: (request: Parameters<WorkspaceMemoryRemote["memorySearch"]>[0], query: Parameters<WorkspaceMemoryRemote["memorySearch"]>[1], options: Parameters<WorkspaceMemoryRemote["memorySearch"]>[2]) => call("memorySearch", request, query, options),

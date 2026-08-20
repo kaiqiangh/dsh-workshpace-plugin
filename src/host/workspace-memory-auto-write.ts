@@ -85,7 +85,7 @@ export async function writeAutoFact(
   const { identity, root, snapshot } = workspaceMemoryContextFor(agent);
   const request = { scope: "session" as const };
   const context = { identity, root };
-  const records = sessionToolRecords(agent.session?.events ?? []);
+  const records = sessionToolRecords(agent.session?.events ?? [], root);
   const observer = new SessionActivityObserver(identity, snapshot.baseline);
   observer.resume(records);
   const files = [...observer.projection.files.values()];

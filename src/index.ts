@@ -363,7 +363,7 @@ export class WorkspaceService extends TypertRemoteService {
           readonly time?: number;
           readonly type: string;
           readonly data?: Record<string, unknown>;
-        }[]),
+        }[], root),
       });
       this.artifactAgentId = carrierKey;
       const webServer = this.ctx.get("webServer") as WebRouteRegistrar | undefined;

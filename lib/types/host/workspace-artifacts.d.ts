@@ -92,4 +92,4 @@ export declare class WorkspaceArtifactCarrier {
     dispose(): void;
     private projection;
 }
-export declare function sessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[];
+export declare function sessionToolRecords(events: readonly SessionEventLike[], workspaceRoot?: string): readonly NativeDurableToolRecord[];

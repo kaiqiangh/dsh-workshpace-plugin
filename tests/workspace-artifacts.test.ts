@@ -67,6 +67,26 @@ test("derives artifacts from the Harness write result envelope", async () => {
   carrier.dispose();
 });
 
+test("replays standard DSH read paths without leaking host paths into the domain", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  const artifactPath = join(root, "browser-artifact.md");
+  await writeFile(artifactPath, "# Browser artifact\n", "utf8");
+  const workspace = startWorkspace({ sessionId: "session-absolute-read", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-write", name: "write", arguments: JSON.stringify({ file_path: "browser-artifact.md" }) } },
+    { seq: 1, type: "tool/result", data: { message: { source: { callId: "call-write" }, content: [{ type: "tool-result", toolCallId: "call-write", content: [{ type: "text", text: "Created file" }] }] }, meta: { diffs: [] } } },
+    { seq: 2, type: "tool/call", data: { callId: "call-read", name: "read", arguments: JSON.stringify({ file_path: artifactPath }) } },
+    { seq: 3, type: "tool/result", data: { message: { source: { callId: "call-read" }, content: [{ type: "tool-result", toolCallId: "call-read" }] }, meta: { path: artifactPath } } },
+  ] as const;
+  const records = sessionToolRecords(events, root);
+  assert.equal((records[1]?.data?.arguments as { readonly file_path?: string })?.file_path, "browser-artifact.md");
+  assert.equal((records[1]?.data?.result as { readonly path?: string })?.path, "browser-artifact.md");
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => records });
+  assert.equal((await carrier.metadata()).length, 1);
+  carrier.dispose();
+  await rm(root, { recursive: true, force: true });
+});
+
 test("replays a DSH bash redirection as a Markdown artifact", async () => {
   const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
   await writeFile(join(root, "report.md"), "# Report\n", "utf8");
