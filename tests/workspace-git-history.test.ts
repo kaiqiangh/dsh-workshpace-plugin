@@ -117,6 +117,7 @@ test("gitHistory clamps to GIT_HISTORY_MAX_COMMITS", async () => {
 test("gitCommit returns parsed commit, per-file numstat stats, and a unified diff", async () => {
   const root = await repo();
   await commitFile(root, "a.ts", "const one = 1;\n", "add a.ts");
+  const rootSha = run(root, ["rev-parse", "HEAD"]);
   await writeFile(join(root, "a.ts"), "const one = 1;\nconst two = 2;\n", "utf8");
   run(root, ["add", "a.ts"]);
   run(root, ["commit", "-qm", "extend a.ts"]);
@@ -134,6 +135,8 @@ test("gitCommit returns parsed commit, per-file numstat stats, and a unified dif
   assert.match(detail.diff, /^diff --git a\/a\.ts b\/a\.ts/mu);
   assert.match(detail.diff, /\+const two = 2;/mu);
   assert.equal(detail.diffTruncated, false);
+  const rootDetail = await gitCommit(root, rootSha);
+  assert.deepEqual(rootDetail.files.map((file) => [file.path, file.additions, file.deletions]), [["a.ts", 1, 0]]);
   await rm(root, { recursive: true, force: true });
 });
 

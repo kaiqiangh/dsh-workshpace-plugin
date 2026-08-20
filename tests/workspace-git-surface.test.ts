@@ -23,7 +23,7 @@ function gitRemoteFor(info: GitRepoInfo, changes: readonly GitChange[]) {
 const info = (overrides: Partial<GitRepoInfo> = {}): GitRepoInfo => ({ isGit: true, branch: "main", head: "abc1234", ahead: 0, behind: 0, ...overrides });
 
 function renderSurface(remote: ReturnType<typeof gitRemoteFor>) {
-  const render = createWorkspaceGitSurfaceComponent(remote, {}, { refreshMs: 0 });
+  const render = createWorkspaceGitSurfaceComponent(remote, {}, { refreshMs: 0, carrierWidth: 1000 });
   let tree!: TestRenderer.ReactTestRenderer;
   act(() => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
   return tree;
@@ -137,25 +137,25 @@ test("renders the Changes pane with grouped file rows, status letters, and +N -M
   await act(async () => { tree = renderSurface(remote); });
   await act(async () => {});
   await act(async () => {});
-  const rows = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "git-file-row");
+  const rows = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-item");
   assert.equal(rows.length, 3);
-  const letters = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "git-file-status").map((node) => node.children.join(""));
+  const letters = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-status-badge").map((node) => node.children.join(""));
   assert.ok(letters.includes("A"), "added rows show the A status letter");
   assert.ok(letters.includes("M"), "modified rows show the M status letter");
-  assert.ok(letters.includes("U"), "untracked rows show the U status letter");
-  const sigs = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "git-file-sig").map((node) => node.children.join(""));
-  assert.ok(sigs.includes("+1 -0"), "the selected file's loaded diff feeds its +N -M signature");
-  assert.ok(sigs.includes("+0 -0"), "unchanged diffs still render a +N -M signature");
-  assert.ok(sigs.includes("new"), "untracked rows show the new signature");
-  // The selected file's diff header shows status letter + path + mode pill.
-  const header = tree.root.find((node) => node.props["data-dsh-workspace"] === "git-diff-header");
-  assert.ok(header.findAll((node) => node.props["data-dsh-workspace"] === "git-file-status").length >= 1, "the diff header shows the status letter");
-  const diffPath = tree.root.find((node) => node.props["data-dsh-workspace"] === "git-diff-path");
-  assert.equal(diffPath.children.join(""), "src/b.ts", "the diff header shows the selected path");
-  const mode = tree.root.find((node) => node.props["data-dsh-workspace"] === "git-diff-mode");
-  assert.equal(mode.children.join(""), "unified");
+  assert.ok(letters.includes("??"), "untracked rows show the untracked status marker");
+  const sigs = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-meta").map((node) => node.children.join(""));
+  assert.ok(sigs.some((text) => text.includes("Worktree")), "the selected file shows its worktree status");
+  assert.ok(sigs.some((text) => text.includes("Index")), "staged files show their index status");
+  assert.ok(sigs.some((text) => text.includes("Untracked")), "untracked rows show their status");
+  // The selected file's rich diff header shows path, stats, mode, and navigation.
+  const header = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-file-header");
+  assert.ok(header.findAll((node) => node.props["data-dsh-workspace"] === "diff-stats").length >= 1, "the diff header shows line stats");
+  const diffTitle = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-file-title");
+  assert.equal(diffTitle.findByType("h3").children.join(""), "src/b.ts", "the diff header shows the selected path");
+  const mode = tree.root.find((node) => node.props["data-dsh-workspace"] === "diff-mode-toggle");
+  assert.ok(mode.findAllByType("button").some((node) => node.children.join("") === "Unified"));
   // Unified diff rows carry add/remove/hunk highlighting kinds.
-  const codeLines = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "git-diff-line");
+  const codeLines = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "diff-code-line");
   assert.ok(codeLines.some((node) => node.props["data-kind"] === "add"));
   assert.ok(codeLines.some((node) => node.props["data-kind"] === "hunk"));
   // The six filter chips render.
@@ -171,13 +171,13 @@ test("Changes pane filter chips narrow the visible file rows", async () => {
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = renderSurface(remote); });
   await act(async () => {});
-  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "git-file-row").length, 3);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-item").length, 3);
   const chips = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "filter-chip");
   const untrackedChip = chips.find((node) => node.children.join("") === "Untracked");
   assert.ok(untrackedChip, "the Untracked filter chip renders");
   await act(async () => { untrackedChip!.props.onClick(); });
-  const rows = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "git-file-row");
+  const rows = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "change-item");
   assert.equal(rows.length, 1, "only the untracked file remains after filtering");
-  const letter = rows[0]!.findAll((node) => node.props["data-dsh-workspace"] === "git-file-status")[0]?.children.join("");
-  assert.equal(letter, "U");
+  const letter = rows[0]!.findAll((node) => node.props["data-dsh-workspace"] === "change-status-badge")[0]?.children.join("");
+  assert.equal(letter, "??");
 });

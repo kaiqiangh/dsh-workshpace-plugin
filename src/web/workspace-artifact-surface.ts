@@ -35,7 +35,7 @@ export interface WorkspaceArtifactSurfaceOptions {
 }
 
 function descriptorFor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor {
-  const path = artifact.name as WorkspacePath;
+  const path = (artifact.logicalPath ?? artifact.name) as WorkspacePath;
   switch (preview.type) {
     case "text": return { type: "text", path, renderer: preview.renderer, ...(preview.language === undefined ? {} : { language: preview.language }), content: preview.content, truncated: preview.truncated };
     case "markdown": return { type: "markdown", path, renderer: preview.renderer, content: preview.content, truncated: preview.truncated, policy: preview.policy, ...(preview.imageUrls === undefined ? {} : { imageUrls: preview.imageUrls }) };
@@ -92,6 +92,7 @@ function artifactPreviewLabel(preview: WorkspaceDeliverable["preview"]): string 
     case "unsupported": return t("artifacts.previewUnsupported");
     case "oversized": return t("artifacts.previewOversized");
     case "stale": return t("artifacts.previewStale");
+    case "deleted": return t("artifacts.previewDeleted");
     default: return t("artifacts.previewAvailable");
   }
 }
@@ -322,9 +323,11 @@ export function createWorkspaceArtifactSurfaceComponent(
           ? t("artifacts.previewUnsupported")
           : detailValue.status === "oversized"
             ? t("artifacts.previewOversized")
-            : detailValue.status === "stale"
-              ? t("artifacts.previewStale")
-              : detailValue.message;
+              : detailValue.status === "stale"
+                ? t("artifacts.previewStale")
+                : detailValue.status === "deleted"
+                  ? t("artifacts.previewDeleted")
+                : detailValue.message;
         const state = { descriptor: detailValue.descriptor, status: detailValue.status, message: statusMessage };
         setTabStates((states) => new Map(states).set(artifact.id, state));
         setDetail(detailValue.descriptor);
@@ -402,7 +405,7 @@ export function createWorkspaceArtifactSurfaceComponent(
     const copyPath = async (): Promise<void> => {
       const artifact = selected;
       if (!artifact) return;
-      const path = artifact.name;
+      const path = artifact.logicalPath ?? artifact.name;
       const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
       if (clipboard && typeof clipboard.writeText === "function") {
         try {

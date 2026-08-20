@@ -4,7 +4,7 @@ import { normalizeWorkspacePath } from "../domain/path.ts";
 
 export type { WorkspaceDeliverable, WorkspaceDeliverablePreview, WorkspaceDeliverableSource } from "../domain/deliverable.ts";
 
-export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "stale" | "error";
+export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "stale" | "deleted" | "error";
 
 export interface WorkspaceArtifactView {
   readonly items: readonly WorkspaceDeliverable[];
@@ -39,7 +39,7 @@ export interface WorkspaceDownloadRuntime {
   readonly revokeObjectURL: (url: string) => void;
 }
 
-const previewStatuses: readonly WorkspaceDeliverable["preview"][] = ["available", "unsupported", "oversized", "stale"];
+const previewStatuses: readonly WorkspaceDeliverable["preview"][] = ["available", "unsupported", "oversized", "stale", "deleted"];
 const safeOpaque = /^[A-Za-z0-9:_-]+$/u;
 const safeMediaType = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u;
 
@@ -47,10 +47,16 @@ function safeText(value: unknown, max: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
+function safeLogicalPath(value: unknown): value is string {
+  if (!safeText(value, 4_096)) return false;
+  try { return normalizeWorkspacePath(value) === value; } catch { return false; }
+}
+
 function assertArtifact(value: WorkspaceDeliverable): WorkspaceDeliverable {
   if (!value || typeof value !== "object"
     || !safeText(value.id, 256) || !safeOpaque.test(value.id)
     || !safeText(value.name, 256) || /[\\/]/u.test(value.name) || value.name === "." || value.name === ".."
+    || (value.logicalPath !== undefined && !safeLogicalPath(value.logicalPath))
     || !safeText(value.mediaType, 256) || !safeMediaType.test(value.mediaType)
     || !Number.isSafeInteger(value.sizeBytes) || value.sizeBytes < 0
     || !previewStatuses.includes(value.preview)
@@ -75,6 +81,7 @@ function assertArtifact(value: WorkspaceDeliverable): WorkspaceDeliverable {
   return Object.freeze({
     id: value.id,
     name: value.name,
+    ...(value.logicalPath === undefined ? {} : { logicalPath: value.logicalPath }),
     mediaType: value.mediaType,
     sizeBytes: value.sizeBytes,
     ...(value.version === undefined ? {} : { version: value.version }),
@@ -87,7 +94,7 @@ function assertArtifact(value: WorkspaceDeliverable): WorkspaceDeliverable {
   });
 }
 
-/** Validate and deterministically order metadata without exposing a Workspace Path. */
+/** Validate and deterministically order metadata with safe logical locations. */
 export function normalizeWorkspaceArtifacts(input: readonly WorkspaceDeliverable[]): readonly WorkspaceDeliverable[] {
   if (!Array.isArray(input)) throw new Error("Workspace artifacts must be an array");
   const seen = new Set<string>();
@@ -109,6 +116,7 @@ function detailStatus(descriptor: PreviewDescriptor): WorkspaceArtifactDetailSta
   if (descriptor.type !== "error") return "ready";
   if (descriptor.code === "FILE_TOO_LARGE") return "oversized";
   if (descriptor.code === "RESOURCE_STALE") return "stale";
+  if (descriptor.code === "FILE_NOT_FOUND") return "deleted";
   return "error";
 }
 

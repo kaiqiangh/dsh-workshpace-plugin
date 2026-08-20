@@ -27,9 +27,11 @@ test("keeps relative document links inert in the review surface", () => {
 
 test("mermaid fences carry the source data attribute for re-render", () => {
   const html = renderWorkspaceMarkdown("```mermaid\ngraph TD\n  A-->B\n```");
+  const tilde = renderWorkspaceMarkdown("~~~mermaid\ngraph TD\n  A-->B\n~~~");
   assert.ok(html.includes('class="language-mermaid"'));
   assert.ok(html.includes("data-dsh-source"));
   assert.ok(html.includes("graph TD"));
+  assert.ok(tilde.includes('class="language-mermaid"'));
 });
 
 test("resolveWorkspaceMarkdownImage handles absolute, relative, and escaping srcs", () => {

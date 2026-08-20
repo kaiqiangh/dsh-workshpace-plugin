@@ -1,7 +1,7 @@
 import type { WorkspaceDeliverable } from "../domain/deliverable.ts";
 import type { PreviewDescriptor } from "../domain/preview.ts";
 export type { WorkspaceDeliverable, WorkspaceDeliverablePreview, WorkspaceDeliverableSource } from "../domain/deliverable.ts";
-export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "stale" | "error";
+export type WorkspaceArtifactDetailStatus = "idle" | "loading" | "ready" | "unsupported" | "oversized" | "stale" | "deleted" | "error";
 export interface WorkspaceArtifactView {
     readonly items: readonly WorkspaceDeliverable[];
     readonly selected?: WorkspaceDeliverable;
@@ -31,7 +31,7 @@ export interface WorkspaceDownloadRuntime {
     readonly createObjectURL: (blob: Blob) => string;
     readonly revokeObjectURL: (url: string) => void;
 }
-/** Validate and deterministically order metadata without exposing a Workspace Path. */
+/** Validate and deterministically order metadata with safe logical locations. */
 export declare function normalizeWorkspaceArtifacts(input: readonly WorkspaceDeliverable[]): readonly WorkspaceDeliverable[];
 export declare function createWorkspaceArtifactView(input: readonly WorkspaceDeliverable[], selectedId?: string): WorkspaceArtifactView;
 export declare function createWorkspaceArtifactDetail(artifact: WorkspaceDeliverable, descriptor?: PreviewDescriptor): WorkspaceArtifactDetail;

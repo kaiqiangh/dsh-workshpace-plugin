@@ -52,6 +52,7 @@ export type WorkspaceMessageKey =
   | "artifacts.previewAvailable"
   | "artifacts.previewOversized"
   | "artifacts.previewStale"
+  | "artifacts.previewDeleted"
   | "artifacts.copyPath"
   | "artifacts.copied"
   | "artifacts.copyUnsupported"
@@ -75,6 +76,8 @@ export type WorkspaceMessageKey =
   | "memory.location"
   | "memory.scopeKey"
   | "memory.contentPreview"
+  | "memory.lastUsed"
+  | "memory.useCount"
   | "memory.searchLabel"
   | "memory.typeFilter"
   | "memory.statusFilter"
@@ -231,6 +234,8 @@ export type WorkspaceMessageKey =
   | "preview.previewUnavailable"
   | "preview.downloadUnavailable"
   | "preview.downloadAction"
+  | "preview.mermaidReady"
+  | "preview.mermaidFallback"
   // Conversation view
   | "view.artifacts"
   | "view.memory"
@@ -360,6 +365,7 @@ const table: MessageTable = {
   "artifacts.previewAvailable": { en: "Preview available", zh: "可预览" },
   "artifacts.previewOversized": { en: "Too large to preview", zh: "过大，无法预览" },
   "artifacts.previewStale": { en: "Preview outdated", zh: "预览已过期" },
+  "artifacts.previewDeleted": { en: "Deleted in this session", zh: "已在本会话中删除" },
   "artifacts.copyPath": { en: "Copy path", zh: "复制路径" },
   "artifacts.copied": { en: "Path copied", zh: "路径已复制" },
   "artifacts.copyUnsupported": { en: "Copy is unavailable in this browser; select the path manually.", zh: "当前浏览器不支持复制；请手动选择路径。" },
@@ -383,6 +389,8 @@ const table: MessageTable = {
   "memory.location": { en: "Logical location", zh: "逻辑位置" },
   "memory.scopeKey": { en: "Scope identity", zh: "范围标识" },
   "memory.contentPreview": { en: "Rendered content", zh: "渲染内容" },
+  "memory.lastUsed": { en: "Last used", zh: "最后使用" },
+  "memory.useCount": { en: "Use count", zh: "使用次数" },
   "memory.searchLabel": { en: "Search Memory", zh: "搜索记忆" },
   "memory.typeFilter": { en: "Type filter", zh: "类型筛选" },
   "memory.statusFilter": { en: "Status filter", zh: "状态筛选" },
@@ -539,6 +547,8 @@ const table: MessageTable = {
   "preview.previewUnavailable": { en: "Preview unavailable: {reason}. Download is unavailable for this file.", zh: "预览不可用：{reason}。此文件不支持下载。" },
   "preview.downloadUnavailable": { en: "Download is unavailable for this file.", zh: "此文件不支持下载。" },
   "preview.downloadAction": { en: "Download {name}", zh: "下载{name}" },
+  "preview.mermaidReady": { en: "Mermaid diagram rendered.", zh: "Mermaid 图表已渲染。" },
+  "preview.mermaidFallback": { en: "Mermaid source shown; diagram rendering is unavailable.", zh: "当前无法渲染 Mermaid 图表，已显示源代码。" },
 
   "view.artifacts": { en: "Artifacts", zh: "产物" },
   "view.memory": { en: "Memory", zh: "记忆" },

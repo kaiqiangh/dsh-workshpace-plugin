@@ -32,7 +32,7 @@ test("folds repeated evidence, preserves deletion, and derives current artifacts
   assert.deepEqual(deriveArtifacts(projection), [{ path: "src/new.ts", createdAt: 2 }]);
   const deleted = reduceActivity(identity, [...projection.evidence, { id: "delete-1", identity, path: "src/new.ts", kind: "DELETED", observedAt: 4, source: "git", attribution: "session-observed" }]);
   assert.equal(deleted.files.get("src/new.ts")?.current, "deleted");
-  assert.equal(deriveArtifacts(deleted).length, 0);
+  assert.deepEqual(deriveArtifacts(deleted), [{ path: "src/new.ts", createdAt: 2, deleted: true }]);
   assert.equal(deleted.evidence.length, 3);
   const outOfOrder = reduceActivity(identity, [
     { id: "newer", identity, path: "later.ts", kind: "MODIFIED", observedAt: 5, source: "filesystem", attribution: "session-observed" },

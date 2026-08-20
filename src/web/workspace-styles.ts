@@ -2485,6 +2485,10 @@ const WORKSPACE_VIEW_STYLES = `
   font-weight: 800;
 }
 
+[data-dsh-workspace="view"] [data-dsh-workspace="history-graph-lane"][data-parent="true"] {
+  color: var(--dsw-warning);
+}
+
 [data-dsh-workspace="view"] [data-dsh-workspace="history-commit-meta"] {
   padding-left: 80px;
   color: var(--dsw-muted);

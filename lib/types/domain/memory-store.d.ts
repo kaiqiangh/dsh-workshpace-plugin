@@ -102,7 +102,7 @@ export interface MemoryReadState {
     readonly scope: MemoryScope;
     readonly scopeKey: string;
     /** Safe logical location for the UI; never an absolute host path. */
-    readonly logicalLocation: string;
+    readonly logicalLocation?: string;
     readonly records: readonly MemoryRecord[];
     readonly warnings: readonly MemoryStoreWarning[];
     readonly readOnly: boolean;

@@ -277,7 +277,7 @@ export async function gitCommit(root: string, sha: string): Promise<GitCommitRes
   const [full, parents, author, time, subject, decorations] = meta.trim().split(GIT_LOG_FIELD);
   if (!full) throw new GitError("GIT_UNAVAILABLE", "Commit is unavailable");
   const files: GitCommitFile[] = [];
-  const stats = await runGit(root, ["diff-tree", "--no-commit-id", "--numstat", "-r", sha]);
+  const stats = await runGit(root, ["diff-tree", "--root", "--no-commit-id", "--numstat", "-r", sha]);
   for (const line of stats.split("\n")) {
     if (!line.trim()) continue;
     const [additions, deletions, ...rest] = line.split("\t");

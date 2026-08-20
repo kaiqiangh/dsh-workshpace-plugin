@@ -234,13 +234,14 @@ export function renderWorkspaceMarkdown(source: string, options?: WorkspaceMarkd
     const line = lines[i]!;
 
     // Fenced code block.
-    const fence = /^```([\w+-]*)\s*$/.exec(line);
+    const fence = /^(```|~~~)([\w+-]*)\s*$/.exec(line);
     if (fence !== null) {
       flushParagraph(paragraph);
-      const lang = fence[1] ?? "";
+      const marker = fence[1] ?? "```";
+      const lang = fence[2] ?? "";
       i += 1;
       const code: string[] = [];
-      while (i < n && !/^```\s*$/.test(lines[i]!)) {
+      while (i < n && !new RegExp(`^${marker}\\s*$`).test(lines[i]!)) {
         code.push(lines[i]!);
         i += 1;
       }

@@ -61,6 +61,17 @@ export interface WorkspaceConversationViewOptions {
   readonly summary?: WorkspaceSurfaceComponent;
 }
 
+function activateWorkspaceTab(event: { readonly key?: string; readonly currentTarget?: { readonly htmlFor?: string }; preventDefault: () => void }): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const id = event.currentTarget?.htmlFor;
+  if (!id || typeof document === "undefined") return;
+  const input = document.getElementById(id) as HTMLInputElement | null;
+  if (!input) return;
+  event.preventDefault();
+  input.click();
+  input.focus();
+}
+
 /**
  * Conversation view tab body: the Artifacts/Memory/Git switch rendered in the
  * tab row's body (IA #125: tab order Artifacts → Memory → Git; the Git tab
@@ -81,9 +92,9 @@ export function createWorkspaceConversationViewComponent(options: WorkspaceConve
       createElement("input", { key: "tab-input-memory", id: "dsh-workspace-view-tab-memory", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.memory") }),
       createElement("input", { key: "tab-input-git", id: "dsh-workspace-view-tab-git", name: "dsh-workspace-view-tab", type: "radio", "data-dsh-workspace": "tab-input", "aria-label": t("view.git") }),
       createElement("div", { key: "panel-tabs", role: "group", "aria-label": t("view.workspace"), "data-dsh-workspace": "panel-tabs" },
-        createElement("label", { key: "tab-artifacts", htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab" }, t("view.artifacts")),
-        createElement("label", { key: "tab-memory", htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab" }, t("view.memory")),
-        createElement("label", { key: "tab-git", htmlFor: "dsh-workspace-view-tab-git", "data-dsh-workspace": "panel-tab" }, t("view.git")),
+        createElement("label", { key: "tab-artifacts", tabIndex: 0, htmlFor: "dsh-workspace-view-tab-artifacts", "data-dsh-workspace": "panel-tab", onKeyDown: activateWorkspaceTab }, t("view.artifacts")),
+        createElement("label", { key: "tab-memory", tabIndex: 0, htmlFor: "dsh-workspace-view-tab-memory", "data-dsh-workspace": "panel-tab", onKeyDown: activateWorkspaceTab }, t("view.memory")),
+        createElement("label", { key: "tab-git", tabIndex: 0, htmlFor: "dsh-workspace-view-tab-git", "data-dsh-workspace": "panel-tab", onKeyDown: activateWorkspaceTab }, t("view.git")),
       ),
       createElement("div", { key: "panel-content", "data-dsh-workspace": "panel-content" },
         createElement("div", { key: "tab-content-artifacts", "data-dsh-workspace": "tab-content", "data-dsh-workspace-tab": "artifacts" }, createElement(options.artifacts, props)),

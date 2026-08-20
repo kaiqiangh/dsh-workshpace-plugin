@@ -3,7 +3,7 @@ import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { GitRepoInfo } from "../domain/git.ts";
 import { type WorkspaceHistoryRemote } from "./workspace-history-surface.ts";
 import { type WorkspaceChangesRemote } from "./workspace-changes-surface.ts";
-/** Reserved for shared host-rendering primitives; v0.7 renders the Changes pane and History pane in the tab. */
+/** Reserved for shared host-rendering primitives; v0.8 renders Changes and History in the tab. */
 export interface WorkspaceGitPrimitives {
 }
 export interface WorkspaceGitRemote extends WorkspaceChangesRemote, WorkspaceHistoryRemote {
@@ -16,10 +16,10 @@ export interface WorkspaceGitSurfaceOptions {
     readonly refreshMs?: number;
     /**
      * Reserved: carrier width in px for the Changes split-view breakpoint of the
-     * standalone Changes surface (the Git tab's compact pane is always unified).
+     * standalone Changes surface.
      */
     readonly carrierWidth?: number;
-    /** Reserved: which carrier the standalone Changes surface lives in. */
+    /** Carrier identity used to remember the diff mode. */
     readonly carrier?: string;
 }
 /**

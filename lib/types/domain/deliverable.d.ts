@@ -1,5 +1,5 @@
 import type { PreviewDescriptor } from "./preview.ts";
-export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale";
+export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale" | "deleted";
 export interface WorkspaceDeliverableSource {
     readonly sessionId: string;
     readonly workspaceId: string;
@@ -26,6 +26,8 @@ export interface WorkspaceDeliverableOptions {
     readonly mediaType?: string;
     readonly version?: string;
     readonly mtimeMs?: number;
+    /** Safe relative Workspace Path for states without a descriptor path. */
+    readonly logicalPath?: string;
 }
 export declare class WorkspaceDeliverableError extends Error {
     constructor(message: string);

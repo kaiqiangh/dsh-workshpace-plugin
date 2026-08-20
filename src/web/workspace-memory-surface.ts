@@ -180,6 +180,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const hasConflict = conflictingRecords.length > 0;
     const writesAllowed = scope !== "shared-project" || sharedWriteAcknowledged;
     const editingDisabled = !writesAllowed || state?.readOnly === true;
+    const logicalLocation = state?.logicalLocation ?? (state ? `scope://${state.scope}/${state.scopeKey}` : undefined);
 
     useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
 
@@ -372,9 +373,9 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       ),
       createElement("p", { "data-dsh-workspace": "memory-scope-hint" }, t(scopeHints[scope])),
       scopeButtons,
-      state?.logicalLocation && createElement("div", { "data-dsh-workspace": "memory-location" },
+      logicalLocation && createElement("div", { "data-dsh-workspace": "memory-location" },
         createElement("span", { "data-dsh-workspace": "memory-field-label" }, t("memory.location")),
-        createElement("code", { title: state.logicalLocation }, state.logicalLocation),
+        createElement("code", { title: logicalLocation }, logicalLocation),
       ),
       state?.scopeKey && createElement("div", { "data-dsh-workspace": "memory-scope-key" },
         createElement("span", { "data-dsh-workspace": "memory-field-label" }, t("memory.scopeKey")),
@@ -426,6 +427,8 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("dt", null, workspaceTip(t("memory.verification"), t("memory.verifiedHint"))), createElement("dd", null, verificationLabel(selectedGovernance.verification)),
       createElement("dt", null, workspaceTip(t("memory.retention"), t("memory.retentionHint"))), createElement("dd", null, selectedGovernance.retention),
       createElement("dt", null, workspaceTip(t("memory.revision"), t("memory.revisionHint"))), createElement("dd", null, String(selectedGovernance.revision)),
+      createElement("dt", null, t("memory.lastUsed")), createElement("dd", null, selected.lastUsedAt === undefined ? t("memory.none") : formatTimestamp(selected.lastUsedAt)),
+      createElement("dt", null, t("memory.useCount")), createElement("dd", null, String(selected.useCount)),
       createElement("dt", null, workspaceTip(t("memory.sources"), t("memory.sourcesHint"))), createElement("dd", { "data-dsh-workspace": "memory-source", title: sourcesText(selectedGovernance) }, sourcesText(selectedGovernance)),
       selectedGovernance.conflictGroup && createElement("dt", null, t("memory.conflictGroup")),
       selectedGovernance.conflictGroup && createElement("dd", null, selectedGovernance.conflictGroup),

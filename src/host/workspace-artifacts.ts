@@ -244,6 +244,17 @@ export class WorkspaceArtifactCarrier {
     const projection = this.projection();
     const next = new Map<string, ArtifactRecord>();
     for (const item of deriveArtifacts(projection)) {
+      if (item.deleted) {
+        const descriptor: PreviewDescriptor = { type: "error", code: "FILE_NOT_FOUND", message: "Artifact was deleted" };
+        const artifact = createWorkspaceDeliverable(
+          descriptor,
+          { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
+          0,
+          { logicalPath: item.path, mediaType: "application/octet-stream", mtimeMs: item.createdAt },
+        );
+        next.set(artifact.id, { path: item.path, artifact, descriptor });
+        continue;
+      }
       try {
         const info = await statArtifact(this.root, item.path);
         const cached = this.descriptorCache.get(item.path);

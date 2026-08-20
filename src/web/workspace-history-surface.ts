@@ -190,7 +190,7 @@ function renderCommitDetail(result: GitCommitResult): ReactNode {
 
 function graphNode(row: WorkspaceGitGraphRow): ReactNode {
   return createElement("span", { "data-dsh-workspace": "history-graph", "aria-hidden": "true", "data-lane": row.lane, "data-merge": String(row.parentLanes.length > 1) },
-    row.lanes.map((sha, index) => createElement("span", { key: sha, "data-dsh-workspace": "history-graph-lane", "data-active": String(index === row.lane), "data-branch-lane": index }, index === row.lane ? "●" : "│")),
+    row.lanes.map((sha, index) => createElement("span", { key: sha, "data-dsh-workspace": "history-graph-lane", "data-active": String(index === row.lane), "data-parent": String(row.parentLanes.includes(index)), "data-branch-lane": index }, index === row.lane ? "●" : row.parentLanes.includes(index) ? "╲" : "│")),
   );
 }
 
