@@ -201,6 +201,12 @@ function shellTokenEnd(command: string, start: number): number {
   return command.length;
 }
 
+function shellWordOnLine(command: string, start: number): string | undefined {
+  let index = start;
+  while (index < command.length && /[ \t\r]/u.test(command[index] ?? "")) index += 1;
+  return command[index] === "\n" ? undefined : shellWordAt(command, index);
+}
+
 function shellHeredocEnd(command: string, start: number, delimiter: string): number {
   let lineStart = command.indexOf("\n", start);
   if (lineStart < 0) return command.length;
@@ -231,7 +237,14 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     if (character === "'" || character === '"') { quote = character; continue; }
     if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
     if (heredocSkipEnd !== undefined && character === "\n") { index = heredocSkipEnd; heredocSkipEnd = undefined; continue; }
-    if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) break;
+    if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) {
+      const newline = command.indexOf("\n", index + 1);
+      if (newline < 0) break;
+      segmentStart = newline + 1;
+      segmentHeadChecked = false;
+      index = newline;
+      continue;
+    }
     if (conditional === "[[" && character === "]" && command[index + 1] === "]") { conditional = undefined; index += 1; continue; }
     if (conditional === "((" && character === ")" && command[index + 1] === ")") { conditional = undefined; index += 1; continue; }
     if (conditional === undefined && character === "[" && command[index + 1] === "[") { conditional = "[["; index += 1; continue; }
@@ -249,22 +262,35 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
       const head = shellWordAt(command, segmentStart);
       if (/^(?:tee|touch)$/i.test(head ?? "")) {
         let targetStart = shellTokenEnd(command, segmentStart);
-        let target = shellWordAt(command, targetStart);
-        let directTarget: string | undefined;
+        let target = shellWordOnLine(command, targetStart);
         if (head?.toLowerCase() === "touch") {
-          if (target === "--") {
+          if (target?.startsWith("-") && target !== "--") target = undefined;
+          while (target !== undefined && !["#", "<", ">"].includes(target)) {
+            if (target === "--") {
+              targetStart = shellTokenEnd(command, targetStart);
+              target = shellWordOnLine(command, targetStart);
+              continue;
+            }
+            add(target);
             targetStart = shellTokenEnd(command, targetStart);
-            target = shellWordAt(command, targetStart);
+            target = shellWordOnLine(command, targetStart);
           }
-          if (!target?.startsWith("-")) directTarget = target;
         } else {
-          while (target !== undefined && (["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) || target.startsWith("--output-error="))) {
+          let optionsValid = true;
+          while (target !== undefined && !["#", "<", ">"].includes(target)) {
+            if (target === "--") {
+              targetStart = shellTokenEnd(command, targetStart);
+              target = shellWordOnLine(command, targetStart);
+              continue;
+            }
+            if (target.startsWith("-")) {
+              if (!["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) && !target.startsWith("--output-error=")) { optionsValid = false; break; }
+            } else add(target);
             targetStart = shellTokenEnd(command, targetStart);
-            target = shellWordAt(command, targetStart);
+            target = shellWordOnLine(command, targetStart);
           }
-          if (!target?.startsWith("-")) directTarget = target;
+          if (!optionsValid) continue;
         }
-        add(directTarget);
       }
     }
     if (character !== ">" || conditional !== undefined || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
