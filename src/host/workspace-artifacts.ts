@@ -277,7 +277,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
               target = shellWordOnLine(command, targetStart);
               continue;
             }
-            if (/^\d+$/u.test(target) && command[shellTokenEnd(command, targetStart)] === ">") break;
+            if (/^\d+$/u.test(target) && /[<>]/u.test(command[shellTokenEnd(command, targetStart)] ?? "")) break;
             if (!optionsEnded && target.startsWith("-")) { optionsValid = false; break; }
             directTargets.push(target);
             targetStart = shellTokenEnd(command, targetStart);
@@ -295,7 +295,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
               target = shellWordOnLine(command, targetStart);
               continue;
             }
-            if (/^\d+$/u.test(target) && command[shellTokenEnd(command, targetStart)] === ">") break;
+            if (/^\d+$/u.test(target) && /[<>]/u.test(command[shellTokenEnd(command, targetStart)] ?? "")) break;
             if (!optionsEnded && target.startsWith("-")) {
               if (!["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) && !target.startsWith("--output-error=")) { optionsValid = false; break; }
             } else directTargets.push(target);

@@ -211,6 +211,7 @@ test("keeps shell replay bounded to explicit relative write targets", () => {
   assert.deepEqual(recordFor("touch first.md>log.md").paths, ["first.md", "log.md"]);
   assert.deepEqual(recordFor("touch 2>log.md").paths, ["log.md"]);
   assert.deepEqual(recordFor("tee 2>tee-log.md").paths, ["tee-log.md"]);
+  assert.deepEqual(recordFor("touch 0<input.md").paths, undefined);
   assert.deepEqual(recordFor("touch -d tomorrow actual.md").paths, undefined);
   assert.deepEqual(recordFor("touch first.md -r reference.md").paths, undefined);
   assert.deepEqual(recordFor("touch -d tomorrow actual.md && printf x > later.md").paths, ["later.md"]);
