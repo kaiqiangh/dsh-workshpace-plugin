@@ -115,10 +115,12 @@ const PATH_COLLECTIONS = ["paths", "files", "locations", "diffs"] as const;
 function workspaceRelativePath(value: string, root?: string): string | undefined {
   const input = value.trim();
   if (!input) return undefined;
+  const normalizedInput = input.replaceAll("\\", "/");
+  if (normalizedInput.split("/").includes("..")) return undefined;
   // A Windows/UNC absolute path is foreign on POSIX hosts. Do not feed it to
   // POSIX resolve(), which would turn it into a misleading relative path.
   if (!isAbsolute(input) && win32.isAbsolute(input)) return undefined;
-  if (!isAbsolute(input) && !/^[A-Za-z]:[\\/]/u.test(input)) return input;
+  if (!isAbsolute(input) && !/^[A-Za-z]:[\\/]/u.test(input)) return normalizedInput;
   if (!root) return undefined;
   const relativePath = relative(resolve(root), resolve(input));
   if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return undefined;
@@ -179,8 +181,9 @@ function shellWordAt(command: string, start: number): string | undefined {
   return value || undefined;
 }
 
-function shellRedirectionPaths(command: string, add: (value: string | undefined) => void, includeAppend = true): void {
+function shellRedirectionPaths(command: string, add: (value: string | undefined) => void): void {
   let quote: "'" | '"' | undefined;
+  let segmentStart = 0;
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index];
     if (quote !== undefined) {
@@ -189,10 +192,12 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
       continue;
     }
     if (character === "'" || character === '"') { quote = character; continue; }
-    if (character !== ">") continue;
+    if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
+    if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) break;
+    if (/[;&|]/u.test(character)) { segmentStart = index + 1; continue; }
+    if (character !== ">" || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
     const append = command[index + 1] === ">";
     if (append) index += 1;
-    if (append && !includeAppend) continue;
     add(shellWordAt(command, index + 1));
   }
 }
@@ -205,8 +210,8 @@ function shellWritePaths(tool: string | undefined, args: unknown): readonly stri
   // still needs filesystem reconciliation rather than unsafe command inference.
   const paths: string[] = [];
   const add = (value: string | undefined): void => {
-    const path = value?.trim();
-    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split(/[\\/]/u).includes("..") || /[$`*?{}&]/u.test(path)) return;
+    const path = value?.trim().replaceAll("\\", "/");
+    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split("/").includes("..") || /[$`*?{}&]/u.test(path)) return;
     if (!paths.includes(path)) paths.push(path);
   };
   shellRedirectionPaths(command, add);
@@ -216,17 +221,7 @@ function shellWritePaths(tool: string | undefined, args: unknown): readonly stri
 }
 
 function shellCreationPaths(tool: string | undefined, args: unknown): readonly string[] {
-  if (tool === undefined || !/^(?:bash|sh|zsh|shell|terminal|exec)$/i.test(tool)) return [];
-  const command = record(args)?.command;
-  if (typeof command !== "string") return [];
-  const paths: string[] = [];
-  const add = (value: string | undefined): void => {
-    const path = value?.trim();
-    if (!path || path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path) || path.split(/[\\/]/u).includes("..") || /[$`*?{}&]/u.test(path)) return;
-    if (!paths.includes(path)) paths.push(path);
-  };
-  shellRedirectionPaths(command, add, false);
-  return paths;
+  return shellWritePaths(tool, args);
 }
 
 function operationFromResult(tool: string | undefined, args: unknown, content: readonly unknown[], shellPaths = shellWritePaths(tool, args)): "create" | "update" | undefined {

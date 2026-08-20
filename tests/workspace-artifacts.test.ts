@@ -198,10 +198,30 @@ test("keeps shell replay bounded to explicit relative write targets", () => {
     { seq: 1, type: "tool/result", data: { message: { source: { kind: "tool", callId: "call-shell-boundary" }, content: [{ type: "tool-result", toolCallId: "call-shell-boundary" }] }, meta: {} } },
   ])[0]?.data?.result as { readonly paths?: readonly string[] };
   assert.deepEqual(recordFor("printf x > notes.md" ).paths, ["notes.md"]);
-  assert.deepEqual(recordFor("touch empty.txt && tee copied.txt").paths, undefined);
+  assert.deepEqual(recordFor("touch empty.txt && tee copied.txt").paths, ["empty.txt", "copied.txt"]);
+  assert.deepEqual(recordFor("printf x >> appended.md").paths, ["appended.md"]);
   assert.deepEqual(recordFor("cat > /tmp/out.md && cat > ../secret.md").paths, undefined);
   assert.deepEqual(recordFor("printf 'not a write > false.md'").paths, undefined);
+  assert.deepEqual(recordFor("[[ a > b ]]").paths, undefined);
+  assert.deepEqual(recordFor("(( a > b ))").paths, undefined);
+  assert.deepEqual(recordFor("printf x \\> false.md").paths, undefined);
+  assert.deepEqual(recordFor("echo ok # > false.md").paths, undefined);
   assert.deepEqual(recordFor("cat README.md").paths, undefined);
+});
+
+test("drops traversal paths before replay reaches the workspace observer", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  const workspace = startWorkspace({ sessionId: "session-traversal-read", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-traversal-read", name: "read", arguments: JSON.stringify({ file_path: "../secret.md" }) } },
+    { seq: 1, type: "tool/result", data: { message: { source: { callId: "call-traversal-read" }, content: [{ type: "tool-result", toolCallId: "call-traversal-read" }] }, meta: { path: "../secret.md" } } },
+  ] as const;
+  const records = sessionToolRecords(events, root);
+  assert.equal((records[0]?.data?.arguments as { readonly file_path?: string })?.file_path, undefined);
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => records });
+  assert.deepEqual(await carrier.metadata(), []);
+  carrier.dispose();
+  await rm(root, { recursive: true, force: true });
 });
 
 test("rejects unknown artifact ids without touching the filesystem", async () => {
