@@ -2360,6 +2360,13 @@ const WORKSPACE_VIEW_STYLES = `
   gap: 10px;
 }
 
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-hint"] {
+  margin: -4px 0 0;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-sm);
+  line-height: 1.45;
+}
+
 [data-dsh-workspace="view"] [data-dsh-workspace="memory-eyebrow"],
 [data-dsh-workspace="view"] [data-dsh-workspace="memory-field-label"] {
   color: var(--dsw-muted);

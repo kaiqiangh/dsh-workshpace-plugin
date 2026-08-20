@@ -244,7 +244,7 @@ export async function gitHistory(root: string, options: GitHistoryOptions = {}):
   const limit = Math.max(1, Math.min(Math.trunc(options.limit ?? GIT_HISTORY_MAX_COMMITS), GIT_HISTORY_MAX_COMMITS));
   const offset = Math.max(0, Math.trunc(options.offset ?? 0));
   const format = `%H${GIT_LOG_FIELD}%P${GIT_LOG_FIELD}%an${GIT_LOG_FIELD}%at${GIT_LOG_FIELD}%s${GIT_LOG_FIELD}%D${GIT_LOG_RECORD}`;
-  const scopeArgs = options.scope === "localBranches" ? ["--branches", "--topo-order"] : [];
+  const scopeArgs = options.scope === "localBranches" ? ["--branches", "--topo-order"] : ["--topo-order"];
   const output = await runGit(root, ["log", ...scopeArgs, "--max-count", String(limit), "--skip", String(offset), `--pretty=format:${format}`, "--decorate=short"]);
   const commits: GitCommit[] = [];
   for (const record of output.split(GIT_LOG_RECORD)) {

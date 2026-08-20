@@ -135,7 +135,8 @@ function displayGovernance(record: MemoryRecord): MemoryGovernance {
 }
 
 function isWorkspaceMarkdown(text: string): boolean {
-  return /^(?:#{1,6}\s|```|~~~|\s*[-*+]\s|\s*\d+[.)]\s|\s*\|.+\|)/mu.test(text);
+  return /^(?:#{1,6}\s|```|~~~|\s*[-*+]\s|\s*\d+[.)]\s|\s*\|.+\|)/mu.test(text)
+    || /(?:\*\*|__|`[^`]+`|!?\[[^\]]+\]\([^\)]+\))/u.test(text);
 }
 
 /** Review-only Memory surface. It never calls Agent, followup, or prompt/context APIs. */
@@ -369,6 +370,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
         createElement("span", { "data-dsh-workspace": "memory-eyebrow" }, t("memory.scopeRail")),
         createElement("strong", null, scopeLabel(scope)),
       ),
+      createElement("p", { "data-dsh-workspace": "memory-scope-hint" }, t(scopeHints[scope])),
       scopeButtons,
       state?.logicalLocation && createElement("div", { "data-dsh-workspace": "memory-location" },
         createElement("span", { "data-dsh-workspace": "memory-field-label" }, t("memory.location")),
