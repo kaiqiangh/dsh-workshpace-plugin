@@ -237,7 +237,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     }
     if (character === "'" || character === '"') { quote = character; continue; }
     if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
-    if (heredocSkipEnd !== undefined && character === "\n") { index = heredocSkipEnd; heredocSkipEnd = undefined; continue; }
+    if (heredocSkipEnd !== undefined && character === "\n") { index = heredocSkipEnd; heredocSkipEnd = undefined; segmentStart = index + 1; segmentHeadChecked = false; continue; }
     if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) {
       const newline = command.indexOf("\n", index + 1);
       if (newline < 0) break;
@@ -267,17 +267,20 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
         let targetStart = shellTokenEnd(command, segmentStart);
         let target = shellWordOnLine(command, targetStart);
         if (head?.toLowerCase() === "touch") {
-          if (target?.startsWith("-") && target !== "--") target = undefined;
+          const directTargets: string[] = [];
+          let optionsValid = true;
           while (target !== undefined && !["#", "<", ">"].includes(target)) {
             if (target === "--") {
               targetStart = shellTokenEnd(command, targetStart);
               target = shellWordOnLine(command, targetStart);
               continue;
             }
-            add(target);
+            if (target.startsWith("-")) { optionsValid = false; break; }
+            directTargets.push(target);
             targetStart = shellTokenEnd(command, targetStart);
             target = shellWordOnLine(command, targetStart);
           }
+          if (optionsValid) for (const directTarget of directTargets) add(directTarget);
         } else {
           let optionsValid = true;
           while (target !== undefined && !["#", "<", ">"].includes(target)) {
