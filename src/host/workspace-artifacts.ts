@@ -243,16 +243,20 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
       else index += 1;
       continue;
     }
-    if (/[;&|]/u.test(character)) { segmentStart = index + 1; segmentHeadChecked = false; continue; }
+    if (/[;&|\n]/u.test(character)) { segmentStart = index + 1; segmentHeadChecked = false; continue; }
     if (!segmentHeadChecked && !/\s/u.test(character)) {
       segmentHeadChecked = true;
       const head = shellWordAt(command, segmentStart);
       if (/^(?:tee|touch)$/i.test(head ?? "")) {
         let targetStart = shellTokenEnd(command, segmentStart);
         let target = shellWordAt(command, targetStart);
-        while (target?.startsWith("-")) {
-          targetStart = shellTokenEnd(command, targetStart);
-          target = shellWordAt(command, targetStart);
+        if (head?.toLowerCase() === "touch" && target?.startsWith("-")) return;
+        if (head?.toLowerCase() === "tee") {
+          while (target !== undefined && (["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) || target.startsWith("--output-error="))) {
+            targetStart = shellTokenEnd(command, targetStart);
+            target = shellWordAt(command, targetStart);
+          }
+          if (target?.startsWith("-")) return;
         }
         add(target);
       }
