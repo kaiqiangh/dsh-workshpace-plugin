@@ -250,15 +250,21 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
       if (/^(?:tee|touch)$/i.test(head ?? "")) {
         let targetStart = shellTokenEnd(command, segmentStart);
         let target = shellWordAt(command, targetStart);
-        if (head?.toLowerCase() === "touch" && target?.startsWith("-")) return;
-        if (head?.toLowerCase() === "tee") {
+        let directTarget: string | undefined;
+        if (head?.toLowerCase() === "touch") {
+          if (target === "--") {
+            targetStart = shellTokenEnd(command, targetStart);
+            target = shellWordAt(command, targetStart);
+          }
+          if (!target?.startsWith("-")) directTarget = target;
+        } else {
           while (target !== undefined && (["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) || target.startsWith("--output-error="))) {
             targetStart = shellTokenEnd(command, targetStart);
             target = shellWordAt(command, targetStart);
           }
-          if (target?.startsWith("-")) return;
+          if (!target?.startsWith("-")) directTarget = target;
         }
-        add(target);
+        add(directTarget);
       }
     }
     if (character !== ">" || conditional !== undefined || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
@@ -277,7 +283,7 @@ function shellWritePaths(tool: string | undefined, args: unknown): readonly stri
   const paths: string[] = [];
   const add = (value: string | undefined): void => {
     const path = value === undefined ? undefined : workspaceRelativePath(value);
-    if (!path || /[$`*?{}&]/u.test(path)) return;
+    if (!path || /[$`*?{}&<>#]/u.test(path)) return;
     if (!paths.includes(path)) paths.push(path);
   };
   shellRedirectionPaths(command, add);
