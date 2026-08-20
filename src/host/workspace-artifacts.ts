@@ -201,6 +201,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
   let quote: "'" | '"' | undefined;
   let segmentStart = 0;
   let conditional: "[[" | "((" | undefined;
+  let heredocSkipEnd: number | undefined;
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index];
     if (quote !== undefined) {
@@ -210,6 +211,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     }
     if (character === "'" || character === '"') { quote = character; continue; }
     if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
+    if (heredocSkipEnd !== undefined && character === "\n") { index = heredocSkipEnd; heredocSkipEnd = undefined; continue; }
     if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) break;
     if (conditional === "[[" && character === "]" && command[index + 1] === "]") { conditional = undefined; index += 1; continue; }
     if (conditional === "((" && character === ")" && command[index + 1] === ")") { conditional = undefined; index += 1; continue; }
@@ -217,7 +219,8 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     if (conditional === undefined && character === "(" && command[index + 1] === "(") { conditional = "(("; index += 1; continue; }
     if (character === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
       const delimiter = shellWordAt(command, index + 2);
-      if (delimiter !== undefined) index = shellHeredocEnd(command, index + 2, delimiter);
+      const bodyStart = command.indexOf("\n", index + 2);
+      if (delimiter !== undefined && bodyStart >= 0) heredocSkipEnd = shellHeredocEnd(command, index + 2, delimiter);
       else index += 1;
       continue;
     }
