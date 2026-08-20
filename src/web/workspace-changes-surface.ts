@@ -87,9 +87,9 @@ function renderDiffContent(line: DiffLine): ReactNode {
 /** Old/new line numbers plus the (token-aware) line text — the shared cell body. */
 function diffLineCells(line: DiffLine): ReactNode {
   return [
-    createElement("span", { "data-dsh-workspace": "diff-line-num" }, line.oldLine !== undefined ? String(line.oldLine) : ""),
-    createElement("span", { "data-dsh-workspace": "diff-line-num" }, line.newLine !== undefined ? String(line.newLine) : ""),
-    createElement("span", { "data-dsh-workspace": "diff-line-text" }, renderDiffContent(line)),
+    createElement("span", { key: "old", "data-dsh-workspace": "diff-line-num" }, line.oldLine !== undefined ? String(line.oldLine) : ""),
+    createElement("span", { key: "new", "data-dsh-workspace": "diff-line-num" }, line.newLine !== undefined ? String(line.newLine) : ""),
+    createElement("span", { key: "text", "data-dsh-workspace": "diff-line-text" }, renderDiffContent(line)),
   ];
 }
 

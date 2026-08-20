@@ -4,7 +4,7 @@ import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 
 import type { GitCommit, GitCommitResult } from "../src/domain/git.ts";
-import { createWorkspaceHistorySurfaceComponent } from "../src/web/workspace-history-surface.ts";
+import { buildWorkspaceGitGraph, createWorkspaceHistorySurfaceComponent } from "../src/web/workspace-history-surface.ts";
 
 function commit(sha: string, subject: string, overrides: Partial<GitCommit> = {}): GitCommit {
   return { sha, parents: [], author: "kai", time: 1_700_000_000, subject, decorations: "", ...overrides };
@@ -40,6 +40,16 @@ function detailFor(c: GitCommit): GitCommitResult {
   };
 }
 
+test("keeps merge parents on distinct graph lanes", () => {
+  const rows = buildWorkspaceGitGraph([
+    commit("merge", "merge", { parents: ["left", "right"] }),
+    commit("left", "left", { parents: ["base"] }),
+    commit("right", "right", { parents: ["base"] }),
+  ]);
+  assert.deepEqual(rows[0]?.parentLanes, [0, 1]);
+  assert.equal(rows[0]?.lanes.length, 1);
+});
+
 function remoteFor(commits: readonly GitCommit[]) {
   return {
     gitHistory: async () => ({ ok: true, value: commits }),
@@ -73,8 +83,8 @@ test("renders the commit list with short hash, subject, decorations, author, and
   assert.ok(decos.includes("HEAD -> main, tag: v0.1"));
   const meta = tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-commit-meta").map((node) => node.children.join(""));
   assert.ok(meta.some((text) => text.includes("kai ·")), "author and relative time render");
-  // The branch-graph placeholder bar is reserved above the list.
-  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-graph-bar").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-graph").length, 2);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "history-scope").length, 1);
 });
 
 test("selecting a commit shows the summary block, files-changed, and per-file diff", async () => {

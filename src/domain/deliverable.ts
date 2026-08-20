@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import type { PreviewDescriptor } from "./preview.ts";
 import { normalizeWorkspacePath, type WorkspacePath } from "./workspace.ts";
 
-export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale";
+export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "parse-error" | "stale" | "deleted" | "unavailable";
 
 export interface WorkspaceDeliverableSource {
   readonly sessionId: string;
@@ -15,6 +15,8 @@ export interface WorkspaceDeliverableSource {
 export interface WorkspaceDeliverable {
   readonly id: string;
   readonly name: string;
+  /** Normalized Workspace Path; never an absolute host path. */
+  readonly logicalPath?: string;
   readonly mediaType: string;
   readonly sizeBytes: number;
   readonly version?: string;
@@ -32,6 +34,8 @@ export interface WorkspaceDeliverableOptions {
   readonly mediaType?: string;
   readonly version?: string;
   readonly mtimeMs?: number;
+  /** Safe relative Workspace Path for states without a descriptor path. */
+  readonly logicalPath?: string;
 }
 
 export class WorkspaceDeliverableError extends Error {
@@ -71,7 +75,12 @@ export function safeDownloadName(pathInput: string, mediaType = "application/oct
 
 function previewState(descriptor: PreviewDescriptor): WorkspaceDeliverablePreview {
   if (descriptor.type === "error") {
-    return descriptor.code === "FILE_TOO_LARGE" ? "oversized" : descriptor.code === "RESOURCE_STALE" ? "stale" : "unsupported";
+    if (descriptor.code === "FILE_NOT_FOUND") return "deleted";
+    if (descriptor.code === "FILE_TOO_LARGE") return "oversized";
+    if (descriptor.code === "RESOURCE_STALE") return "stale";
+    if (descriptor.code === "INVALID_JSON" || descriptor.code === "INVALID_CSV") return "parse-error";
+    if (descriptor.code === "PERMISSION_DENIED" || descriptor.code === "PROVIDER_UNAVAILABLE") return "unavailable";
+    return "unsupported";
   }
   if (descriptor.type === "unsupported") return descriptor.reason.includes("large") ? "oversized" : "unsupported";
   return "available";
@@ -100,6 +109,10 @@ export function createWorkspaceDeliverable(
   if (options.name !== undefined) assertText(options.name, "Deliverable name", 256);
   if (options.mediaType !== undefined) assertText(options.mediaType, "Deliverable media type", 256);
   if (options.version !== undefined) assertText(options.version, "Deliverable version", 512);
+  if (options.logicalPath !== undefined) {
+    assertText(options.logicalPath, "Deliverable logical path", 4_096);
+    try { if (normalizeWorkspacePath(options.logicalPath) !== options.logicalPath) throw new Error(); } catch { throw new WorkspaceDeliverableError("Deliverable logical path is invalid"); }
+  }
   if (options.mtimeMs !== undefined && (typeof options.mtimeMs !== "number" || !Number.isFinite(options.mtimeMs) || options.mtimeMs < 0)) throw new WorkspaceDeliverableError("Deliverable mtime is invalid");
   let path: WorkspacePath | undefined;
   if ("path" in descriptor) {
@@ -110,11 +123,12 @@ export function createWorkspaceDeliverable(
       throw new WorkspaceDeliverableError("Descriptor path is invalid");
     }
   }
+  const logicalPath = path ?? (options.logicalPath === undefined ? undefined : normalizeWorkspacePath(options.logicalPath));
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) throw new WorkspaceDeliverableError("Deliverable size is invalid");
   const mediaType = previewMediaType(descriptor, options.mediaType);
   const resourceId = descriptor.type === "binary" ? descriptor.resourceId : undefined;
   const version = descriptor.type === "binary" ? descriptor.version : options.version;
-  let name = path ? basename(path) || "workspace-file" : "workspace-file";
+  let name = logicalPath ? basename(logicalPath) || "workspace-file" : "workspace-file";
   if (!path && options.name) {
     try {
       name = basename(normalizeWorkspacePath(options.name)) || "workspace-file";
@@ -122,10 +136,11 @@ export function createWorkspaceDeliverable(
       throw new WorkspaceDeliverableError("Deliverable name is invalid");
     }
   }
-  const id = resourceId ? `workspace:${resourceId}` : opaqueId(source, path ?? name);
+  const id = resourceId ? `workspace:${resourceId}` : opaqueId(source, logicalPath ?? name);
   return Object.freeze({
     id,
     name,
+    ...(logicalPath === undefined ? {} : { logicalPath }),
     mediaType,
     sizeBytes,
     ...(version === undefined ? {} : { version }),

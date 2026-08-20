@@ -101,6 +101,8 @@ export interface MemoryStoreWarning {
 export interface MemoryReadState {
     readonly scope: MemoryScope;
     readonly scopeKey: string;
+    /** Safe logical location for the UI; never an absolute host path. */
+    readonly logicalLocation?: string;
     readonly records: readonly MemoryRecord[];
     readonly warnings: readonly MemoryStoreWarning[];
     readonly readOnly: boolean;
@@ -119,6 +121,8 @@ export declare class MemoryStoreError extends Error {
     constructor(code: MemoryStoreErrorCode, message: string);
 }
 export declare function memoryStorePath(options: MemoryStoreLocationOptions): string;
+/** Stable path-shaped vocabulary for the UI without exposing host paths. */
+export declare function memoryLogicalLocation(options: MemoryStoreLocationOptions): string;
 export declare class MemoryStore {
     readonly filePath: string;
     readonly scope: MemoryScope;

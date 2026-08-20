@@ -1,7 +1,7 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import type { GitCommit, GitCommitResult, GitHistoryOptions } from "../domain/git.ts";
+import type { GitCommit, GitCommitResult, GitHistoryOptions, GitHistoryScope } from "../domain/git.ts";
 import { parseUnifiedDiff, type DiffLine } from "./workspace-diff.ts";
 import { t, useWorkspaceLocale } from "./workspace-i18n.ts";
 import { workspaceEmptyState, workspaceListDetail, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
@@ -25,6 +25,37 @@ export interface WorkspaceHistorySurfaceOptions {
   readonly remote?: WorkspaceHistoryRemote;
   /** Polling cadence in ms; 0 disables auto-refresh (used by tests). */
   readonly refreshMs?: number;
+}
+
+export interface WorkspaceGitGraphRow {
+  readonly sha: string;
+  readonly lane: number;
+  readonly lanes: readonly string[];
+  readonly parentLanes: readonly number[];
+}
+
+/** Compute a bounded lane model from commit parents for a readable DAG. */
+export function buildWorkspaceGitGraph(commits: readonly GitCommit[]): readonly WorkspaceGitGraphRow[] {
+  const lanes: string[] = [];
+  const rows: WorkspaceGitGraphRow[] = [];
+  for (const commit of commits) {
+    const lane = Math.max(0, lanes.indexOf(commit.sha));
+    if (lanes.indexOf(commit.sha) === -1) lanes.splice(lane, 0, commit.sha);
+    const before = [...lanes];
+    lanes.splice(lane, 1);
+    const parentLanes = (commit.parents ?? []).map((parent, index) => {
+      const existing = lanes.indexOf(parent);
+      if (existing !== -1) return existing;
+      const insertion = Math.min(lane + index, lanes.length);
+      lanes.splice(insertion, 0, parent);
+      return insertion;
+    });
+    // ponytail: the history query is already bounded; keep one lane per
+    // unseen parent so merge ancestry remains distinguishable without a full
+    // commit graph layout engine.
+    rows.push(Object.freeze({ sha: commit.sha, lane, lanes: Object.freeze(before), parentLanes: Object.freeze(parentLanes) }));
+  }
+  return Object.freeze(rows);
 }
 
 /** Relative commit age (mirrors the summary span formatter's compact style). */
@@ -161,26 +192,28 @@ function renderCommitDetail(result: GitCommitResult): ReactNode {
   );
 }
 
-/** A reserved horizontal bar above the commit list for the future branch graph (v0.8). */
-function graphBar(commits: readonly GitCommit[]): ReactNode {
-  const first = commits[0];
-  const label = first?.decorations || (first ? first.sha.slice(0, 7) : "");
-  return createElement("div", { "data-dsh-workspace": "history-graph-bar", "aria-hidden": "true" }, `* ${label}`);
+function graphNode(row: WorkspaceGitGraphRow): ReactNode {
+  return createElement("span", { "data-dsh-workspace": "history-graph", "aria-hidden": "true", "data-lane": row.lane, "data-merge": String(row.parentLanes.length > 1) },
+    row.lanes.map((sha, index) => createElement("span", { key: sha, "data-dsh-workspace": "history-graph-lane", "data-active": String(index === row.lane), "data-parent": String(row.parentLanes.includes(index)), "data-branch-lane": index }, index === row.lane ? "●" : row.parentLanes.includes(index) ? "╲" : "│")),
+  );
 }
 
-function commitRow(commit: GitCommit, selected: boolean, onSelect: (sha: string) => void): ReactNode {
+function commitRow(commit: GitCommit, graph: WorkspaceGitGraphRow, selected: boolean, onSelect: (sha: string) => void): ReactNode {
   return createElement(
     "li",
     { key: commit.sha, "data-dsh-workspace": "history-commit", "data-selected": String(selected) },
-    createElement("button", {
-      type: "button",
-      "data-dsh-workspace": "history-commit-select",
-      "aria-pressed": selected,
-      onClick: () => onSelect(commit.sha),
-    },
-      createElement("span", { "data-dsh-workspace": "history-commit-hash" }, commit.sha.slice(0, 7)),
-      createElement("span", { "data-dsh-workspace": "history-commit-subject" }, commit.subject),
-      commit.decorations ? createElement("span", { "data-dsh-workspace": "history-commit-deco" }, commit.decorations) : null,
+    createElement("div", { "data-dsh-workspace": "history-commit-row" },
+      graphNode(graph),
+      createElement("button", {
+        type: "button",
+        "data-dsh-workspace": "history-commit-select",
+        "aria-pressed": selected,
+        onClick: () => onSelect(commit.sha),
+      },
+        createElement("span", { "data-dsh-workspace": "history-commit-hash" }, commit.sha.slice(0, 7)),
+        createElement("span", { "data-dsh-workspace": "history-commit-subject" }, commit.subject),
+        commit.decorations ? createElement("span", { "data-dsh-workspace": "history-commit-deco" }, commit.decorations) : null,
+      ),
     ),
     createElement("span", { "data-dsh-workspace": "history-commit-meta" }, `${commit.author} · ${formatRelativeTime(commit.time)}`),
   );
@@ -206,6 +239,7 @@ export function createWorkspaceHistorySurfaceComponent(
     const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "error">("idle");
     const [message, setMessage] = useState<string | undefined>();
     const [refreshTick, setRefreshTick] = useState(0);
+    const [scope, setScope] = useState<GitHistoryScope>("head");
     const request = useRef(0);
     // Re-render on locale change so labels and relative times follow the app language.
     useWorkspaceLocale();
@@ -224,7 +258,7 @@ export function createWorkspaceHistorySurfaceComponent(
       const load = async (): Promise<void> => {
         const token = ++request.current;
         try {
-          const value = unwrapRemote(await activeRemote.gitHistory({ limit: HISTORY_REQUEST_LIMIT }));
+          const value = unwrapRemote(await activeRemote.gitHistory({ limit: HISTORY_REQUEST_LIMIT, scope }));
           if (!active || token !== request.current) return;
           setCommits(value);
           setSelectedSha((current) => current && value.some((commit) => commit.sha === current) ? current : value[0]?.sha);
@@ -240,7 +274,7 @@ export function createWorkspaceHistorySurfaceComponent(
       const refreshMs = options.refreshMs ?? 5_000;
       const timer = Number.isFinite(refreshMs) && refreshMs > 0 ? setInterval(() => { void load(); }, refreshMs) : undefined;
       return () => { active = false; request.current += 1; if (timer !== undefined) clearInterval(timer); };
-    }, [activeRemote, sessionId, refreshTick]);
+    }, [activeRemote, sessionId, refreshTick, scope]);
 
     useEffect(() => {
       if (!selectedSha || !activeRemote) return;
@@ -260,6 +294,7 @@ export function createWorkspaceHistorySurfaceComponent(
 
     const refresh = (): void => setRefreshTick((tick) => tick + 1);
 
+    const graph = buildWorkspaceGitGraph(commits);
     const body = status === "loading"
       ? createElement("p", { role: "status" }, t("history.loading"))
       : status === "degraded"
@@ -269,12 +304,18 @@ export function createWorkspaceHistorySurfaceComponent(
             title: t("history.title"),
             actions: createElement("button", { type: "button", onClick: refresh }, t("refresh")),
           }),
+          createElement("div", { role: "group", "aria-label": t("history.scope"), "data-dsh-workspace": "history-scope" },
+            createElement("button", { type: "button", "aria-pressed": scope === "head", onClick: () => setScope("head") }, t("history.scope.head")),
+            createElement("button", { type: "button", "aria-pressed": scope === "localBranches", onClick: () => setScope("localBranches") }, t("history.scope.localBranches")),
+          ),
           commits.length === 0 && workspaceEmptyState(t("history.empty")),
           commits.length > 0 && workspaceListDetail(
             createElement("div", { "data-dsh-workspace": "history-list-column" },
-              graphBar(commits),
               createElement("ul", { "data-dsh-workspace": "history-commit-list" },
-                commits.map((commit) => commitRow(commit, commit.sha === selectedSha, (sha) => setSelectedSha(sha))),
+                commits.map((commit) => {
+                  const graphRow = graph.find((row) => row.sha === commit.sha) ?? { sha: commit.sha, lane: 0, lanes: [commit.sha], parentLanes: [] };
+                  return commitRow(commit, graphRow, commit.sha === selectedSha, (sha) => setSelectedSha(sha));
+                }),
               ),
             ),
             createElement("div", { "data-dsh-workspace": "history-detail-column" },

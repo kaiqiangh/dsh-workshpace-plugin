@@ -122,6 +122,8 @@ export interface MemoryStoreWarning {
 export interface MemoryReadState {
   readonly scope: MemoryScope;
   readonly scopeKey: string;
+  /** Safe logical location for the UI; never an absolute host path. */
+  readonly logicalLocation?: string;
   readonly records: readonly MemoryRecord[];
   readonly warnings: readonly MemoryStoreWarning[];
   readonly readOnly: boolean;
@@ -246,6 +248,16 @@ export function memoryStorePath(options: MemoryStoreLocationOptions): string {
   return options.scope === "user"
     ? join(options.dshHome, "workspace-memory", "user.jsonl")
     : join(options.dshHome, "workspace-memory", "sessions", `${safeFilePart(options.scopeKey)}.jsonl`);
+}
+
+/** Stable path-shaped vocabulary for the UI without exposing host paths. */
+export function memoryLogicalLocation(options: MemoryStoreLocationOptions): string {
+  if (!scopes.includes(options.scope)) throw new MemoryStoreError("INVALID_RECORD", "Memory scope is invalid");
+  text(options.scopeKey, 512, "Memory scope key");
+  if (options.scope === "project") return ".dsh/workspace-memory/records.jsonl";
+  if (options.scope === "shared-project") return ".dsh/workspace-memory/shared.jsonl";
+  if (options.scope === "user") return "~/.dsh/workspace-memory/user.jsonl";
+  return `~/.dsh/workspace-memory/sessions/${safeFilePart(options.scopeKey)}.jsonl`;
 }
 
 function validateRecord(value: unknown, expectedScope: MemoryScope, expectedScopeKey: string, maxContentBytes = MEMORY_MAX_CONTENT_BYTES): MemoryRecord {
@@ -547,7 +559,7 @@ export class MemoryStore {
   }
 
   state(): MemoryReadState {
-    return Object.freeze({ scope: this.scope, scopeKey: this.scopeKey, records: Object.freeze([...this.records.values()].map((record) => this.expiredView(record))), warnings: Object.freeze([...this.warnings]), readOnly: this.readOnly });
+    return Object.freeze({ scope: this.scope, scopeKey: this.scopeKey, logicalLocation: memoryLogicalLocation({ scope: this.scope, scopeKey: this.scopeKey }), records: Object.freeze([...this.records.values()].map((record) => this.expiredView(record))), warnings: Object.freeze([...this.warnings]), readOnly: this.readOnly });
   }
 
   list(options: MemoryListOptions = {}): readonly MemoryRecord[] {

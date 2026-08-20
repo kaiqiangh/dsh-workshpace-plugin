@@ -35,7 +35,7 @@ export interface WorkspaceArtifactSurfaceOptions {
 }
 
 function descriptorFor(artifact: WorkspaceDeliverable, preview: WorkspaceArtifactPreview): PreviewDescriptor {
-  const path = artifact.name as WorkspacePath;
+  const path = (artifact.logicalPath ?? artifact.name) as WorkspacePath;
   switch (preview.type) {
     case "text": return { type: "text", path, renderer: preview.renderer, ...(preview.language === undefined ? {} : { language: preview.language }), content: preview.content, truncated: preview.truncated };
     case "markdown": return { type: "markdown", path, renderer: preview.renderer, content: preview.content, truncated: preview.truncated, policy: preview.policy, ...(preview.imageUrls === undefined ? {} : { imageUrls: preview.imageUrls }) };
@@ -91,7 +91,10 @@ function artifactPreviewLabel(preview: WorkspaceDeliverable["preview"]): string 
   switch (preview) {
     case "unsupported": return t("artifacts.previewUnsupported");
     case "oversized": return t("artifacts.previewOversized");
+    case "parse-error": return t("artifacts.previewParseError");
     case "stale": return t("artifacts.previewStale");
+    case "deleted": return t("artifacts.previewDeleted");
+    case "unavailable": return t("artifacts.previewUnavailableState");
     default: return t("artifacts.previewAvailable");
   }
 }
@@ -321,10 +324,16 @@ export function createWorkspaceArtifactSurfaceComponent(
         const statusMessage = detailValue.status === "unsupported"
           ? t("artifacts.previewUnsupported")
           : detailValue.status === "oversized"
-            ? t("artifacts.previewOversized")
-            : detailValue.status === "stale"
-              ? t("artifacts.previewStale")
-              : detailValue.message;
+              ? t("artifacts.previewOversized")
+            : detailValue.status === "parse-error"
+              ? t("artifacts.previewParseError")
+              : detailValue.status === "stale"
+                ? t("artifacts.previewStale")
+                : detailValue.status === "deleted"
+                  ? t("artifacts.previewDeleted")
+                  : detailValue.status === "unavailable"
+                    ? t("artifacts.previewUnavailableState")
+                : detailValue.message;
         const state = { descriptor: detailValue.descriptor, status: detailValue.status, message: statusMessage };
         setTabStates((states) => new Map(states).set(artifact.id, state));
         setDetail(detailValue.descriptor);
@@ -402,7 +411,7 @@ export function createWorkspaceArtifactSurfaceComponent(
     const copyPath = async (): Promise<void> => {
       const artifact = selected;
       if (!artifact) return;
-      const path = artifact.name;
+      const path = artifact.logicalPath ?? artifact.name;
       const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
       if (clipboard && typeof clipboard.writeText === "function") {
         try {
@@ -464,6 +473,7 @@ export function createWorkspaceArtifactSurfaceComponent(
             artifact.name,
           ),
           createElement("span", { "data-dsh-workspace": "artifact-meta", "aria-label": `${artifact.mediaType}, ${formatSize(artifact.sizeBytes)}, ${formatRelativeTime(artifact.mtimeMs)}, ${artifactPreviewLabel(artifact.preview)}` }, `${formatSize(artifact.sizeBytes)} · ${formatRelativeTime(artifact.mtimeMs)} · ${artifactPreviewLabel(artifact.preview)}`),
+          createElement("code", { "data-dsh-workspace": "artifact-path", title: artifact.logicalPath ?? artifact.name }, artifact.logicalPath ?? artifact.name),
           createElement("span", { "aria-hidden": "true", "data-dsh-workspace": "artifact-status-chip", "data-status": artifact.preview }, artifactPreviewLabel(artifact.preview)),
         ))),
       );
@@ -477,6 +487,18 @@ export function createWorkspaceArtifactSurfaceComponent(
         "article",
         { "aria-label": `${selected.name} preview`, "data-dsh-workspace": "artifact-detail" },
         createElement("h3", null, selected.name),
+        createElement("dl", { "data-dsh-workspace": "artifact-metadata", "aria-label": t("artifacts.provenance") },
+          createElement("dt", null, t("artifacts.mediaType")),
+          createElement("dd", null, selected.mediaType),
+          createElement("dt", null, t("artifacts.location")),
+          createElement("dd", null, selected.logicalPath ?? selected.name),
+          createElement("dt", null, t("artifacts.size")),
+          createElement("dd", null, formatSize(selected.sizeBytes)),
+          createElement("dt", null, t("artifacts.modified")),
+          createElement("dd", null, formatRelativeTime(selected.mtimeMs)),
+          createElement("dt", null, t("artifacts.preview")),
+          createElement("dd", null, artifactPreviewLabel(selected.preview)),
+        ),
         createElement("p", { "aria-label": t("artifacts.provenance"), "data-dsh-workspace": "artifact-provenance" }, `${t("artifacts.source")} ${selected.source.kind} · session ${selected.source.sessionId} · workspace ${selected.source.workspaceId}`),
         createWorkspacePreviewRenderer(primitives, detail, { resourcePath: options.resourcePath, downloadName: selected.downloadName, altText: selected.altText }) as ReactNode,
         createElement("div", { role: "group" },

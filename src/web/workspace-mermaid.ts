@@ -1,6 +1,6 @@
 /**
  * Mermaid enhancement for rendered Workspace markdown previews (v0.6,
- * dsh-web-ui port). After the markdown renderer emits `pre.code.language-mermaid`
+ * dsh-web-ui port). After the markdown renderer emits `pre.language-mermaid`
  * blocks, this module loads the same-origin vendor bundle
  * (`/workspace/vendor/mermaid.js`, shipped in the plugin package at build
  * time — zero runtime npm dependency, ADR 0011) and renders each block in
@@ -8,14 +8,16 @@
  * readable as code. The theme follows the shell's `prefers-color-scheme`.
  */
 
+import { t } from "./workspace-i18n.ts";
+
 /** The same-origin vendor route served by the host. */
 export const MERMAID_VENDOR_URL = "/workspace/vendor/mermaid.js";
 
 /** Operational Budget: max mermaid fences enhanced in one preview (ADR #113). */
 export const MERMAID_MAX_BLOCKS = 16;
 
-/** The markdown renderer emits mermaid fences as `pre.code.language-mermaid`. */
-const MERMAID_BLOCK_SELECTOR = "pre code.language-mermaid";
+/** The markdown renderer emits mermaid fences as `pre.language-mermaid`. */
+const MERMAID_BLOCK_SELECTOR = "pre.language-mermaid";
 
 /** Current shell theme from `prefers-color-scheme` (defaults to light). */
 export function shellIsDark(): boolean {
@@ -85,6 +87,27 @@ function ensureInitialized(theme: string): void {
   initializedFor = theme;
 }
 
+function mermaidContainer(svg: string, source: string): HTMLDivElement {
+  const container = document.createElement("div");
+  container.className = "dsh-workspace-mermaid";
+  container.setAttribute("role", "group");
+  container.setAttribute("aria-label", t("preview.mermaidDiagram"));
+  container.setAttribute("data-dsh-source", source);
+  container.innerHTML = svg;
+  const diagram = container.querySelector("svg");
+  diagram?.setAttribute("role", "img");
+  diagram?.setAttribute("aria-label", t("preview.mermaidDiagram"));
+  const sourceDetails = document.createElement("details");
+  sourceDetails.className = "dsh-workspace-mermaid-source";
+  const summary = document.createElement("summary");
+  summary.textContent = t("preview.mermaidSource");
+  const sourceCode = document.createElement("pre");
+  sourceCode.textContent = source;
+  sourceDetails.append(summary, sourceCode);
+  container.append(sourceDetails);
+  return container;
+}
+
 /**
  * Render one mermaid code block in place. On success the `<pre>` is replaced
  * by the diagram SVG (carrying the source in `data-dsh-source` so a later
@@ -102,11 +125,7 @@ export async function renderMermaidBlock(block: HTMLPreElement, theme: string): 
   const id = `dsh-mermaid-${Math.random().toString(36).slice(2)}`;
   try {
     const { svg } = await api.render(id, source);
-    const container = document.createElement("div");
-    container.className = "dsh-workspace-mermaid";
-    container.setAttribute("data-dsh-source", source);
-    container.innerHTML = svg;
-    block.replaceWith(container);
+    block.replaceWith(mermaidContainer(svg, source));
     return true;
   } catch {
     // Restore readable code: the block was never replaced on failure.
@@ -120,7 +139,9 @@ export async function renderMermaidBlock(block: HTMLPreElement, theme: string): 
  * decide when to show the "diagram unavailable" fallback.
  */
 export async function enhanceMermaidBlocks(root: ParentNode, theme: string): Promise<number> {
-  const blocks = Array.from(root.querySelectorAll(MERMAID_BLOCK_SELECTOR)).map((code) => code.closest("pre")).slice(0, MERMAID_MAX_BLOCKS);
+  const allBlocks = Array.from(root.querySelectorAll(MERMAID_BLOCK_SELECTOR)).map((code) => code.closest("pre"));
+  const blocks = allBlocks.slice(0, MERMAID_MAX_BLOCKS);
+  if (typeof HTMLElement !== "undefined" && root instanceof HTMLElement) root.dataset.dshMermaidTruncated = String(allBlocks.length > MERMAID_MAX_BLOCKS);
   if (blocks.length === 0) return 0;
   const loaded = await loadVendor();
   if (!loaded) return blocks.length;
@@ -141,11 +162,7 @@ export async function rethemeMermaidBlocks(root: ParentNode, theme: string): Pro
     try {
       const id = `dsh-mermaid-${Math.random().toString(36).slice(2)}`;
       const { svg } = await api.render(id, source);
-      const next = document.createElement("div");
-      next.className = "dsh-workspace-mermaid";
-      next.setAttribute("data-dsh-source", source);
-      next.innerHTML = svg;
-      diagram.replaceWith(next);
+      diagram.replaceWith(mermaidContainer(svg, source));
     } catch {
       // Keep the current diagram on re-theme failure.
     }

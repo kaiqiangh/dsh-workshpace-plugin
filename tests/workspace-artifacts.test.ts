@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -31,6 +31,7 @@ test("derives path-free session artifact metadata and typed previews", async () 
   const metadata = await carrier.metadata();
   assert.equal(metadata.length, 1);
   assert.equal(metadata[0]?.name, "report.md");
+  assert.equal(metadata[0]?.logicalPath, "report.md");
   assert.equal("path" in (metadata[0] ?? {}), false);
   const preview = await carrier.previewArtifact(metadata[0]!.id);
   assert.deepEqual(preview, { type: "markdown", renderer: "ui-primitives", content: "# Report\n", truncated: false, policy: { allowRawHtml: false, allowRemoteImages: false, allowedLinkSchemes: ["http", "https", "mailto"] } });
@@ -64,6 +65,36 @@ test("derives artifacts from the Harness write result envelope", async () => {
   assert.equal((sessionToolRecords(events)[0]?.data?.result as { readonly operation?: string })?.operation, "create");
   assert.equal((await carrier.previewArtifact(metadata[0]!.id)).type, "markdown");
   carrier.dispose();
+});
+
+test("replays a DSH bash redirection as a Markdown artifact", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  await writeFile(join(root, "report.md"), "# Report\n", "utf8");
+  const workspace = startWorkspace({ sessionId: "session-shell-write", processCwd: root });
+  const callId = "call-shell-write";
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId, name: "bash", arguments: JSON.stringify({ command: "cat > report.md << 'EOF'\n# Report\nEOF" }) } },
+    {
+      seq: 1,
+      time: 1,
+      type: "tool/result",
+      data: {
+        message: { source: { kind: "tool", callId }, content: [{ type: "tool-result", toolCallId: callId }] },
+        meta: { locations: [] },
+      },
+    },
+  ] as const;
+  const records = sessionToolRecords(events);
+  const result = records[0]?.data?.result as { readonly operation?: string; readonly paths?: readonly string[] };
+  assert.equal(result.operation, "create");
+  assert.deepEqual(result.paths, ["report.md"]);
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => records });
+  const metadata = await carrier.metadata();
+  assert.equal(metadata.length, 1);
+  assert.equal(metadata[0]?.logicalPath, "report.md");
+  assert.equal((await carrier.previewArtifact(metadata[0]!.id)).type, "markdown");
+  carrier.dispose();
+  await rm(root, { recursive: true, force: true });
 });
 
 test("does not derive Harness write updates as new artifacts", async () => {
@@ -132,6 +163,17 @@ test("ignores create prose from non-write tools", async () => {
   assert.equal((sessionToolRecords(events)[0]?.data?.result as { readonly operation?: string })?.operation, undefined);
   assert.deepEqual(await carrier.metadata(), []);
   carrier.dispose();
+});
+
+test("keeps shell replay bounded to explicit relative write targets", () => {
+  const recordFor = (command: string) => sessionToolRecords([
+    { seq: 0, type: "tool/call", data: { callId: "call-shell-boundary", name: "bash", arguments: JSON.stringify({ command }) } },
+    { seq: 1, type: "tool/result", data: { message: { source: { kind: "tool", callId: "call-shell-boundary" }, content: [{ type: "tool-result", toolCallId: "call-shell-boundary" }] }, meta: {} } },
+  ])[0]?.data?.result as { readonly paths?: readonly string[] };
+  assert.deepEqual(recordFor("printf x > notes.md" ).paths, ["notes.md"]);
+  assert.deepEqual(recordFor("touch empty.txt && tee copied.txt").paths, ["empty.txt", "copied.txt"]);
+  assert.deepEqual(recordFor("cat > /tmp/out.md && cat > ../secret.md").paths, undefined);
+  assert.deepEqual(recordFor("cat README.md").paths, undefined);
 });
 
 test("rejects unknown artifact ids without touching the filesystem", async () => {

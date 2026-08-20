@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, type ComponentType, type ExoticComponent, type ReactNode } from "react";
+import { createElement, useEffect, useRef, useState, type ComponentType, type ExoticComponent, type ReactNode } from "react";
 
 import type { PreviewDescriptor } from "../domain/preview.ts";
 import { renderWorkspaceMarkdown, resolveWorkspaceMarkdownImage, safeWorkspaceUrl } from "./workspace-markdown.ts";
@@ -155,15 +155,33 @@ export function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet
  * Rendered markdown body plus the mermaid enhancement lifecycle: fresh blocks
  * render once per html, completed diagrams re-render on shell theme flips.
  */
+export function createWorkspaceMarkdownContent(text: string): ReactNode {
+  const html = renderWorkspaceMarkdown(sanitizeWorkspaceMarkdown(text), { resolveImageSrc: () => null });
+  return createElement(WorkspaceMarkdownView, { html });
+}
+
 function WorkspaceMarkdownView({ html }: { readonly html: string }): ReactNode {
   const ref = useRef<HTMLDivElement | null>(null);
+  const [mermaidStatus, setMermaidStatus] = useState<"idle" | "ready" | "fallback">("idle");
+  const [mermaidLimited, setMermaidLimited] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (el === null) return undefined;
-    void enhanceMermaidBlocks(el, mermaidTheme(shellIsDark()));
-    return watchShellTheme((isDark) => {
+    let active = true;
+    void enhanceMermaidBlocks(el, mermaidTheme(shellIsDark())).then((count) => {
+      if (!active) return;
+      setMermaidLimited(el.dataset.dshMermaidTruncated === "true");
+      setMermaidStatus(count === 0 ? "idle" : el.querySelector(".dsh-workspace-mermaid") ? "ready" : "fallback");
+    });
+    const stopTheme = watchShellTheme((isDark) => {
       void rethemeMermaidBlocks(el, mermaidTheme(isDark));
     });
+    return () => { active = false; stopTheme(); };
   }, [html]);
-  return createElement("div", { ref, "data-dsh-workspace-preview": "markdown", dangerouslySetInnerHTML: { __html: html } });
+  return createElement("div", { "data-dsh-workspace-preview": "markdown" },
+    mermaidStatus === "ready" && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-status" }, t("preview.mermaidReady")),
+    mermaidStatus === "fallback" && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-status" }, t("preview.mermaidFallback")),
+    mermaidLimited && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-limit" }, t("preview.mermaidLimit")),
+    createElement("div", { ref, dangerouslySetInnerHTML: { __html: html } }),
+  );
 }

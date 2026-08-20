@@ -942,12 +942,18 @@ const WORKSPACE_VIEW_STYLES = `
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="oversized"],
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="parse-error"],
 [data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="stale"] {
   border-color: color-mix(in srgb, var(--dsw-warning) 50%, transparent);
   color: var(--dsw-warning);
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="error"] {
+  border-color: color-mix(in srgb, var(--dsw-danger) 50%, transparent);
+  color: var(--dsw-danger);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-status-chip"][data-status="unavailable"] {
   border-color: color-mix(in srgb, var(--dsw-danger) 50%, transparent);
   color: var(--dsw-danger);
 }
@@ -2201,6 +2207,15 @@ const WORKSPACE_VIEW_STYLES = `
   font-size: var(--dsw-type-xs);
 }
 
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff-stats"] {
+  flex: none;
+  color: var(--dsw-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 [data-dsh-workspace="view"] [data-dsh-workspace="git-diff-code"] {
   margin: 0;
   padding: 0;
@@ -2251,6 +2266,447 @@ const WORKSPACE_VIEW_STYLES = `
 
 [data-dsh-workspace="view"] [data-dsh-workspace="git-diff-line"][data-kind="header"] {
   color: var(--dsw-faint);
+}
+
+/* ============ v0.8: centered inspection shell ============ */
+
+[data-dsh-workspace="view"] {
+  box-sizing: border-box;
+  width: min(100%, 1240px);
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 14px 20px 40px;
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tabs"],
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-content"] {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tabs"] {
+  padding: 5px;
+  border: 1px solid var(--dsw-border-strong);
+  border-radius: 12px;
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"] {
+  min-height: 38px;
+  color: var(--dsw-muted);
+  font-weight: 550;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"]:hover,
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"]:focus-visible {
+  color: var(--dsw-text);
+  outline: 2px solid color-mix(in srgb, Highlight 45%, transparent);
+  outline-offset: 1px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="columns"] > *,
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-list-stack"],
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-metadata"] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-surface);
+  font-size: var(--dsw-type-sm);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-metadata"] dt {
+  color: var(--dsw-muted);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-metadata"] dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-path"] {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============ v0.8: Memory scope rail and rendered detail ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-list-stack"] {
+  display: grid;
+  gap: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-rail"] {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dsw-border-strong);
+  border-radius: var(--dsw-radius);
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-rail-heading"] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-hint"] {
+  margin: -4px 0 0;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-sm);
+  line-height: 1.45;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-eyebrow"],
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-field-label"] {
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-rail"] [data-dsw-segment] {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-rail"] [data-dsw-segment] button {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-location"],
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-key"] {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-location"] code,
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-key"] code {
+  display: block;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-xs);
+  background: Canvas;
+  color: var(--dsw-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--dsw-type-xs);
+  overflow-wrap: anywhere;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-content-label"] {
+  margin: 14px 0 6px;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-content"] {
+  min-width: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-content"] [data-dsh-workspace-preview="markdown"] {
+  min-width: 0;
+}
+
+/* ============ v0.8: readable Git DAG ============ */
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-scope"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-surface);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-scope"] button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-muted);
+  cursor: pointer;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-scope"] button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, Highlight 55%, transparent);
+  background: var(--dsw-accent-soft);
+  color: var(--dsw-text);
+  font-weight: 650;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-row"] {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-list-column"] {
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-detail-column"] {
+  position: sticky;
+  top: 8px;
+  max-height: min(680px, calc(100vh - 180px));
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-graph"] {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 13px;
+  align-items: center;
+  width: 32px;
+  max-width: 32px;
+  overflow: hidden;
+  min-height: 28px;
+  color: var(--dsw-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-select"] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas:
+    "hash subject"
+    "hash decoration";
+  align-items: center;
+  gap: 2px 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-hash"] {
+  grid-area: hash;
+  width: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-subject"] {
+  grid-area: subject;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-deco"] {
+  grid-area: decoration;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-graph-lane"][data-active="true"] {
+  color: var(--dsw-accent);
+  font-weight: 800;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-graph-lane"][data-parent="true"] {
+  color: var(--dsw-warning);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-meta"] {
+  margin-left: 40px;
+  padding-left: 0;
+  color: var(--dsw-muted);
+  font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-code"] {
+  max-height: 420px;
+  overflow: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-code-line"] {
+  min-width: max-content;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-line-text"] {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-detail"],
+[data-dsh-workspace="view"] [data-dsh-workspace="git-diff"],
+[data-dsh-workspace="view"] [data-dsh-workspace="artifact-detail"] {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* v0.8 follow-up: keep the three surfaces centered and readable at narrow widths. */
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"],
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-title"],
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-actions"] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="panel-tab"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-text);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-header"] > *,
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-title"] h3 {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-title"] h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="surface-actions"] {
+  justify-content: flex-end;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar"] [data-dsw-row] {
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar"] [data-dsw-row]:first-child > :first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-toolbar"] select {
+  min-width: 120px;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-title-row"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: start;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-select"] {
+  display: -webkit-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--dsw-text);
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-card-time"] {
+  min-width: 0;
+  max-width: 10rem;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-preview"] {
+  align-self: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-detail-header"] h3 {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--dsw-text);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] {
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-border);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button[data-dsw-primary="true"] {
+  border-color: Highlight;
+  background: Highlight;
+  color: HighlightText;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="memory-actions"] button[data-dsw-tone="danger"] {
+  border-color: color-mix(in srgb, var(--dsw-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--dsw-danger) 10%, Canvas);
+  color: var(--dsw-danger);
+}
+
+@media (max-width: 759px) {
+  [data-dsh-workspace="view"] {
+    padding-inline: 12px;
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="memory-scope-rail"] [data-dsw-segment] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="history-commit-meta"] {
+    margin-left: 0;
+    padding-left: 0;
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="history-detail-column"] {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="memory-card-title-row"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="memory-card-time"] {
+    max-width: 100%;
+    text-align: left;
+  }
 }
 `;
 

@@ -11,6 +11,14 @@ export interface WorkspaceHistorySurfaceOptions {
     /** Polling cadence in ms; 0 disables auto-refresh (used by tests). */
     readonly refreshMs?: number;
 }
+export interface WorkspaceGitGraphRow {
+    readonly sha: string;
+    readonly lane: number;
+    readonly lanes: readonly string[];
+    readonly parentLanes: readonly number[];
+}
+/** Compute a bounded lane model from commit parents for a readable DAG. */
+export declare function buildWorkspaceGitGraph(commits: readonly GitCommit[]): readonly WorkspaceGitGraphRow[];
 /** Split one combined `git show` diff into per-file sections at `diff --git` boundaries. */
 export declare function splitDiffByFile(diff: string): readonly string[];
 /** New-path side of a `diff --git a/old b/new` header (quotes stripped). */

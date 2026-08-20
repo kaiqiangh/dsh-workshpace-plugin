@@ -48,7 +48,11 @@ export interface GitHistoryOptions {
   readonly limit?: number;
   /** Skip this many commits for page-ahead pagination. */
   readonly offset?: number;
+  /** `head` follows the current branch; `localBranches` includes local branch refs. */
+  readonly scope?: GitHistoryScope;
 }
+
+export type GitHistoryScope = "head" | "localBranches";
 
 export interface GitCommitFile {
   readonly path: string;
@@ -240,7 +244,8 @@ export async function gitHistory(root: string, options: GitHistoryOptions = {}):
   const limit = Math.max(1, Math.min(Math.trunc(options.limit ?? GIT_HISTORY_MAX_COMMITS), GIT_HISTORY_MAX_COMMITS));
   const offset = Math.max(0, Math.trunc(options.offset ?? 0));
   const format = `%H${GIT_LOG_FIELD}%P${GIT_LOG_FIELD}%an${GIT_LOG_FIELD}%at${GIT_LOG_FIELD}%s${GIT_LOG_FIELD}%D${GIT_LOG_RECORD}`;
-  const output = await runGit(root, ["log", "--max-count", String(limit), "--skip", String(offset), `--pretty=format:${format}`, "--decorate=short"]);
+  const scopeArgs = options.scope === "localBranches" ? ["--branches", "--topo-order"] : ["--topo-order"];
+  const output = await runGit(root, ["log", ...scopeArgs, "--max-count", String(limit), "--skip", String(offset), `--pretty=format:${format}`, "--decorate=short"]);
   const commits: GitCommit[] = [];
   for (const record of output.split(GIT_LOG_RECORD)) {
     const trimmed = record.trim();
@@ -272,7 +277,7 @@ export async function gitCommit(root: string, sha: string): Promise<GitCommitRes
   const [full, parents, author, time, subject, decorations] = meta.trim().split(GIT_LOG_FIELD);
   if (!full) throw new GitError("GIT_UNAVAILABLE", "Commit is unavailable");
   const files: GitCommitFile[] = [];
-  const stats = await runGit(root, ["diff-tree", "--no-commit-id", "--numstat", "-r", sha]);
+  const stats = await runGit(root, ["diff-tree", "--root", "--no-commit-id", "--numstat", "-r", sha]);
   for (const line of stats.split("\n")) {
     if (!line.trim()) continue;
     const [additions, deletions, ...rest] = line.split("\t");

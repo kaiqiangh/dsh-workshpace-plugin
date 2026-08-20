@@ -146,6 +146,8 @@ function directKind(outcome: LiveToolOutcome): ActivityKind | undefined {
   if (WRITE_TOOLS.test(name)) return writeKind(outcome);
   if (DELETE_TOOLS.test(name)) return "DELETED";
   if (EDIT_TOOLS.test(name)) return "MODIFIED";
+  if (SHELL_TOOLS.test(name) && pathInputs(outcome).length > 0
+    && (field(value, "operation") === "create" || editorAction(outcome) === "create")) return "CREATED";
   if (!EDITOR_TOOLS.test(name)) return undefined;
   switch (editorAction(outcome)) {
     case "view":

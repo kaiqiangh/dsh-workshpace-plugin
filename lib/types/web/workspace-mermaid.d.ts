@@ -1,6 +1,6 @@
 /**
  * Mermaid enhancement for rendered Workspace markdown previews (v0.6,
- * dsh-web-ui port). After the markdown renderer emits `pre.code.language-mermaid`
+ * dsh-web-ui port). After the markdown renderer emits `pre.language-mermaid`
  * blocks, this module loads the same-origin vendor bundle
  * (`/workspace/vendor/mermaid.js`, shipped in the plugin package at build
  * time — zero runtime npm dependency, ADR 0011) and renders each block in

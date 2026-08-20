@@ -331,6 +331,22 @@ test("long content renders inside a scrollable pre and long source ids truncate"
   assert.ok(sources.every((node) => typeof node.props.title === "string" && node.props.title.length > 30), "long source ids carry the full value in a tooltip");
 });
 
+test("renders Markdown memory content and a safe logical location", async () => {
+  const rec = recordFixture({ content: "# Decision\n\n```mermaid\ngraph TD\n  A-->B\n```" });
+  const { remote } = remoteFixture([rec]);
+  const markdownRemote = {
+    ...remote,
+    memoryOpen: async () => ({ ok: true, value: { scope: "project", scopeKey: "root:one", logicalLocation: ".dsh/workspace-memory/records.jsonl", records: [], warnings: [], readOnly: false } }),
+  };
+  const render = createWorkspaceMemorySurfaceComponent({ remote: markdownRemote });
+  let tree!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tree = TestRenderer.create(createElement(render, { useSessions: () => "session-1" })); });
+  const rail = tree.root.find((node) => node.props["data-dsh-workspace"] === "memory-scope-rail");
+  assert.equal(rail.find((node) => node.props["data-dsh-workspace"] === "memory-location").findByType("code").children.join(""), ".dsh/workspace-memory/records.jsonl");
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace-preview"] === "markdown").length, 1);
+  assert.equal(tree.root.findAll((node) => node.props["data-dsh-workspace"] === "memory-content").length, 1);
+});
+
 test("locale swap re-renders the surface labels", async () => {
   setWorkspaceLocale("en");
   const rec = recordFixture();

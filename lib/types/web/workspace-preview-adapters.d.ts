@@ -1,4 +1,4 @@
-import { type ComponentType, type ExoticComponent } from "react";
+import { type ComponentType, type ExoticComponent, type ReactNode } from "react";
 import type { PreviewDescriptor } from "../domain/preview.ts";
 type WorkspacePrimitive<Props extends object> = ComponentType<Props> | ExoticComponent<Props>;
 export interface WorkspacePrimitiveSet {
@@ -33,4 +33,9 @@ export interface WorkspacePreviewRenderOptions {
 export declare function sanitizeWorkspaceMarkdown(text: string): string;
 /** Render only bounded, already-authorized Host data through public UI primitives. */
 export declare function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet, descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;
+/**
+ * Rendered markdown body plus the mermaid enhancement lifecycle: fresh blocks
+ * render once per html, completed diagrams re-render on shell theme flips.
+ */
+export declare function createWorkspaceMarkdownContent(text: string): ReactNode;
 export {};

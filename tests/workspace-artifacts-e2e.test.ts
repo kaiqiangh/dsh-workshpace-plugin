@@ -79,12 +79,16 @@ test("end-to-end: resolveRemote().artifactMetadata() renders a <li> in the surfa
   await cleanup();
 });
 
-test("reload reflects the filesystem: deleting the file shrinks the list", async () => {
+test("reload keeps a missing file as an unavailable metadata entry", async () => {
   const { carrier, root, cleanup } = await fixtureCarrier(writeFileToolEvents(ARTIFACT, CONTENT));
   assert.equal((await carrier.metadata()).length, 1, "present before delete");
   await rm(join(root, ARTIFACT), { force: true });
-  // Re-derive from the SAME durable event log; the missing file is dropped.
-  assert.equal((await carrier.metadata()).length, 0, "derivation is in-memory + filesystem-backed, not a durable store");
+  // Re-derive from the SAME durable event log; the missing file remains
+  // visible so the user can distinguish an unavailable source from an empty
+  // session projection.
+  const metadata = await carrier.metadata();
+  assert.equal(metadata.length, 1, "unavailable artifacts keep their metadata");
+  assert.equal(metadata[0]?.preview, "unavailable");
   carrier.dispose();
   await cleanup();
 });

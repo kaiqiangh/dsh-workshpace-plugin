@@ -173,7 +173,7 @@ export function renderWorkspaceInline(text: string, options?: WorkspaceMarkdownR
           const label = text.slice(i + 1, close);
           const href = text.slice(close + 2, parenEnd);
           const safe = safeWorkspaceUrl(href);
-          if (safe === null) {
+          if (safe === null || (!/^(?:https?|mailto):/iu.test(safe) && !safe.startsWith("#"))) {
             out += renderWorkspaceInline(label, options);
           } else {
             out += `<a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${renderWorkspaceInline(label, options)}</a>`;
@@ -234,13 +234,14 @@ export function renderWorkspaceMarkdown(source: string, options?: WorkspaceMarkd
     const line = lines[i]!;
 
     // Fenced code block.
-    const fence = /^```([\w+-]*)\s*$/.exec(line);
+    const fence = /^(```|~~~)([\w+-]*)\s*$/.exec(line);
     if (fence !== null) {
       flushParagraph(paragraph);
-      const lang = fence[1] ?? "";
+      const marker = fence[1] ?? "```";
+      const lang = fence[2] ?? "";
       i += 1;
       const code: string[] = [];
-      while (i < n && !/^```\s*$/.test(lines[i]!)) {
+      while (i < n && !new RegExp(`^${marker}\\s*$`).test(lines[i]!)) {
         code.push(lines[i]!);
         i += 1;
       }

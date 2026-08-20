@@ -191,7 +191,7 @@ export {
 };
 
 export type { WorkspaceConversationContributionOptions };
-export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
+export { createWorkspaceMarkdownContent, createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
 export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";
 export {
   buildWorkspaceResourceUrl,

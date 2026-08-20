@@ -18,6 +18,7 @@ import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 import { remoteErrorMessage, unwrapRemote } from "./workspace-remote.ts";
 import { workspaceCountBadge, workspaceEmptyState, workspaceListDetail, workspaceNotice, workspaceSurfaceHeader } from "./workspace-primitives.ts";
 import { t, useWorkspaceLocale, type WorkspaceMessageKey } from "./workspace-i18n.ts";
+import { createWorkspaceMarkdownContent } from "./workspace-preview-adapters.ts";
 
 export interface WorkspaceMemoryRemote {
   readonly memoryOpen: (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>;
@@ -133,6 +134,11 @@ function displayGovernance(record: MemoryRecord): MemoryGovernance {
   };
 }
 
+function isWorkspaceMarkdown(text: string): boolean {
+  return /^(?:#{1,6}\s|```|~~~|\s*[-*+]\s|\s*\d+[.)]\s|\s*\|.+\|)/mu.test(text)
+    || /(?:\*\*|__|`[^`]+`|!?\[[^\]]+\]\([^\)]+\))/u.test(text);
+}
+
 /** Review-only Memory surface. It never calls Agent, followup, or prompt/context APIs. */
 export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySurfaceOptions = {}): (props: Record<string, unknown>) => ReactNode {
   return function WorkspaceMemorySurface(props: Record<string, unknown>): ReactNode {
@@ -174,6 +180,7 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
     const hasConflict = conflictingRecords.length > 0;
     const writesAllowed = scope !== "shared-project" || sharedWriteAcknowledged;
     const editingDisabled = !writesAllowed || state?.readOnly === true;
+    const logicalLocation = state?.logicalLocation ?? (state ? `scope://${state.scope}/${state.scopeKey}` : undefined);
 
     useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
 
@@ -359,6 +366,23 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       onClick: () => { setScope(value); setSharedProject(value === "shared-project"); setSharedWriteAcknowledged(false); },
     }, scopeLabel(value))));
 
+    const scopeRail = createElement("aside", { "data-dsh-workspace": "memory-scope-rail", "aria-label": t("memory.scopeRail") },
+      createElement("div", { "data-dsh-workspace": "memory-scope-rail-heading" },
+        createElement("span", { "data-dsh-workspace": "memory-eyebrow" }, t("memory.scopeRail")),
+        createElement("strong", null, scopeLabel(scope)),
+      ),
+      createElement("p", { "data-dsh-workspace": "memory-scope-hint" }, t(scopeHints[scope])),
+      scopeButtons,
+      logicalLocation && createElement("div", { "data-dsh-workspace": "memory-location" },
+        createElement("span", { "data-dsh-workspace": "memory-field-label" }, t("memory.location")),
+        createElement("code", { title: logicalLocation }, logicalLocation),
+      ),
+      state?.scopeKey && createElement("div", { "data-dsh-workspace": "memory-scope-key" },
+        createElement("span", { "data-dsh-workspace": "memory-field-label" }, t("memory.scopeKey")),
+        createElement("code", { title: state.scopeKey }, state.scopeKey),
+      ),
+    );
+
     // Record list cards (prototype #123): title+time row, at most two chips
     // (type + verification), one-line content preview. The scope label rides
     // the relative-time meta line so the chip row never overflows.
@@ -403,6 +427,8 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
       createElement("dt", null, workspaceTip(t("memory.verification"), t("memory.verifiedHint"))), createElement("dd", null, verificationLabel(selectedGovernance.verification)),
       createElement("dt", null, workspaceTip(t("memory.retention"), t("memory.retentionHint"))), createElement("dd", null, selectedGovernance.retention),
       createElement("dt", null, workspaceTip(t("memory.revision"), t("memory.revisionHint"))), createElement("dd", null, String(selectedGovernance.revision)),
+      createElement("dt", null, t("memory.lastUsed")), createElement("dd", null, selected.lastUsedAt === undefined ? t("memory.none") : formatTimestamp(selected.lastUsedAt)),
+      createElement("dt", null, t("memory.useCount")), createElement("dd", null, String(selected.useCount)),
       createElement("dt", null, workspaceTip(t("memory.sources"), t("memory.sourcesHint"))), createElement("dd", { "data-dsh-workspace": "memory-source", title: sourcesText(selectedGovernance) }, sourcesText(selectedGovernance)),
       selectedGovernance.conflictGroup && createElement("dt", null, t("memory.conflictGroup")),
       selectedGovernance.conflictGroup && createElement("dd", null, selectedGovernance.conflictGroup),
@@ -469,7 +495,6 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
 
     const toolbar = createElement("div", { "data-dsh-workspace": "memory-toolbar" },
       createElement("div", { "data-dsw-row": "true" },
-        scopeButtons,
         createElement("input", { "data-dsh-workspace": "memory-search", type: "search", value: query, placeholder: t("memory.searchPlaceholder"), "aria-label": t("memory.searchLabel"), onChange: onSearchChange }),
         createElement("select", { "data-dsh-workspace": "memory-filter-field", value: filterType, onChange: (event: { target: { value: MemoryType | "" } }) => setFilterType(event.target.value), "aria-label": t("memory.typeFilter") }, createElement("option", { value: "" }, t("memory.allTypes")), workspaceMemoryTypes.map((value) => createElement("option", { key: value, value }, value))),
         createElement("select", { "data-dsh-workspace": "memory-filter-field", value: statusFilter, onChange: (event: { target: { value: MemoryStatus } }) => setStatusFilter(event.target.value), "aria-label": t("memory.statusFilter") }, (["active", "archived", "forgotten"] as const).map((value) => createElement("option", { key: value, value }, t(statusLabels[value])))),
@@ -492,9 +517,10 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
           toolbar,
           workspaceSurfaceHeader({ title: t("memory.title"), count: workspaceCountBadge(`${records.length} ${records.length === 1 ? t("memory.recordOne") : t("memory.records")}`) }),
           workspaceListDetail(
-            records.length === 0
-              ? workspaceEmptyState(t("memory.empty"))
-              : recordList,
+            createElement("div", { "data-dsh-workspace": "memory-list-stack" },
+              scopeRail,
+              records.length === 0 ? workspaceEmptyState(t("memory.empty")) : recordList,
+            ),
             createElement("div", { "data-dsh-workspace": "memory-detail" },
               selected && selectedGovernance
                 ? [
@@ -506,7 +532,10 @@ export function createWorkspaceMemorySurfaceComponent(options: WorkspaceMemorySu
                       createElement("span", { "data-dsh-workspace": "memory-detail-meta-text" }, ` · ${scopeLabel(selected.scope)} · ${t("memory.updatedAt", { when: relativeTime(selected.updatedAt) })}${selected.status !== "active" ? ` · ${t(statusLabels[selected.status]).toLocaleLowerCase()}` : ""}`),
                     ),
                   ),
-                  createElement("pre", { key: "content", "data-dsh-workspace": "memory-content" }, selected.content),
+                  createElement("div", { key: "content-label", "data-dsh-workspace": "memory-content-label" }, t("memory.contentPreview")),
+                  isWorkspaceMarkdown(selected.content)
+                    ? createElement("div", { key: "content", "data-dsh-workspace": "memory-content" }, createWorkspaceMarkdownContent(selected.content))
+                    : createElement("pre", { key: "content", "data-dsh-workspace": "memory-content" }, selected.content),
                   governanceTable,
                   actions,
                   sourcePanel,

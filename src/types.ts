@@ -1,7 +1,7 @@
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { MemoryType } from "./domain/memory-store.ts";
 export type { MemoryType };
-export type { GitChange, GitChangeStatus, GitCommit, GitCommitFile, GitCommitResult, GitDiffResult, GitErrorCode, GitHistoryOptions, GitRepoInfo } from "./domain/git.ts";
+export type { GitChange, GitChangeStatus, GitCommit, GitCommitFile, GitCommitResult, GitDiffResult, GitErrorCode, GitHistoryOptions, GitHistoryScope, GitRepoInfo } from "./domain/git.ts";
 
 export type {
   WorkspaceArtifactPreview,
@@ -57,4 +57,3 @@ export type {
 export const MEMORY_TYPES: readonly MemoryType[] = ["decision", "preference", "convention", "fact"];
 
 export type AgentId = SessionId;
-

@@ -8,6 +8,7 @@ import {
   MemoryStore,
   MemoryStoreError,
   MEMORY_MAX_FILE_BYTES,
+  memoryLogicalLocation,
   memoryStorePath,
 } from "../src/domain/memory-store.ts";
 
@@ -119,6 +120,10 @@ test("uses isolated scope-keyed locations and requires explicit project roots", 
   assert.match(memoryStorePath({ scope: "session", scopeKey: "session-1|root-1", dshHome }), /workspace-memory\/sessions\/[0-9a-f]{32}\.jsonl$/u);
   assert.match(memoryStorePath({ scope: "shared-project", scopeKey: "root-1", projectRoot: "/tmp/project" }), /\.dsh\/workspace-memory\/shared\.jsonl$/u);
   assert.throws(() => memoryStorePath({ scope: "project", scopeKey: "root-1" }), /Project Memory Root is unavailable/);
+  assert.equal(memoryLogicalLocation({ scope: "project", scopeKey: "root-1" }), ".dsh/workspace-memory/records.jsonl");
+  assert.equal(memoryLogicalLocation({ scope: "shared-project", scopeKey: "root-1" }), ".dsh/workspace-memory/shared.jsonl");
+  assert.equal(memoryLogicalLocation({ scope: "user", scopeKey: "user-1" }), "~/.dsh/workspace-memory/user.jsonl");
+  assert.match(memoryLogicalLocation({ scope: "session", scopeKey: "session-1|root-1" }), /^~\/\.dsh\/workspace-memory\/sessions\/[0-9a-f]{32}\.jsonl$/u);
 });
 
 test("keeps multiple User profiles in the shared JSONL file across compaction", async () => {

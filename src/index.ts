@@ -48,6 +48,7 @@ export {
   type MemoryContentHash,
 } from "./domain/memory-store.ts";
 export { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
+export { memoryLogicalLocation } from "./domain/memory-store.ts";
 export {
   assertMemoryRevision,
   conflictGroupFor,
@@ -61,7 +62,7 @@ export {
 } from "./domain/memory-governance.ts";
 
 export { MEMORY_TYPES } from "./types.ts";
-export { GitError, gitCommit, gitDiff, gitHistory, gitRepoInfo, gitStatus, isGitRepository, parsePorcelain, GIT_COMMIT_MAX_DIFF_BYTES, GIT_HISTORY_MAX_COMMITS, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitCommit, type GitCommitFile, type GitCommitResult, type GitDiffResult, type GitErrorCode, type GitHistoryOptions, type GitRepoInfo } from "./domain/git.ts";
+export { GitError, gitCommit, gitDiff, gitHistory, gitRepoInfo, gitStatus, isGitRepository, parsePorcelain, GIT_COMMIT_MAX_DIFF_BYTES, GIT_HISTORY_MAX_COMMITS, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitCommit, type GitCommitFile, type GitCommitResult, type GitDiffResult, type GitErrorCode, type GitHistoryOptions, type GitHistoryScope, type GitRepoInfo } from "./domain/git.ts";
 export {
   PreviewPanelError,
   PreviewService,
