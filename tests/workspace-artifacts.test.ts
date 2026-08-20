@@ -204,6 +204,8 @@ test("keeps shell replay bounded to explicit relative write targets", () => {
   assert.deepEqual(recordFor("printf 'not a write > false.md'").paths, undefined);
   assert.deepEqual(recordFor("[[ a > b ]]").paths, undefined);
   assert.deepEqual(recordFor("(( a > b ))").paths, undefined);
+  assert.deepEqual(recordFor("if [[ a > b ]]; then echo > good.md; fi").paths, ["good.md"]);
+  assert.deepEqual(recordFor("if (( a > b )); then echo > good-arith.md; fi").paths, ["good-arith.md"]);
   assert.deepEqual(recordFor("printf x \\> false.md").paths, undefined);
   assert.deepEqual(recordFor("echo ok # > false.md").paths, undefined);
   assert.deepEqual(recordFor("cat README.md").paths, undefined);
@@ -218,6 +220,22 @@ test("drops traversal paths before replay reaches the workspace observer", async
   ] as const;
   const records = sessionToolRecords(events, root);
   assert.equal((records[0]?.data?.arguments as { readonly file_path?: string })?.file_path, undefined);
+  const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => records });
+  assert.deepEqual(await carrier.metadata(), []);
+  carrier.dispose();
+  await rm(root, { recursive: true, force: true });
+});
+
+test("drops URI and control-character paths before replay", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-workspace-artifact-"));
+  const workspace = startWorkspace({ sessionId: "session-invalid-read", processCwd: root });
+  const events = [
+    { seq: 0, type: "tool/call", data: { callId: "call-invalid-read", name: "read", arguments: JSON.stringify({ file_path: "file:///tmp/secret.md" }) } },
+    { seq: 1, type: "tool/result", data: { message: { source: { callId: "call-invalid-read" }, content: [{ type: "tool-result", toolCallId: "call-invalid-read" }] }, meta: { path: "bad\u0000name" } } },
+  ] as const;
+  const records = sessionToolRecords(events, root);
+  assert.equal((records[0]?.data?.arguments as { readonly file_path?: string })?.file_path, undefined);
+  assert.equal((records[0]?.data?.result as { readonly path?: string })?.path, undefined);
   const carrier = new WorkspaceArtifactCarrier({ workspace, root, records: () => records });
   assert.deepEqual(await carrier.metadata(), []);
   carrier.dispose();

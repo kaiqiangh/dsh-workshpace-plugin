@@ -115,6 +115,7 @@ const PATH_COLLECTIONS = ["paths", "files", "locations", "diffs"] as const;
 function workspaceRelativePath(value: string, root?: string): string | undefined {
   const input = value.trim();
   if (!input) return undefined;
+  if (/[\u0000-\u001F\u007F]/u.test(input) || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(input)) return undefined;
   const normalizedInput = input.replaceAll("\\", "/");
   if (normalizedInput.split("/").includes("..")) return undefined;
   // A Windows/UNC absolute path is foreign on POSIX hosts. Do not feed it to
@@ -184,6 +185,7 @@ function shellWordAt(command: string, start: number): string | undefined {
 function shellRedirectionPaths(command: string, add: (value: string | undefined) => void): void {
   let quote: "'" | '"' | undefined;
   let segmentStart = 0;
+  let conditional: "[[" | "((" | undefined;
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index];
     if (quote !== undefined) {
@@ -194,8 +196,12 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
     if (character === "'" || character === '"') { quote = character; continue; }
     if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
     if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) break;
+    if (conditional === "[[" && character === "]" && command[index + 1] === "]") { conditional = undefined; index += 1; continue; }
+    if (conditional === "((" && character === ")" && command[index + 1] === ")") { conditional = undefined; index += 1; continue; }
+    if (conditional === undefined && character === "[" && command[index + 1] === "[") { conditional = "[["; index += 1; continue; }
+    if (conditional === undefined && character === "(" && command[index + 1] === "(") { conditional = "(("; index += 1; continue; }
     if (/[;&|]/u.test(character)) { segmentStart = index + 1; continue; }
-    if (character !== ">" || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
+    if (character !== ">" || conditional !== undefined || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
     const append = command[index + 1] === ">";
     if (append) index += 1;
     add(shellWordAt(command, index + 1));
