@@ -2461,23 +2461,72 @@ const WORKSPACE_VIEW_STYLES = `
 
 [data-dsh-workspace="view"] [data-dsh-workspace="history-commit-row"] {
   display: grid;
-  grid-template-columns: minmax(42px, 72px) minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
   min-width: 0;
 }
 
+[data-dsh-workspace="view"] [data-dsh-workspace="history-list-column"] {
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-detail-column"] {
+  position: sticky;
+  top: 8px;
+  max-height: min(680px, calc(100vh - 180px));
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
 [data-dsh-workspace="view"] [data-dsh-workspace="history-graph"] {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 15px;
+  grid-auto-columns: 13px;
   align-items: center;
+  width: 32px;
+  max-width: 32px;
+  overflow: hidden;
   min-height: 28px;
   color: var(--dsw-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1;
   text-align: center;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-select"] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas:
+    "hash subject"
+    "hash decoration";
+  align-items: center;
+  gap: 2px 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-hash"] {
+  grid-area: hash;
+  width: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-subject"] {
+  grid-area: subject;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-commit-deco"] {
+  grid-area: decoration;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="history-graph-lane"][data-active="true"] {
@@ -2490,9 +2539,24 @@ const WORKSPACE_VIEW_STYLES = `
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="history-commit-meta"] {
-  padding-left: 80px;
+  margin-left: 40px;
+  padding-left: 0;
   color: var(--dsw-muted);
   font-size: var(--dsw-type-xs);
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-code"] {
+  max-height: 420px;
+  overflow: auto;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-code-line"] {
+  min-width: max-content;
+}
+
+[data-dsh-workspace="view"] [data-dsh-workspace="history-diff-file"] [data-dsh-workspace="diff-line-text"] {
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 [data-dsh-workspace="view"] [data-dsh-workspace="history-commit-detail"],
@@ -2512,7 +2576,14 @@ const WORKSPACE_VIEW_STYLES = `
   }
 
   [data-dsh-workspace="view"] [data-dsh-workspace="history-commit-meta"] {
+    margin-left: 0;
     padding-left: 0;
+  }
+
+  [data-dsh-workspace="view"] [data-dsh-workspace="history-detail-column"] {
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 `;
