@@ -198,7 +198,7 @@ test("keeps shell replay bounded to explicit relative write targets", () => {
     { seq: 1, type: "tool/result", data: { message: { source: { kind: "tool", callId: "call-shell-boundary" }, content: [{ type: "tool-result", toolCallId: "call-shell-boundary" }] }, meta: {} } },
   ])[0]?.data?.result as { readonly paths?: readonly string[] };
   assert.deepEqual(recordFor("printf x > notes.md" ).paths, ["notes.md"]);
-  assert.deepEqual(recordFor("cat <<'EOF' > later.md\n> body text\nEOF").paths, ["later.md"]);
+  assert.deepEqual(recordFor("cat <<'EOF' > later.md\ntouch false.md\n> body text\nEOF").paths, ["later.md"]);
   assert.deepEqual(recordFor("touch empty.txt && tee copied.txt").paths, ["empty.txt", "copied.txt"]);
   assert.deepEqual(recordFor("printf x >> appended.md").paths, ["appended.md"]);
   assert.deepEqual(recordFor("cat > /tmp/out.md && cat > ../secret.md").paths, undefined);

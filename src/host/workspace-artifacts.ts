@@ -183,6 +183,24 @@ function shellWordAt(command: string, start: number): string | undefined {
   return value || undefined;
 }
 
+function shellTokenEnd(command: string, start: number): number {
+  let quote: "'" | '"' | undefined;
+  let index = start;
+  while (index < command.length && /\s/u.test(command[index] ?? "")) index += 1;
+  for (; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else if (character === "\\" && quote === '"') index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
+    if (/\s|[;&|]/u.test(character)) return index;
+  }
+  return command.length;
+}
+
 function shellHeredocEnd(command: string, start: number, delimiter: string): number {
   let lineStart = command.indexOf("\n", start);
   if (lineStart < 0) return command.length;
@@ -202,6 +220,7 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
   let segmentStart = 0;
   let conditional: "[[" | "((" | undefined;
   let heredocSkipEnd: number | undefined;
+  let segmentHeadChecked = false;
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index];
     if (quote !== undefined) {
@@ -224,7 +243,20 @@ function shellRedirectionPaths(command: string, add: (value: string | undefined)
       else index += 1;
       continue;
     }
-    if (/[;&|]/u.test(character)) { segmentStart = index + 1; continue; }
+    if (/[;&|]/u.test(character)) { segmentStart = index + 1; segmentHeadChecked = false; continue; }
+    if (!segmentHeadChecked && !/\s/u.test(character)) {
+      segmentHeadChecked = true;
+      const head = shellWordAt(command, segmentStart);
+      if (/^(?:tee|touch)$/i.test(head ?? "")) {
+        let targetStart = shellTokenEnd(command, segmentStart);
+        let target = shellWordAt(command, targetStart);
+        while (target?.startsWith("-")) {
+          targetStart = shellTokenEnd(command, targetStart);
+          target = shellWordAt(command, targetStart);
+        }
+        add(target);
+      }
+    }
     if (character !== ">" || conditional !== undefined || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
     const append = command[index + 1] === ">";
     if (append) index += 1;
@@ -245,8 +277,6 @@ function shellWritePaths(tool: string | undefined, args: unknown): readonly stri
     if (!paths.includes(path)) paths.push(path);
   };
   shellRedirectionPaths(command, add);
-  const directTarget = /(?:^|[;&|]\s*)(?:tee|touch)(?:\s+-[^\s]+)*\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/gu;
-  for (const match of command.matchAll(directTarget)) add(match[1] ?? match[2] ?? match[3]);
   return paths;
 }
 
