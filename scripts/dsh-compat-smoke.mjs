@@ -16,17 +16,55 @@ const PACKAGE_VERSIONS = {
   '@deepseek-ai/cordis': '4.0.1',
   '@deepseek-ai/dsh-api-gateway': '0.1.0-rc.6',
   '@deepseek-ai/dsh-api-remotes': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-attachment': '0.1.0-rc.6',
   '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-agent-default-model': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-agent-presets': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-atomic-write': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-brand': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-code-runtime': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-client-connection': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-ui-primitives': '0.1.0-rc.6',
   '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-commands': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-compaction': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-cordis-host-runner': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-credentials': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-goal': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-home-paths': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-host-apiproxy': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-host-directory-picker': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-host-plugin-inventory': '0.1.0-rc.6',
   '@deepseek-ai/dsh-host-webserver': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-invariants': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-jobs': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-llm': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-llm-retry': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-message-feedback': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-native-command': '0.1.0-rc.6',
   '@deepseek-ai/dsh-session': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session-persistence': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session-projection': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session-projection-cache': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session-query': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-session-title': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-scope': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-settings': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-skill': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-storage': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-storage-domain': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-subagent': '0.1.0-rc.6',
   '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
   '@deepseek-ai/dsh-token-meter': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-tools': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-timeout': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-generator': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-protocol': '0.1.0-rc.6',
   '@deepseek-ai/dsh-typert-registry': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-user-approval': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-user-questions': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-workspace': '0.1.0-rc.6',
   '@types/react': '18.3.12',
   '@types/node': '26.2.0',
   '@tsdown/css': '0.22.14',
@@ -225,14 +263,19 @@ async function buildFixture(root) {
 async function installPackedBundle(root, pluginRoot) {
   const packDir = join(root, 'pack')
   await mkdir(packDir, { recursive: true })
-  const packed = JSON.parse((await exec('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: pluginRoot })).stdout)
-  const packedFiles = new Set(packed[0].files.map(file => file.path))
+  const packedOutput = JSON.parse((await exec('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: pluginRoot })).stdout)
+  const packed = Array.isArray(packedOutput)
+    ? packedOutput[0]
+    : packedOutput.files === undefined
+      ? Object.values(packedOutput)[0]
+      : packedOutput
+  const packedFiles = new Set(packed.files.map(file => file.path))
   for (const file of [
     'lib/index.js', 'lib/client.js', 'lib/types/index.d.ts', 'lib/types/types.d.ts',
     'lib/typert.host.js', 'lib/typert.client.js', 'lib/typert.remote-client.js', 'cordis.patch.yml',
   ]) assert.ok(packedFiles.has(file), `packed bundle must include ${file}`)
   assert.equal([...packedFiles].some(file => file.startsWith('src/')), false, 'packed bundle must not fall back to source files')
-  const tarball = join(packDir, packed[0].filename)
+  const tarball = join(packDir, packed.filename)
   const tarballSha256 = createHash('sha256').update(await readFile(tarball)).digest('hex')
   const consumer = join(root, 'consumer')
   await writeJson(join(consumer, 'package.json'), { name: 'dsh-compat-consumer', private: true, type: 'module' })
@@ -344,7 +387,7 @@ const contribution = {
   emit: () => {},
 }
 const disposeSurface = await client.apply(contribution)
-  if (surfaceDisposers.length !== 1) throw new Error('packed client registered an unexpected number of surface disposers')
+  if (surfaceDisposers.length !== 2) throw new Error('packed client registered an unexpected number of surface disposers')
   await disposeSurface()
   console.log('installed-bundle-ok')
 `)
@@ -856,7 +899,8 @@ async function conversationSmoke(root, client, ctx) {
         }
         if (options.name === 'conversation.view') {
           assert.equal(options.id, 'dsh-workspace')
-          assert.equal(options.label, 'Workspace')
+          assert.equal(typeof options.label, 'function')
+          assert.equal(options.label(), 'Workspace')
           conversationViewSlots.push(component)
           return () => conversationViewSlots.splice(0)
         }
@@ -878,20 +922,13 @@ async function conversationSmoke(root, client, ctx) {
     emit(event) { if (event === 'workspace/open') clientOpened += 1 },
   })
   const clientDispose = await client.apply(contribution)
-  assert.equal(definitions.length, 1)
+  assert.equal(definitions.length, 0)
   assert.equal(views.length, 0)
-  assert.equal(clientSlots.length, 1)
+  assert.equal(clientSlots.length, 0)
   assert.equal(overlaySlots.length, 0)
   assert.equal(conversationViewSlots.length, 1)
   assert.equal(clientRemoteMounted, 1)
-  await assert.rejects(() => client.apply({}), /public conversation and Typert Remote seams/)
-  const clientNode = clientSlots[0]({ node: {
-    key: 'dsh-workspace-summary:client', kind: 'dsh-workspace-summary', id: 'client', target: 'chat',
-    data: { filesTouched: 1, changes: 2, artifacts: 0, workspaceName: 'client', filesCreated: 1, filesModified: 0, filesDeleted: 0, firstObservedAt: 1, lastObservedAt: 2, memoryCount: 0, decisionCount: 0 }, anchorSeq: 1,
-    location: { kind: 'session' }, visibility: 'visible',
-  } })
-  assert.equal(clientNode.type, 'section')
-  assert.equal(clientNode.props['data-dsh-workspace'], 'summary')
+  await assert.rejects(() => client.apply({}), /public slot registry and Typert Remote seams/)
   const workspace = client
   assert.equal(typeof workspace.workspaceConversationView, 'object')
   const events = { entries: () => definitions, fallbackEntry: () => undefined }

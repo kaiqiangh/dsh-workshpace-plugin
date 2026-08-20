@@ -19,6 +19,14 @@ export interface WorkspaceArtifactMarkdownPreview {
         readonly allowRemoteImages: false;
         readonly allowedLinkSchemes: readonly ["http", "https", "mailto"];
     };
+    /**
+     * Same-origin opaque resource URLs for the markdown's relative images,
+     * keyed by the raw src (e.g. "./img.png" -> "/workspace/resource?id=..").
+     * Images whose relative path escaped the root, or that failed to resolve,
+     * are absent — the renderer then drops them (alt text only). A plain
+     * object so it crosses the Typert remote boundary (no Map/symbol keys).
+     */
+    readonly imageUrls?: Readonly<Record<string, string>>;
 }
 export interface WorkspaceArtifactJsonPreview {
     readonly type: "json";
@@ -84,4 +92,4 @@ export declare class WorkspaceArtifactCarrier {
     dispose(): void;
     private projection;
 }
-export declare function sessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[];
+export declare function sessionToolRecords(events: readonly SessionEventLike[], workspaceRoot?: string): readonly NativeDurableToolRecord[];

@@ -37,6 +37,7 @@ export interface WorkspaceChangeProjection {
 export interface ArtifactProjection {
     readonly path: WorkspacePath;
     readonly createdAt: number;
+    readonly deleted?: boolean;
 }
 export interface WorkingSetEntry {
     readonly path: WorkspacePath;

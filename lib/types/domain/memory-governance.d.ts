@@ -29,3 +29,5 @@ export interface MemoryExportBundle {
 }
 export declare function exportMemoryBundle(records: readonly MemoryRecord[], now?: number): string;
 export declare function importMemoryBundle(serialized: string, now?: number): readonly MemoryRecord[];
+export declare function exportMemoryMarkdown(records: readonly MemoryRecord[], now?: number): string;
+export declare function importMemoryMarkdown(markdown: string, now?: number): readonly MemoryRecord[];

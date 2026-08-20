@@ -1,6 +1,9 @@
-import { createElement, type ComponentType, type ExoticComponent, type ReactNode } from "react";
+import { createElement, useEffect, useRef, useState, type ComponentType, type ExoticComponent, type ReactNode } from "react";
 
 import type { PreviewDescriptor } from "../domain/preview.ts";
+import { renderWorkspaceMarkdown, resolveWorkspaceMarkdownImage, safeWorkspaceUrl } from "./workspace-markdown.ts";
+import { enhanceMermaidBlocks, mermaidTheme, rethemeMermaidBlocks, shellIsDark, watchShellTheme } from "./workspace-mermaid.ts";
+import { t } from "./workspace-i18n.ts";
 import { workspaceResourceUrl } from "./workspace-deliverables.ts";
 
 type WorkspacePrimitive<Props extends object> = ComponentType<Props> | ExoticComponent<Props>;
@@ -17,7 +20,14 @@ export interface WorkspacePreviewRenderOptions {
   readonly altText?: string;
 }
 
-/** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
+/**
+ * Remove remote Markdown image fetches before rendering, while preserving
+ * relative images so the v0.6 renderer can resolve them to same-origin opaque
+ * resource URLs. Relative srcs (`./x.png`, `../x.png`, `/x.png`, plain
+ * filenames) pass through unchanged; absolute http(s)/data:/other-scheme srcs
+ * and remote reference definitions are stripped to their alt text. The
+ * renderer's `resolveImageSrc` hook then decides what actually renders.
+ */
 export function sanitizeWorkspaceMarkdown(text: string): string {
   const withoutRemoteDefinitions = text.replace(/^\s{0,3}\[((?:\\.|[^\]])+)\]:\s*<?https?:\/\/[^>\s]+>?[^\r\n]*$/gimu, "");
   const readDelimited = (start: number, open: string, close: string): number => {
@@ -42,7 +52,9 @@ export function sanitizeWorkspaceMarkdown(text: string): string {
             : -1;
         const alt = withoutRemoteDefinitions.slice(index + 2, altEnd);
         const hasExplicitDestination = withoutRemoteDefinitions[destinationStart] === "(" || withoutRemoteDefinitions[destinationStart] === "[";
-        if (!hasExplicitDestination || destinationEnd !== -1) {
+        const isRemote = hasExplicitDestination && /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(withoutRemoteDefinitions.slice(destinationStart + 1, destinationEnd === -1 ? undefined : destinationEnd).trim());
+        if ((!hasExplicitDestination || destinationEnd !== -1) && isRemote) {
+          // Remote image: keep only the alt text (privacy policy).
           sanitized += alt;
           index = destinationEnd === -1 ? altEnd + 1 : destinationEnd + 1;
           continue;
@@ -63,13 +75,13 @@ function csvTable(columns: readonly string[], rows: readonly (readonly string[])
   const table = createElement(
     "table",
     { "data-dsh-workspace-preview": "csv" },
-    createElement("caption", null, truncated ? "Workspace CSV preview (additional rows omitted)" : "Workspace CSV preview"),
+    createElement("caption", null, truncated ? t("preview.csvTruncatedTitle") : t("preview.csvTitle")),
     createElement("thead", null, createElement("tr", null, columns.map((column, index) => createElement("th", { key: index, scope: "col" }, column)))),
     createElement("tbody", null, rows.map((row, rowIndex) => createElement("tr", { key: rowIndex }, row.map((cell, columnIndex) => createElement("td", { key: columnIndex }, cell))))),
   );
   return createElement(
     "div",
-    { role: "region", "aria-label": "Workspace CSV preview", "data-dsh-workspace-preview": "csv-scroll", tabIndex: 0, style: { overflowX: "auto", maxWidth: "100%" } },
+    { role: "region", "aria-label": t("preview.csvTitle"), "data-dsh-workspace-preview": "csv-scroll", tabIndex: 0, style: { overflowX: "auto", maxWidth: "100%" } },
     table,
   );
 }
@@ -83,8 +95,8 @@ function resourceHref(descriptor: Extract<PreviewDescriptor, { type: "binary" }>
 }
 
 function imageAlt(descriptor: Extract<PreviewDescriptor, { type: "binary" }>, options: WorkspacePreviewRenderOptions): string {
-  const value = options.altText ?? descriptor.path.split("/").pop() ?? "Workspace image";
-  return value.replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, 180) || "Workspace image";
+  const value = options.altText ?? descriptor.path.split("/").pop() ?? t("preview.imageAlt");
+  return value.replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, 180) || t("preview.imageAlt");
 }
 
 function withTruncation(content: ReactNode, truncated: boolean): ReactNode {
@@ -93,7 +105,7 @@ function withTruncation(content: ReactNode, truncated: boolean): ReactNode {
     "div",
     { "data-dsh-workspace-preview": "truncated" },
     content,
-    createElement("p", { role: "status" }, "Preview truncated; additional content omitted."),
+    createElement("p", { role: "status" }, t("preview.truncatedNote")),
   );
 }
 
@@ -102,19 +114,74 @@ export function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet
   if (descriptor.type === "error") return status(descriptor.message);
   if (descriptor.type === "unsupported") {
     const metadata = [descriptor.mediaType, descriptor.size === undefined ? undefined : `${descriptor.size} bytes`].filter(Boolean).join(", ");
-    return status(`Preview unavailable: ${descriptor.reason}${metadata ? ` (${metadata})` : ""}. Download is unavailable for this file.`);
+    return status(t("preview.previewUnavailable", { reason: descriptor.reason }) + (metadata ? ` (${metadata})` : ""));
   }
   if (descriptor.type === "text") return withTruncation(primitiveElement(primitives.CodeBlock, { code: descriptor.content, lang: descriptor.language }), descriptor.truncated);
-  if (descriptor.type === "markdown") return withTruncation(primitiveElement(primitives.MarkdownText, { text: sanitizeWorkspaceMarkdown(descriptor.content), streaming: false }), descriptor.truncated);
+  if (descriptor.type === "markdown") {
+    // v0.6: render markdown with the Workspace renderer (GFM subset) instead
+    // of MarkdownText so relative images resolve to same-origin opaque
+    // resource URLs (MarkdownText only renders absolute http(s) images) and
+    // mermaid fences can be enhanced. Remote images stay dropped.
+    const imageUrls = descriptor.imageUrls;
+    const html = renderWorkspaceMarkdown(sanitizeWorkspaceMarkdown(descriptor.content), {
+      resolveImageSrc: (src) => {
+        const safe = safeWorkspaceUrl(src);
+        if (safe === null) return null;
+        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(safe)) return null; // remote images still dropped
+        if (imageUrls && Object.prototype.hasOwnProperty.call(imageUrls, safe)) return imageUrls[safe] ?? null;
+        const resolution = resolveWorkspaceMarkdownImage(descriptor.path, safe);
+        return resolution.kind === "relative" ? (imageUrls?.[safe] ?? null) : null;
+      },
+    });
+    return withTruncation(
+      createElement(WorkspaceMarkdownView, { html }),
+      descriptor.truncated,
+    );
+  }
   if (descriptor.type === "json") {
     const data = descriptor.value !== null && typeof descriptor.value === "object" ? descriptor.value as object | readonly unknown[] : { value: descriptor.value };
-    return primitiveElement(primitives.JsonTree, { data, label: "Workspace JSON", copyable: true, expandTopLevel: true });
+    return primitiveElement(primitives.JsonTree, { data, label: t("preview.jsonLabel"), copyable: true, expandTopLevel: true });
   }
   if (descriptor.type === "csv") return withTruncation(csvTable(descriptor.columns, descriptor.rows, descriptor.truncated), descriptor.truncated);
   const resourceUrl = resourceHref(descriptor, options, false);
-  if (!resourceUrl) return status("Preview resource is unavailable");
+  if (!resourceUrl) return status(t("preview.resourceUnavailable"));
   if (descriptor.mediaType.startsWith("image/")) return createElement("img", { src: resourceUrl, alt: imageAlt(descriptor, options), loading: "lazy" });
-  if (descriptor.mediaType === "application/pdf") return createElement("iframe", { src: resourceUrl, title: "Workspace PDF preview" });
+  if (descriptor.mediaType === "application/pdf") return createElement("iframe", { src: resourceUrl, title: t("preview.downloadName") });
   const downloadUrl = resourceHref(descriptor, options, true);
-  return createElement("a", { href: downloadUrl, download: options.downloadName }, `Download ${options.downloadName ?? "workspace file"}`);
+  return createElement("a", { href: downloadUrl, download: options.downloadName }, t("preview.downloadAction", { name: options.downloadName ?? t("preview.downloadName") }));
+}
+
+/**
+ * Rendered markdown body plus the mermaid enhancement lifecycle: fresh blocks
+ * render once per html, completed diagrams re-render on shell theme flips.
+ */
+export function createWorkspaceMarkdownContent(text: string): ReactNode {
+  const html = renderWorkspaceMarkdown(sanitizeWorkspaceMarkdown(text), { resolveImageSrc: () => null });
+  return createElement(WorkspaceMarkdownView, { html });
+}
+
+function WorkspaceMarkdownView({ html }: { readonly html: string }): ReactNode {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [mermaidStatus, setMermaidStatus] = useState<"idle" | "ready" | "fallback">("idle");
+  const [mermaidLimited, setMermaidLimited] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null) return undefined;
+    let active = true;
+    void enhanceMermaidBlocks(el, mermaidTheme(shellIsDark())).then((count) => {
+      if (!active) return;
+      setMermaidLimited(el.dataset.dshMermaidTruncated === "true");
+      setMermaidStatus(count === 0 ? "idle" : el.querySelector(".dsh-workspace-mermaid") ? "ready" : "fallback");
+    });
+    const stopTheme = watchShellTheme((isDark) => {
+      void rethemeMermaidBlocks(el, mermaidTheme(isDark));
+    });
+    return () => { active = false; stopTheme(); };
+  }, [html]);
+  return createElement("div", { "data-dsh-workspace-preview": "markdown" },
+    mermaidStatus === "ready" && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-status" }, t("preview.mermaidReady")),
+    mermaidStatus === "fallback" && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-status" }, t("preview.mermaidFallback")),
+    mermaidLimited && createElement("p", { role: "status", "data-dsh-workspace-preview": "mermaid-limit" }, t("preview.mermaidLimit")),
+    createElement("div", { ref, dangerouslySetInnerHTML: { __html: html } }),
+  );
 }

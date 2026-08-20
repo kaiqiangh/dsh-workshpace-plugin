@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workspace Memory — v0.7 redesign prototype (#123)</title>
+<style>
+  :root {
+    --dsw-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --dsw-bg: #ffffff;
+    --dsw-surface: #f7f7f8;
+    --dsw-surface-hover: #efeff1;
+    --dsw-border: #e3e3e8;
+    --dsw-border-strong: #d0d0d8;
+    --dsw-text: #1d1d20;
+    --dsw-muted: #6b6b74;
+    --dsw-faint: #8f8f98;
+    --dsw-accent: #2b5fce;
+    --dsw-accent-soft: #e8effb;
+    --dsw-success: #2e9e5b;
+    --dsw-success-soft: #e7f5ec;
+    --dsw-warning: #c98a1b;
+    --dsw-warning-soft: #faf2e0;
+    --dsw-danger: #d4565b;
+    --dsw-danger-soft: #fbeaea;
+    --dsw-radius: 12px;
+    --dsw-radius-sm: 8px;
+    --dsw-space-1: 4px; --dsw-space-2: 8px; --dsw-space-3: 12px; --dsw-space-4: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--dsw-font); background: var(--dsw-bg); color: var(--dsw-text); font-size: 13px; line-height: 1.5; padding: 24px; }
+  h1 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--dsw-muted); font-size: 12px; margin-bottom: 16px; }
+  .surface { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius); overflow: hidden; }
+  /* ---- toolbar ---- */
+  .toolbar { display: flex; align-items: center; gap: var(--dsw-space-3); padding: var(--dsw-space-3) var(--dsw-space-4); border-bottom: 1px solid var(--dsw-border); flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--dsw-surface); border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 6px; font-size: 12px; color: var(--dsw-muted); cursor: pointer; }
+  .seg button.active { background: var(--dsw-bg); color: var(--dsw-text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .seg button:hover:not(.active) { background: var(--dsw-surface-hover); color: var(--dsw-text); }
+  .search { flex: 1; min-width: 180px; position: relative; }
+  .search input { width: 100%; padding: 6px 10px; border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); font-size: 12px; background: var(--dsw-bg); color: var(--dsw-text); }
+  .search input:focus { outline: 2px solid var(--dsw-accent-soft); border-color: var(--dsw-accent); }
+  select { padding: 6px 8px; border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); font-size: 12px; background: var(--dsw-bg); color: var(--dsw-text); }
+  .spacer { flex: 1; }
+  .btn { padding: 6px 12px; border: 1px solid var(--dsw-border-strong); border-radius: var(--dsw-radius-sm); background: var(--dsw-bg); color: var(--dsw-text); font-size: 12px; cursor: pointer; }
+  .btn:hover { background: var(--dsw-surface-hover); }
+  /* ---- body: list | detail ---- */
+  .body { display: grid; grid-template-columns: 340px 1fr; min-height: 380px; }
+  @media (max-width: 860px) { .body { grid-template-columns: 1fr; } }
+  .list { border-right: 1px solid var(--dsw-border); overflow-y: auto; max-height: 560px; padding: var(--dsw-space-2); display: flex; flex-direction: column; gap: 2px; }
+  .card { padding: 10px 12px; border-radius: var(--dsw-radius-sm); cursor: pointer; border-left: 2px solid transparent; }
+  .card:hover { background: var(--dsw-surface-hover); }
+  .card.selected { background: var(--dsw-accent-soft); border-left-color: var(--dsw-accent); }
+  .card .row1 { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .card .title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .card .time { color: var(--dsw-faint); font-size: 11px; white-space: nowrap; }
+  .chip { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--dsw-border-strong); color: var(--dsw-muted); white-space: nowrap; }
+  .chip.type-fact { background: var(--dsw-accent-soft); border-color: transparent; color: var(--dsw-accent); }
+  .chip.type-proposal { background: var(--dsw-warning-soft); border-color: transparent; color: var(--dsw-warning); }
+  .chip.verified { background: var(--dsw-success-soft); border-color: transparent; color: var(--dsw-success); }
+  .chip.unverified { background: var(--dsw-surface); color: var(--dsw-faint); }
+  .card .preview { color: var(--dsw-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* ---- detail ---- */
+  .detail { padding: var(--dsw-space-4); overflow-y: auto; max-height: 560px; }
+  .detail h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .detail .meta-line { color: var(--dsw-muted); font-size: 12px; margin-bottom: 12px; }
+  pre.content { background: var(--dsw-surface); border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); padding: 12px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; overflow: auto; max-height: 220px; white-space: pre-wrap; word-break: break-word; margin-bottom: 12px; }
+  table.gov { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12px; }
+  table.gov td { padding: 5px 8px; border-bottom: 1px solid var(--dsw-border); vertical-align: top; }
+  table.gov td:first-child { color: var(--dsw-faint); width: 110px; }
+  table.gov td:last-child { word-break: break-all; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .actions .btn.primary { background: var(--dsw-accent); border-color: var(--dsw-accent); color: #fff; }
+  .btn.danger { color: var(--dsw-danger); border-color: color-mix(in srgb, var(--dsw-danger) 45%, transparent); }
+  /* ---- editor ---- */
+  details.editor { margin-top: 12px; border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); }
+  details.editor summary { padding: 8px 12px; cursor: pointer; font-size: 12px; color: var(--dsw-muted); }
+  details.editor .inner { padding: 12px; border-top: 1px solid var(--dsw-border); display: flex; flex-direction: column; gap: 8px; }
+  details.editor label { font-size: 11px; color: var(--dsw-faint); }
+  details.editor input, details.editor textarea { border: 1px solid var(--dsw-border); border-radius: var(--dsw-radius-sm); padding: 6px 8px; font-size: 12px; font-family: inherit; }
+  details.editor textarea { min-height: 90px; resize: vertical; }
+  .tip { position: relative; border-bottom: 1px dashed var(--dsw-border-strong); cursor: help; }
+  .tip:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 130%; background: #222; color: #fff; font-size: 11px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; z-index: 10; }
+</style>
+</head>
+<body>
+<h1>Workspace Memory — v0.7 redesign</h1>
+<p class="sub">Throwaway interactive stub — wayfinder #123. Scope segmented control + search/filters · record list cards · governance detail · inline editor. Tooltips on hover for the dotted underline terms.</p>
+
+<div class="surface">
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Memory scope">
+      <button class="active tip" data-tip="Project memory: persisted per workspace root, shared by every session" data-scope="project">Project</button>
+      <button class="tip" data-tip="Session memory: scoped to the current Harness session only" data-scope="session">Session</button>
+      <button class="tip" data-tip="User memory: personal, crosses projects for this account" data-scope="user">User</button>
+      <button class="tip" data-tip="Shared Project: read-mostly, requires acknowledgement to edit" data-scope="shared">Shared Project</button>
+    </div>
+    <div class="search"><input id="search" placeholder="Search memory…" aria-label="Search memory" /></div>
+    <select id="typeFilter" aria-label="Type filter">
+      <option value="">All types</option><option value="fact">Fact</option><option value="proposal">Proposal</option><option value="decision">Decision</option>
+    </select>
+    <select id="statusFilter" aria-label="Status filter">
+      <option value="">All statuses</option><option value="verified">Verified</option><option value="unverified">Unverified</option>
+    </select>
+    <span class="spacer"></span>
+    <button class="btn tip" data-tip="Download current scope as JSON">Export</button>
+    <button class="btn tip" data-tip="Import a JSON memory file into the current scope">Import</button>
+  </div>
+
+  <div class="body">
+    <div class="list" id="list" role="listbox" aria-label="Memory records"></div>
+    <div class="detail" id="detail"></div>
+  </div>
+</div>
+
+<script>
+  const SCOPE_NS = { project: "Project", session: "Session", user: "User", shared: "Shared Project" };
+  const RECORDS = [
+    { id: "r1", title: "Workspace root is dsh-workshpace-plugin", type: "fact", verified: true, scope: "project", updated: "2h ago", preview: "The configured Workspace Root resolves to the checked-out dsh-workshpace-plugin directory (ADR 0011).", content: "The configured Workspace Root resolves to the checked-out `dsh-workshpace-plugin` directory.\n\n- Root: `dsh-workshpace-plugin`\n- Enforcement: ROOT_OUTSIDE_PROCESS guard (domain/workspace.ts)\n- Baseline: git HEAD captured per session", origin: "agent · model-suggested", retention: "forever · project", revision: "r3", sources: "workspace:log#0412 · task #117", expires: "—" },
+    { id: "r2", title: "Proposal: add per-artifact modified time", type: "proposal", verified: false, scope: "session", updated: "1h ago", preview: "Surface mtimeMs from statArtifact into WorkspaceDeliverable so the list can show modified time.", content: "Surface `mtimeMs` from `statArtifact()` into `WorkspaceDeliverable` so the Artifacts list can show a modified time per row.\n\nStatus: proposed, not yet reviewed.", origin: "human · submitted", retention: "session · 30d", revision: "r1", sources: "wayfinder #127", expires: "2026-09-19" },
+    { id: "r3", title: "Artifacts carrier degrades to empty on missing agent", type: "fact", verified: true, scope: "project", updated: "yesterday", preview: "artifactMetadata returns [] when the agent is unregistered (fix merged in #126).", content: "`artifactMetadata` returns `[]` when the agent is unregistered instead of throwing `PROJECT_UNAVAILABLE` (fix merged in #126).", origin: "agent · derived from code", retention: "forever", revision: "r2", sources: "src/index.ts#197", expires: "—" },
+    { id: "r4", title: "Decision: zero runtime npm dependencies", type: "decision", verified: true, scope: "shared", updated: "3d ago", preview: "ADR 0011 locks zero runtime deps for the Workspace plugin surfaces.", content: "ADR 0011 locks zero runtime npm dependencies for the Workspace plugin surfaces. Vendored assets are served same-origin.", origin: "human · ADR", retention: "forever", revision: "r5", sources: "docs/adr/0011", expires: "—" },
+    { id: "r5", title: "User memory: reply language preference", type: "fact", verified: false, scope: "user", updated: "5d ago", preview: "User prefers terse, action-oriented replies with zh narration + en identifiers.", content: "User prefers terse, action-oriented replies; Chinese narration with English code/identifiers inline.", origin: "agent · inferred", retention: "user · forever", revision: "r1", sources: "session:u-88", expires: "—" },
+  ];
+
+  const listEl = document.getElementById("list");
+  const detailEl = document.getElementById("detail");
+  let scope = "project";
+  let selectedId = "r1";
+
+  function chip(cls, label) { return `<span class="chip ${cls}">${label}</span>`; }
+
+  function renderList() {
+    const q = document.getElementById("search").value.trim().toLowerCase();
+    const t = document.getElementById("typeFilter").value;
+    const s = document.getElementById("statusFilter").value;
+    const rows = RECORDS.filter((r) => {
+      if (r.scope !== scope && !(scope === "shared" && r.scope === "shared")) { if (r.scope !== scope) return false; }
+      if (t && r.type !== t) return false;
+      if (s === "verified" && !r.verified) return false;
+      if (s === "unverified" && r.verified) return false;
+      if (q && !(r.title + r.preview + r.content).toLowerCase().includes(q)) return false;
+      return true;
+    });
+    if (rows.length === 0) { listEl.innerHTML = `<div style="padding:24px;color:var(--dsw-faint);text-align:center;">No memory records in ${SCOPE_NS[scope]} scope.</div>`; return; }
+    listEl.innerHTML = rows.map((r) => `
+      <div class="card ${r.id === selectedId ? "selected" : ""}" role="option" aria-selected="${r.id === selectedId}" data-id="${r.id}">
+        <div class="row1">
+          <span class="title">${r.title}</span>
+          <span class="time">${r.updated}</span>
+        </div>
+        <div class="row1">
+          ${chip("type-" + r.type, r.type)}
+          ${r.verified ? chip("verified", "verified") : chip("unverified", "unverified")}
+          <span class="chip">${SCOPE_NS[r.scope]}</span>
+        </div>
+        <div class="preview">${r.preview}</div>
+      </div>`).join("");
+    listEl.querySelectorAll(".card").forEach((el) => el.addEventListener("click", () => { selectedId = el.dataset.id; renderList(); renderDetail(); }));
+  }
+
+  function renderDetail() {
+    const r = RECORDS.find((x) => x.id === selectedId) ?? RECORDS[0];
+    const readOnly = r.scope === "shared";
+    detailEl.innerHTML = `
+      <h2>${r.title}</h2>
+      <div class="meta-line">${chip("type-" + r.type, r.type)} ${r.verified ? chip("verified", "verified") : chip("unverified", "unverified")} · updated ${r.updated} · ${SCOPE_NS[r.scope]} scope</div>
+      <pre class="content">${r.content}</pre>
+      <table class="gov">
+        <tr><td class="tip" data-tip="Where this record came from (agent-derived vs human-entered)">Origin</td><td>${r.origin}</td></tr>
+        <tr><td class="tip" data-tip="Whether a human has confirmed this record">Verification</td><td>${r.verified ? "verified" : "unverified"}</td></tr>
+        <tr><td class="tip" data-tip="How long the record is kept and where it persists">Retention</td><td>${r.retention}</td></tr>
+        <tr><td class="tip" data-tip="Version of this record; edits bump the revision">Revision</td><td>${r.revision}</td></tr>
+        <tr><td class="tip" data-tip="Provenance links that produced this record">Sources</td><td>${r.sources}</td></tr>
+        <tr><td>Expires</td><td>${r.expires}</td></tr>
+      </table>
+      <div class="actions">
+        <button class="btn primary" id="saveBtn" ${readOnly ? "disabled style='opacity:.5'" : ""}>Save changes</button>
+        <button class="btn">${r.verified ? "Re-verify" : "Verify"}</button>
+        <button class="btn">Copy</button>
+        <button class="btn">View source</button>
+        <button class="btn danger">Forget</button>
+        <button class="btn danger">Archive</button>
+      </div>
+      <details class="editor">
+        <summary>Edit record…</summary>
+        <div class="inner">
+          <label>Title <input value="${r.title}" /></label>
+          <label>Type <select><option ${r.type==="fact"?"selected":""}>fact</option><option ${r.type==="proposal"?"selected":""}>proposal</option><option ${r.type==="decision"?"selected":""}>decision</option></select></label>
+          <label>Content <textarea>${r.content}</textarea></label>
+        </div>
+      </details>`;
+  }
+
+  document.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
+    document.querySelectorAll(".seg button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    scope = btn.dataset.scope;
+    selectedId = RECORDS.find((r) => r.scope === scope)?.id ?? RECORDS[0].id;
+    renderList(); renderDetail();
+  }));
+  document.getElementById("search").addEventListener("input", renderList);
+  document.getElementById("typeFilter").addEventListener("change", renderList);
+  document.getElementById("statusFilter").addEventListener("change", renderList);
+
+  renderList();
+  renderDetail();
+</script>
+</body>
+</html>

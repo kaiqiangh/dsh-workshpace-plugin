@@ -3,14 +3,19 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   hashMemoryContent,
   MEMORY_MAX_FILE_BYTES,
+  MEMORY_MAX_TAGS,
+  MEMORY_SCHEMA_VERSION,
   type MemoryGovernance,
   type MemoryContentHash,
   type MemoryOrigin,
   type MemoryRecord,
   type MemoryRetention,
+  type MemoryScope,
   type MemorySourceRef,
+  type MemoryType,
   type MemoryVerification,
 } from "./memory-store.ts";
+import { MEMORY_TYPES } from "../types.ts";
 
 export const MEMORY_MAX_IMPORT_RECORDS = 10_000;
 
@@ -152,4 +157,105 @@ export function importMemoryBundle(serialized: string, now = Date.now()): readon
     if (sourceRefs.length > 32) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import has too many source references");
     return Object.freeze({ ...record, id: `memory:import:${randomUUID()}`, status: "active" as const, updatedAt: now, governance: { ...governance, origin: "imported" as const, sourceRefs, verification: "unverified" as const, verifiedAt: undefined, verifiedBy: undefined, pinnedAt: undefined, pinnedBy: undefined, revision: 1 } });
   });
+}
+
+// --- Markdown (human-readable) import/export --------------------------------
+//
+// Format: one `# <title>` section per record, separated by a line of `---`.
+// Metadata is a `key: value` block between the title and the body. The body is
+// the record's content verbatim, so multi-line/markdown content survives a
+// round-trip. Import is lossy by design: origin/verification/retention are
+// honoured when present, everything else is re-governed by the import path
+// (id regenerated, revision 1, unverified, `import` provenance).
+
+export function exportMemoryMarkdown(records: readonly MemoryRecord[], now = Date.now()): string {
+  const sections = records
+    .filter((record) => record.status !== "forgotten")
+    .map((record) => {
+      const governance = memoryGovernance(record);
+      const meta: string[] = [
+        `type: ${record.type}`,
+        `scope: ${record.scope}`,
+        `verification: ${governance.verification}`,
+        `origin: ${governance.origin}`,
+        `retention: ${governance.retention}`,
+      ];
+      if (record.tags.length > 0) meta.push(`tags: ${record.tags.join(", ")}`);
+      meta.push(`updated: ${new Date(record.updatedAt).toISOString()}`);
+      return `# ${record.title}\n\n${meta.join("\n")}\n\n${record.content}`;
+    });
+  if (sections.length === 0) return "# Workspace Memory\n\n(empty)\n";
+  return `${sections.join("\n\n---\n\n")}\n`;
+}
+
+export function importMemoryMarkdown(markdown: string, now = Date.now()): readonly MemoryRecord[] {
+  if (typeof markdown !== "string" || Buffer.byteLength(markdown, "utf8") > MEMORY_MAX_FILE_BYTES) {
+    throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import exceeds the safe size limit");
+  }
+  const sections = markdown.split(/\r?\n---[ \t]*\r?\n/u);
+  const records: MemoryRecord[] = [];
+  for (const section of sections) {
+    const parsed = parseMemoryMarkdownSection(section);
+    if (parsed === undefined) continue;
+    if (records.length >= MEMORY_MAX_IMPORT_RECORDS) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import contains too many records");
+    const { title, content, type, tags, verification, origin, retention } = parsed;
+    records.push(Object.freeze({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      id: `memory:import:${randomUUID()}`,
+      scope: "project" as const,
+      scopeKey: "",
+      type,
+      title,
+      content,
+      tags,
+      provenance: { kind: "import" as const, note: "markdown import" },
+      createdAt: now,
+      updatedAt: now,
+      useCount: 0,
+      contentHash: hashMemoryContent(content),
+      status: "active" as const,
+      governance: { origin, sourceRefs: [], verification, revision: 1, retention },
+    }));
+  }
+  if (records.length === 0) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory import contains no records");
+  return records;
+}
+
+function parseMemoryMarkdownSection(section: string): {
+  readonly title: string;
+  readonly content: string;
+  readonly type: MemoryType;
+  readonly tags: readonly string[];
+  readonly verification: MemoryVerification;
+  readonly origin: MemoryOrigin;
+  readonly retention: MemoryRetention;
+} | undefined {
+  const lines = section.split(/\r?\n/u);
+  let cursor = 0;
+  while (cursor < lines.length && lines[cursor]!.trim() === "") cursor += 1;
+  const titleLine = lines[cursor]?.trim();
+  if (!titleLine?.startsWith("# ")) return undefined;
+  const title = titleLine.slice(2).trim();
+  if (!title) return undefined;
+  cursor += 1;
+  while (cursor < lines.length && lines[cursor]!.trim() === "") cursor += 1;
+  const meta = new Map<string, string>();
+  while (cursor < lines.length) {
+    const line = lines[cursor]!.trim();
+    if (!line) break;
+    const match = /^([A-Za-z-]+):\s*(.*)$/u.exec(line);
+    if (!match) break;
+    meta.set(match[1]!.toLowerCase(), match[2]!.trim());
+    cursor += 1;
+  }
+  while (cursor < lines.length && lines[cursor]!.trim() === "") cursor += 1;
+  const content = lines.slice(cursor).join("\n").trim();
+  if (!content) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory markdown record has no content");
+  const type = (meta.get("type") ?? "fact") as MemoryType;
+  if (!MEMORY_TYPES.includes(type)) throw new MemoryGovernanceError("INVALID_SOURCE", "Memory markdown type is invalid");
+  const tags = (meta.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, MEMORY_MAX_TAGS);
+  const verification = (meta.get("verification") ?? "unverified") as MemoryVerification;
+  const origin = (meta.get("origin") ?? "imported") as MemoryOrigin;
+  const retention = (meta.get("retention") ?? "user-managed") as MemoryRetention;
+  return { title, content, type, tags, verification, origin, retention };
 }

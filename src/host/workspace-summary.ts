@@ -9,7 +9,7 @@ import { resolveWorkspaceRoot, startWorkspace } from "../domain/workspace.ts";
 import { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent } from "../domain/memory.ts";
 import { sessionToolRecords, type SessionEventLike } from "./workspace-artifacts.ts";
 
-/** Summary card payload; also carried by the durable `workspace/summary` event. */
+/** Summary card payload. */
 export interface WorkspaceSummaryData {
   readonly filesTouched: number;
   readonly changes: number;
@@ -33,6 +33,9 @@ export interface WorkspaceSummaryData {
 
 declare module "@deepseek-ai/dsh-session/types" {
   interface SessionEventMap {
+    // Retained for type-level compatibility with session logs written by
+    // pre-v0.6 versions. v0.6+ never appends this event (see
+    // attachWorkspaceSummaryEmitter); the summary is derived on demand.
     "workspace/summary": { readonly id: string; readonly phase: "start" | "update"; readonly summary: WorkspaceSummaryData };
   }
 }
@@ -47,7 +50,8 @@ export interface SummaryAgent {
   };
 }
 
-const SUMMARY_DEBOUNCE_MS = 300;
+/** Operational Budget: max durable tool records folded for one summary. */
+export const SUMMARY_FOLD_MAX_RECORDS = 20_000;
 
 /**
  * Deterministic summary from durable session tool records — never assistant
@@ -69,7 +73,12 @@ export function workspaceSummaryFor(agent: SummaryAgent): WorkspaceSummaryData |
     return undefined;
   }
   const observer = new SessionActivityObserver(identity, baseline);
-  observer.resume(sessionToolRecords(agent.session?.events ?? []));
+  // Operational Budget guard: folding a very large session log stays bounded
+  // (wayfinder #112). The most recent records dominate the summary, so a tail
+  // window preserves the useful signal without unbounded resume cost.
+  const records = sessionToolRecords(agent.session?.events ?? [], root);
+  const folded = records.length > SUMMARY_FOLD_MAX_RECORDS ? records.slice(-SUMMARY_FOLD_MAX_RECORDS) : records;
+  observer.resume(folded);
   const files = [...observer.projection.files.values()];
   const changes = files.filter((file) =>
     file.current === "present"
@@ -100,59 +109,45 @@ export function workspaceSummaryFor(agent: SummaryAgent): WorkspaceSummaryData |
 }
 
 /**
- * Observe final tool outcomes through the public `tools/result` seam,
- * debounce a per-session summary, and append a durable `workspace/summary`
- * event on the owning session. When `memoryDomain` is supplied, the summary
- * is augmented with active-scope (session) Memory and decision counts. Returns
- * a disposer.
+ * Derive a summary augmented with active-scope (session) Memory and decision
+ * counts when a Memory domain is available. Pure wrapper over
+ * `workspaceSummaryFor`; never writes to the session log.
  */
-export function attachWorkspaceSummaryEmitter(ctx: Context, memoryDomain?: WorkspaceMemoryDomain): () => void {
-  const emitted = new Set<string>();
-  const pending = new Map<string, SummaryAgent>();
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+export async function workspaceSummaryWithMemory(agent: SummaryAgent, memoryDomain?: WorkspaceMemoryDomain): Promise<WorkspaceSummaryData | undefined> {
+  const base = workspaceSummaryFor(agent);
+  if (!base) return undefined;
+  const cwd = agent.session?.header?.cwd;
+  if (!memoryDomain || !cwd) return base;
+  try {
+    const hostAgent: MemoryHostAgent = { id: agent.id, session: { header: { cwd } } };
+    const context = workspaceMemoryContextFor(hostAgent);
+    const records = await memoryDomain.list(context, { scope: "session" }, { limit: 100, status: "active" });
+    return Object.freeze({
+      ...base,
+      memoryCount: records.length,
+      decisionCount: records.filter((record) => record.type === "decision").length,
+    });
+  } catch {
+    return base;
+  }
+}
 
-  const withMemoryCounts = async (agent: SummaryAgent, base: WorkspaceSummaryData): Promise<WorkspaceSummaryData> => {
-    const cwd = agent.session?.header?.cwd;
-    if (!cwd) return base;
-    try {
-      const hostAgent: MemoryHostAgent = { id: agent.id, session: { header: { cwd } } };
-      const context = workspaceMemoryContextFor(hostAgent);
-      const records = await memoryDomain!.list(context, { scope: "session" }, { limit: 100, status: "active" });
-      return Object.freeze({
-        ...base,
-        memoryCount: records.length,
-        decisionCount: records.filter((record) => record.type === "decision").length,
-      });
-    } catch {
-      return base;
-    }
-  };
-
-  const flush = async (agent: SummaryAgent): Promise<void> => {
-    timers.delete(agent.id);
-    const base = workspaceSummaryFor(agent);
-    if (!base) return;
-    const summary = memoryDomain ? await withMemoryCounts(agent, base) : base;
-    const phase = emitted.has(agent.id) ? "update" : "start";
-    emitted.add(agent.id);
-    agent.session?.append?.("workspace/summary", { id: agent.id, phase, summary });
-  };
-
-  const onToolResult = (exec: ToolExecution): undefined => {
-    const agent = exec.agent as SummaryAgent | undefined;
-    if (!agent?.session) return undefined;
-    pending.set(agent.id, agent);
-    const existing = timers.get(agent.id);
-    if (existing !== undefined) clearTimeout(existing);
-    timers.set(agent.id, setTimeout(() => { void flush(pending.get(agent.id)!).catch(() => {}); }, SUMMARY_DEBOUNCE_MS));
-    return undefined;
-  };
-
-  ctx.on("tools/result", onToolResult);
-  return () => {
-    for (const timer of timers.values()) clearTimeout(timer);
-    timers.clear();
-    pending.clear();
-    emitted.clear();
-  };
+/**
+ * Observe final tool outcomes through the public `tools/result` seam.
+ *
+ * v0.6 change: this emitter NO LONGER appends a durable `workspace/summary`
+ * event to the session log. Research (wayfinder #110) proved that DSH's cold
+ * persistence path rejects unknown non-ignorable event types, so any session
+ * whose log contains `workspace/summary` refuses to load after a restart
+ * (openState=error — missing chat card and empty tab data). The summary is now
+ * derived on demand from allow-listed `tool/call` + `tool/result` records via
+ * `workspaceSummaryFor` / `workspaceSummaryWithMemory`, exposed to the web
+ * client through the `workspaceSummary` remote. This disposer is retained for
+ * API compatibility and to keep the tools/result observation seam warm; it
+ * performs no log writes.
+ */
+export function attachWorkspaceSummaryEmitter(_ctx: Context, _memoryDomain?: WorkspaceMemoryDomain): () => void {
+  // No-op in v0.6: summary events are no longer persisted (see module doc).
+  // The host service derives summaries on demand through the public remote.
+  return () => {};
 }

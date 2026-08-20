@@ -36,6 +36,13 @@ export interface MarkdownPreviewDescriptor {
         readonly allowRemoteImages: false;
         readonly allowedLinkSchemes: readonly ["http", "https", "mailto"];
     };
+    /**
+     * Same-origin opaque resource URLs for relative images, keyed by the raw
+     * markdown src (v0.6 dsh-web-ui port). The renderer rewrites `![alt](src)`
+     * to these URLs so images beside the markdown file display in the preview.
+     * A plain object so it crosses the Typert remote boundary (no Map/symbol keys).
+     */
+    readonly imageUrls?: Readonly<Record<string, string>>;
 }
 export interface JsonPreviewDescriptor {
     readonly type: "json";
@@ -101,6 +108,17 @@ export declare class PreviewService {
     preview(pathInput: string): Promise<PreviewDescriptor>;
     /** Read one bounded text file with canonical containment and before/after version checks. */
     readText(pathInput: string, maxBytes: number, signal?: AbortSignal): Promise<BoundedTextRead>;
+    /**
+     * Resolve one markdown-relative image to an opaque resource URL. The image
+     * path is resolved against the markdown file's workspace-relative path and
+     * must stay inside the root (no `..` escape, no symlink escape). Returns the
+     * opaque resource URL (same-origin `/workspace/resource?id=...&type=...`)
+     * or undefined when the image cannot be served safely. Images share one
+     * capability per (path, mediaType, version) via the binary() dedupe path.
+     */
+    markdownImageUrl(markdownPath: WorkspacePath, imageSrc: string): Promise<string | undefined>;
+    /** The same-origin opaque resource URL for one resource id + media type. */
+    private resourceUrl;
     openResource(resourceId: string, request: ResourceRequest): Promise<OpenedResource>;
     dispose(): void;
     private resolve;

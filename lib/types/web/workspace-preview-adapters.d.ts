@@ -1,4 +1,4 @@
-import { type ComponentType, type ExoticComponent } from "react";
+import { type ComponentType, type ExoticComponent, type ReactNode } from "react";
 import type { PreviewDescriptor } from "../domain/preview.ts";
 type WorkspacePrimitive<Props extends object> = ComponentType<Props> | ExoticComponent<Props>;
 export interface WorkspacePrimitiveSet {
@@ -22,8 +22,20 @@ export interface WorkspacePreviewRenderOptions {
     readonly downloadName?: string;
     readonly altText?: string;
 }
-/** Remove Markdown image fetches before handing bounded content to the Harness renderer. */
+/**
+ * Remove remote Markdown image fetches before rendering, while preserving
+ * relative images so the v0.6 renderer can resolve them to same-origin opaque
+ * resource URLs. Relative srcs (`./x.png`, `../x.png`, `/x.png`, plain
+ * filenames) pass through unchanged; absolute http(s)/data:/other-scheme srcs
+ * and remote reference definitions are stripped to their alt text. The
+ * renderer's `resolveImageSrc` hook then decides what actually renders.
+ */
 export declare function sanitizeWorkspaceMarkdown(text: string): string;
 /** Render only bounded, already-authorized Host data through public UI primitives. */
 export declare function createWorkspacePreviewRenderer(primitives: WorkspacePrimitiveSet, descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;
+/**
+ * Rendered markdown body plus the mermaid enhancement lifecycle: fresh blocks
+ * render once per html, completed diagrams re-render on shell theme flips.
+ */
+export declare function createWorkspaceMarkdownContent(text: string): ReactNode;
 export {};

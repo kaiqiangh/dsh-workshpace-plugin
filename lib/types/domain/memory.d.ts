@@ -46,7 +46,10 @@ export declare class WorkspaceMemoryDomain {
     markUsed(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string): Promise<MemoryRecord>;
     govern(context: MemoryWorkspaceContext, request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string): Promise<MemoryRecord>;
     export(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string>;
+    exportMarkdown(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string>;
     import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]>;
+    importMarkdown(context: MemoryWorkspaceContext, request: MemoryScopeRequest, markdown: string): Promise<readonly MemoryRecord[]>;
+    private persistImported;
     close(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<void>;
     dispose(): Promise<void>;
     private withConflictGroups;

@@ -7,7 +7,7 @@
 
 ## 0. Delivered-Reality Revision (2026-08-16)
 
-The shipped plugin (merged to `dev`, release pending review) implements: session-scoped workspace identity (ADR-0001); Artifacts + Memory + Git Changes surfaces; a conversation-view tab (`conversation.view`, id `dsh-workspace`) plus the `shell.overlay` panel pill fallback; a live summary card driven by `workspace/summary` events (Host observes final tool outcomes through the public `tools/result` seam); and an Agent-facing `workspace_memory_propose` tool (public `ctx.tools.register`/`defineTool`) + system-prompt section.
+The shipped plugin (merged to `dev`, release pending review) implements: session-scoped workspace identity (ADR-0001); Artifacts + Memory + Git (Changes + History) surfaces; a conversation-view tab (`conversation.view`, id `dsh-workspace`) plus the `shell.overlay` panel pill fallback; a live summary card driven by `workspace/summary` events (Host observes final tool outcomes through the public `tools/result` seam); and an Agent-facing `workspace_memory_propose` tool (public `ctx.tools.register`/`defineTool`) + system-prompt section.
 
 Section-level deltas:
 

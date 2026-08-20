@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 
 import type { ActivityProjection } from "../domain/activity.ts";
 import { deriveArtifacts } from "../domain/activity.ts";
@@ -7,7 +7,7 @@ import type { WorkspaceDeliverable } from "../domain/deliverable.ts";
 import { createWorkspaceDeliverable } from "../domain/deliverable.ts";
 import { PreviewPanelError, PreviewService, type PreviewDescriptor } from "../domain/preview.ts";
 import { SessionActivityObserver, type NativeDurableToolRecord } from "../domain/observation.ts";
-import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspaceSnapshot } from "../domain/workspace.ts";
+import { normalizeWorkspacePath, type WorkspaceIdentity, type WorkspacePath, type WorkspaceSnapshot } from "../domain/workspace.ts";
 
 export interface WorkspaceArtifactTextPreview {
   readonly type: "text";
@@ -27,6 +27,14 @@ export interface WorkspaceArtifactMarkdownPreview {
     readonly allowRemoteImages: false;
     readonly allowedLinkSchemes: readonly ["http", "https", "mailto"];
   };
+  /**
+   * Same-origin opaque resource URLs for the markdown's relative images,
+   * keyed by the raw src (e.g. "./img.png" -> "/workspace/resource?id=..").
+   * Images whose relative path escaped the root, or that failed to resolve,
+   * are absent — the renderer then drops them (alt text only). A plain
+   * object so it crosses the Typert remote boundary (no Map/symbol keys).
+   */
+  readonly imageUrls?: Readonly<Record<string, string>>;
 }
 
 export interface WorkspaceArtifactJsonPreview {
@@ -101,8 +109,233 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
 }
 
-function operationFromResult(tool: string | undefined, content: readonly unknown[]): "create" | "update" | undefined {
-  if (tool === undefined || !/^(?:write|write[-_]file|file[-_]write|create[-_]file)$/i.test(tool)) return undefined;
+const PATH_FIELDS = ["path", "file", "filePath", "file_path", "filename", "target"] as const;
+const PATH_COLLECTIONS = ["paths", "files", "locations", "diffs"] as const;
+const SHELL_WRITE_TOOLS = /^(?:bash|sh|zsh|shell|terminal|exec|pwsh|powershell)$/i;
+
+function workspaceRelativePath(value: string, root?: string): string | undefined {
+  const input = value.trim();
+  if (!input) return undefined;
+  if (/[\u0000-\u001F\u007F]/u.test(input) || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(input)) return undefined;
+  const normalizedInput = input.replaceAll("\\", "/");
+  if (normalizedInput.split("/").includes("..")) return undefined;
+  // A Windows/UNC absolute path is foreign on POSIX hosts. Do not feed it to
+  // POSIX resolve(), which would turn it into a misleading relative path.
+  if (!isAbsolute(input) && win32.isAbsolute(input)) return undefined;
+  if (!isAbsolute(input) && !/^[A-Za-z]:[\\/]/u.test(input)) return normalizedInput;
+  if (!root) return undefined;
+  const relativePath = relative(resolve(root), resolve(input));
+  if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return undefined;
+  return relativePath.split(sep).join("/");
+}
+
+function sanitizeToolPayload(value: unknown, root?: string): unknown {
+  const source = record(value);
+  if (!source) return value;
+  const sanitized = { ...source };
+  for (const field of PATH_FIELDS) {
+    const path = sanitized[field];
+    if (typeof path !== "string") continue;
+    const relativePath = workspaceRelativePath(path, root);
+    if (relativePath === undefined) delete sanitized[field];
+    else sanitized[field] = relativePath;
+  }
+  for (const field of PATH_COLLECTIONS) {
+    const collection = sanitized[field];
+    if (!Array.isArray(collection)) continue;
+    sanitized[field] = collection.flatMap((item) => {
+      if (typeof item === "string") {
+        const relativePath = workspaceRelativePath(item, root);
+        return relativePath === undefined ? [] : [relativePath];
+      }
+      return [sanitizeToolPayload(item, root)];
+    });
+  }
+  return sanitized;
+}
+
+function shellWordAt(command: string, start: number): string | undefined {
+  let value = "";
+  let quote: "'" | '"' | undefined;
+  let index = start;
+  while (index < command.length && /\s/u.test(command[index] ?? "")) index += 1;
+  for (; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote !== undefined) {
+      if (character === quote) { quote = undefined; continue; }
+      if (character === "\\" && quote === '"' && index + 1 < command.length) {
+        value += command[index + 1];
+        index += 1;
+        continue;
+      }
+      value += character;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "\\" && index + 1 < command.length) {
+      value += command[index + 1];
+      index += 1;
+      continue;
+    }
+    if (/\s|[;&|<>]/u.test(character)) break;
+    value += character;
+  }
+  return value || undefined;
+}
+
+function shellTokenEnd(command: string, start: number): number {
+  let quote: "'" | '"' | undefined;
+  let index = start;
+  while (index < command.length && /\s/u.test(command[index] ?? "")) index += 1;
+  for (; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else if (character === "\\" && quote === '"') index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
+    if (/\s|[;&|<>]/u.test(character)) return index;
+  }
+  return command.length;
+}
+
+function shellWordOnLine(command: string, start: number): string | undefined {
+  let index = start;
+  while (index < command.length && /[ \t\r]/u.test(command[index] ?? "")) index += 1;
+  return command[index] === "\n" ? undefined : shellWordAt(command, index);
+}
+
+function shellHeredocEnd(command: string, start: number, delimiter: string, stripTabs = false): number {
+  let lineStart = command.indexOf("\n", start);
+  if (lineStart < 0) return command.length;
+  lineStart += 1;
+  while (lineStart <= command.length) {
+    const lineEnd = command.indexOf("\n", lineStart);
+    const end = lineEnd < 0 ? command.length : lineEnd;
+    const line = command.slice(lineStart, end).replace(/\r$/u, "");
+    if ((stripTabs ? line.replace(/^\t+/u, "") : line) === delimiter) return end;
+    if (lineEnd < 0) return command.length;
+    lineStart = lineEnd + 1;
+  }
+  return command.length;
+}
+
+function shellRedirectionPaths(command: string, add: (value: string | undefined) => void): void {
+  let quote: "'" | '"' | undefined;
+  let segmentStart = 0;
+  let conditional: "[[" | "((" | undefined;
+  let heredocSkipEnd: number | undefined;
+  let segmentHeadChecked = false;
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else if (character === "\\" && quote === '"') index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "\\" && index + 1 < command.length) { index += 1; continue; }
+    if (heredocSkipEnd !== undefined && character === "\n") { index = heredocSkipEnd; heredocSkipEnd = undefined; segmentStart = index + 1; segmentHeadChecked = false; continue; }
+    if (character === "#" && (index === segmentStart || /\s/u.test(command[index - 1] ?? ""))) {
+      const newline = command.indexOf("\n", index + 1);
+      if (newline < 0) break;
+      segmentStart = newline + 1;
+      segmentHeadChecked = false;
+      index = newline;
+      continue;
+    }
+    if (conditional === "[[" && character === "]" && command[index + 1] === "]") { conditional = undefined; index += 1; continue; }
+    if (conditional === "((" && character === ")" && command[index + 1] === ")") { conditional = undefined; index += 1; continue; }
+    if (conditional === undefined && character === "[" && command[index + 1] === "[") { conditional = "[["; index += 1; continue; }
+    if (conditional === undefined && character === "(" && command[index + 1] === "(") { conditional = "(("; index += 1; continue; }
+    if (character === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
+      const stripTabs = command[index + 2] === "-";
+      const delimiterStart = index + 2 + (stripTabs ? 1 : 0);
+      const delimiter = shellWordAt(command, delimiterStart);
+      const bodyStart = command.indexOf("\n", index + 2);
+      if (delimiter !== undefined && bodyStart >= 0) heredocSkipEnd = shellHeredocEnd(command, delimiterStart, delimiter, stripTabs);
+      else index += 1;
+      continue;
+    }
+    if (/[;&|\n]/u.test(character)) { segmentStart = index + 1; segmentHeadChecked = false; continue; }
+    if (!segmentHeadChecked && !/\s/u.test(character)) {
+      segmentHeadChecked = true;
+      const head = shellWordAt(command, segmentStart);
+      if (/^(?:tee|touch)$/i.test(head ?? "")) {
+        let targetStart = shellTokenEnd(command, segmentStart);
+        let target = shellWordOnLine(command, targetStart);
+        if (head?.toLowerCase() === "touch") {
+          const directTargets: string[] = [];
+          let optionsValid = true;
+          let optionsEnded = false;
+          while (target !== undefined && !["#", "<", ">"].includes(target)) {
+            if (target === "--") {
+              optionsEnded = true;
+              targetStart = shellTokenEnd(command, targetStart);
+              target = shellWordOnLine(command, targetStart);
+              continue;
+            }
+            if (/^\d+$/u.test(target) && /[<>]/u.test(command[shellTokenEnd(command, targetStart)] ?? "")) break;
+            if (!optionsEnded && target.startsWith("-")) { optionsValid = false; break; }
+            directTargets.push(target);
+            targetStart = shellTokenEnd(command, targetStart);
+            target = shellWordOnLine(command, targetStart);
+          }
+          if (optionsValid) for (const directTarget of directTargets) add(directTarget);
+        } else {
+          let optionsValid = true;
+          const directTargets: string[] = [];
+          let optionsEnded = false;
+          while (target !== undefined && !["#", "<", ">"].includes(target)) {
+            if (target === "--") {
+              optionsEnded = true;
+              targetStart = shellTokenEnd(command, targetStart);
+              target = shellWordOnLine(command, targetStart);
+              continue;
+            }
+            if (/^\d+$/u.test(target) && /[<>]/u.test(command[shellTokenEnd(command, targetStart)] ?? "")) break;
+            if (!optionsEnded && target.startsWith("-")) {
+              if (!["-a", "-i", "-p", "--append", "--ignore-interrupts"].includes(target) && !target.startsWith("--output-error=")) { optionsValid = false; break; }
+            } else directTargets.push(target);
+            targetStart = shellTokenEnd(command, targetStart);
+            target = shellWordOnLine(command, targetStart);
+          }
+          if (optionsValid) for (const directTarget of directTargets) add(directTarget);
+        }
+      }
+    }
+    if (character !== ">" || conditional !== undefined || ["[[", "(("].includes(shellWordAt(command, segmentStart) ?? "")) continue;
+    const append = command[index + 1] === ">";
+    if (append) index += 1;
+    add(shellWordAt(command, index + 1));
+  }
+}
+
+function shellWritePaths(tool: string | undefined, args: unknown): readonly string[] {
+  if (tool === undefined || !SHELL_WRITE_TOOLS.test(tool)) return [];
+  const command = record(args)?.command;
+  if (typeof command !== "string") return [];
+  // ponytail: parse only explicit shell write targets; generated-script output
+  // still needs filesystem reconciliation rather than unsafe command inference.
+  const paths: string[] = [];
+  const add = (value: string | undefined): void => {
+    const path = value === undefined ? undefined : workspaceRelativePath(value);
+    if (!path || /[$`*?{}&<>#]/u.test(path)) return;
+    if (!paths.includes(path)) paths.push(path);
+  };
+  shellRedirectionPaths(command, add);
+  return paths;
+}
+
+function shellCreationPaths(tool: string | undefined, args: unknown): readonly string[] {
+  return shellWritePaths(tool, args);
+}
+
+function operationFromResult(tool: string | undefined, args: unknown, content: readonly unknown[], shellPaths = shellWritePaths(tool, args)): "create" | "update" | undefined {
+  const firstPartyWrite = tool !== undefined && /^(?:write|write[-_]file|file[-_]write|create[-_]file)$/i.test(tool);
+  if (!firstPartyWrite && shellPaths.length === 0) return undefined;
   const textParts: string[] = [];
   const collectText = (items: readonly unknown[]): void => {
     for (const item of items) {
@@ -116,10 +349,11 @@ function operationFromResult(tool: string | undefined, content: readonly unknown
   const text = textParts.join("\n");
   if (/\bCreated file\b/i.test(text)) return "create";
   if (/\bUpdated file\b/i.test(text)) return "update";
+  if (shellPaths.length > 0) return "create";
   return undefined;
 }
 
-function toSessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[] {
+function toSessionToolRecords(events: readonly SessionEventLike[], workspaceRoot?: string): readonly NativeDurableToolRecord[] {
   const calls = new Map<string, { readonly name: string; readonly arguments: unknown }>();
   const records: NativeDurableToolRecord[] = [];
   for (const event of events) {
@@ -130,7 +364,7 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
       if (typeof callId === "string" && typeof name === "string") {
         let args: unknown = {};
         if (typeof data.arguments === "string") {
-          try { args = JSON.parse(data.arguments) as unknown; } catch { args = {}; }
+          try { args = sanitizeToolPayload(JSON.parse(data.arguments) as unknown, workspaceRoot); } catch { args = {}; }
         }
         calls.set(callId, { name, arguments: args });
       }
@@ -144,8 +378,10 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
     const callId = typeof source?.callId === "string" ? source.callId : typeof block?.toolCallId === "string" ? block.toolCallId : undefined;
     if (!callId) continue;
     const call = calls.get(callId);
-    const meta = record(data.meta) ?? { locations: [] };
-    const operation = operationFromResult(call?.name, content);
+    const meta = sanitizeToolPayload(record(data.meta) ?? { locations: [] }, workspaceRoot) as Record<string, unknown>;
+    const shellCreatedPaths = shellCreationPaths(call?.name, call?.arguments);
+    const operation = operationFromResult(call?.name, call?.arguments, content, shellCreatedPaths);
+    const shellTool = call?.name !== undefined && SHELL_WRITE_TOOLS.test(call.name);
     records.push({
       seq: event.seq,
       time: event.time,
@@ -153,8 +389,14 @@ function toSessionToolRecords(events: readonly SessionEventLike[]): readonly Nat
       data: {
         tool: call?.name ?? "tool",
         callId,
-        arguments: call?.arguments ?? {},
-        result: operation === undefined ? meta : { ...meta, operation },
+        // Keep shell commands out of the replay path extractor. Only the
+        // bounded paths copied into result.paths may become observations.
+        arguments: shellTool ? {} : call?.arguments ?? {},
+        result: operation === undefined ? meta : {
+          ...meta,
+          operation,
+          ...(shellCreatedPaths.length > 0 ? { paths: shellCreatedPaths } : {}),
+        },
         ok: block?.isError !== true,
       },
     });
@@ -236,8 +478,20 @@ export class WorkspaceArtifactCarrier {
     const projection = this.projection();
     const next = new Map<string, ArtifactRecord>();
     for (const item of deriveArtifacts(projection)) {
+      if (item.deleted) {
+        const descriptor: PreviewDescriptor = { type: "error", code: "FILE_NOT_FOUND", message: "Artifact was deleted" };
+        const artifact = createWorkspaceDeliverable(
+          descriptor,
+          { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
+          0,
+          { logicalPath: item.path, mediaType: "application/octet-stream", mtimeMs: item.createdAt },
+        );
+        next.set(artifact.id, { path: item.path, artifact, descriptor });
+        continue;
+      }
+      let info: { readonly size: number; readonly mtimeMs: number } | undefined;
       try {
-        const info = await statArtifact(this.root, item.path);
+        info = await statArtifact(this.root, item.path);
         const cached = this.descriptorCache.get(item.path);
         let descriptor: PreviewDescriptor;
         if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
@@ -250,13 +504,23 @@ export class WorkspaceArtifactCarrier {
           descriptor,
           { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
           info.size,
-          { name: item.path },
+          { name: item.path, mtimeMs: info.mtimeMs },
         );
         next.set(artifact.id, { path: item.path, artifact, descriptor });
-      } catch {
-        // A deleted/moved artifact is dropped from this snapshot; the projection
-        // decides what remains in scope, not a transient stat failure.
-        continue;
+      } catch (error) {
+        const code = error instanceof PreviewPanelError ? error.code : "PROVIDER_UNAVAILABLE";
+        const descriptor: PreviewDescriptor = {
+          type: "error",
+          code,
+          message: error instanceof Error ? error.message : "Artifact is unavailable",
+        };
+        const artifact = createWorkspaceDeliverable(
+          descriptor,
+          { sessionId: this.identity.sessionId, workspaceId: this.identity.rootId, kind: "artifact" },
+          info?.size ?? 0,
+          { logicalPath: item.path, mediaType: "application/octet-stream", mtimeMs: info?.mtimeMs ?? item.createdAt },
+        );
+        next.set(artifact.id, { path: item.path, artifact, descriptor });
       }
     }
     this.artifacts = next;
@@ -269,7 +533,22 @@ export class WorkspaceArtifactCarrier {
     const entry = this.artifacts.get(id);
     if (!entry) return { type: "error", code: "RESOURCE_INVALID", message: "Artifact is unavailable" };
     const descriptor = entry.descriptor.type === "binary" ? entry.descriptor : await this.preview.preview(entry.path);
-    return descriptorWithoutPath(artifactDescriptorPath(descriptor, entry.path));
+    const preview = descriptorWithoutPath(artifactDescriptorPath(descriptor, entry.path));
+    if (preview.type === "markdown") {
+      // Resolve same-origin opaque URLs for every relative image in the
+      // markdown (v0.6, dsh-web-ui port): the client renderer rewrites the
+      // srcs so images beside the file display in the preview.
+      const imageUrls: Record<string, string> = {};
+      const srcPattern = /!\[[^\]]*\]\(([^)]+)\)/gu;
+      for (const match of preview.content.matchAll(srcPattern)) {
+        const src = match[1]?.trim();
+        if (!src || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(src)) continue;
+        const url = await this.preview.markdownImageUrl(entry.path as WorkspacePath, src);
+        if (url) imageUrls[src] = url;
+      }
+      return Object.keys(imageUrls).length > 0 ? { ...preview, imageUrls } : preview;
+    }
+    return preview;
   }
 
   dispose(): void {
@@ -285,6 +564,6 @@ export class WorkspaceArtifactCarrier {
   }
 }
 
-export function sessionToolRecords(events: readonly SessionEventLike[]): readonly NativeDurableToolRecord[] {
-  return toSessionToolRecords(events);
+export function sessionToolRecords(events: readonly SessionEventLike[], workspaceRoot?: string): readonly NativeDurableToolRecord[] {
+  return toSessionToolRecords(events, workspaceRoot);
 }

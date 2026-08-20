@@ -15,7 +15,7 @@ import {
   type MemorySearchOptions,
   type MemoryStoreOptions,
 } from "./memory-store.ts";
-import { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, importMemoryBundle, memoryGovernance, memoryRetentionForScope, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
+import { assertMemoryRevision, conflictGroupFor, exportMemoryBundle, exportMemoryMarkdown, importMemoryBundle, importMemoryMarkdown, memoryGovernance, memoryRetentionForScope, transitionMemoryGovernance, type MemoryGovernanceAction, MemoryGovernanceError } from "./memory-governance.ts";
 import { resolveWorkspaceRoot, startWorkspace, type WorkspaceIdentity, type WorkspaceSnapshot } from "./workspace.ts";
 
 export interface MemoryScopeRequest {
@@ -242,10 +242,22 @@ export class WorkspaceMemoryDomain {
     return exportMemoryBundle(this.withConflictGroups(store.all().filter((record) => record.status !== "forgotten")));
   }
 
+  async exportMarkdown(context: MemoryWorkspaceContext, request: MemoryScopeRequest): Promise<string> {
+    const store = await this.store(context, request);
+    return exportMemoryMarkdown(this.withConflictGroups(store.all().filter((record) => record.status !== "forgotten")));
+  }
+
   async import(context: MemoryWorkspaceContext, request: MemoryScopeRequest, serialized: string): Promise<readonly MemoryRecord[]> {
+    return this.persistImported(context, request, importMemoryBundle(serialized));
+  }
+
+  async importMarkdown(context: MemoryWorkspaceContext, request: MemoryScopeRequest, markdown: string): Promise<readonly MemoryRecord[]> {
+    return this.persistImported(context, request, importMemoryMarkdown(markdown));
+  }
+
+  private async persistImported(context: MemoryWorkspaceContext, request: MemoryScopeRequest, imported: readonly MemoryRecord[]): Promise<readonly MemoryRecord[]> {
     assertWritableRequest(request);
     const store = await this.store(context, request);
-    const imported = importMemoryBundle(serialized);
     const saved: MemoryRecord[] = [];
     for (const record of imported) {
       saved.push(await store.upsert({

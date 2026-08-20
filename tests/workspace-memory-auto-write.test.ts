@@ -172,6 +172,8 @@ test("a changed digest writes a new stable-id record and keeps the count bounded
     fire(agent(["out/a.md", "out/b.md", full]));
     await waitForRecords(memoryDomain, root, (items) => items.some((record) => record.content.includes(full)));
   }
+  // The prune is debounced (~500ms); let it flush before asserting the bound.
+  await sleep(700);
   const pruned = await listActive(memoryDomain, root);
   assert.ok(pruned.length <= 6, "auto-fact digests must be pruned to a bounded set");
   assert.ok(pruned.some((record) => record.content.includes("out/i.md")), "the newest digest must survive pruning");

@@ -1,17 +1,17 @@
 import { Remote, TypertRemoteService, type TypertContext } from "@deepseek-ai/dsh-typert-protocol";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable } from "./types.ts";
+import type { AgentId, WorkspaceArtifactPreview, WorkspaceDeliverable, WorkspaceSummaryData } from "./types.ts";
 import { resolveWorkspaceRoot, resumeWorkspace, startWorkspace, type WorkspaceSnapshot } from "./domain/workspace.ts";
 import { WorkspaceMemoryDomain, type MemoryScopeRequest } from "./domain/memory.ts";
 import type { MemoryGovernanceAction } from "./domain/memory-governance.ts";
 import { MemoryStoreError, type MemoryDraft, type MemoryListOptions, type MemoryReadState, type MemoryRecord, type MemorySearchOptions } from "./domain/memory-store.ts";
-import { gitDiff as gitDiffForRoot, gitStatus as gitStatusForRoot, GitError, type GitChange, type GitDiffResult } from "./domain/git.ts";
-import { sessionToolRecords, WorkspaceArtifactCarrier } from "./host/workspace-artifacts.ts";
+import { gitCommit as gitCommitForRoot, gitDiff as gitDiffForRoot, gitHistory as gitHistoryForRoot, gitRepoInfo as gitRepoInfoForRoot, gitStatus as gitStatusForRoot, GitError, type GitChange, type GitCommit, type GitCommitResult, type GitDiffResult, type GitHistoryOptions, type GitRepoInfo } from "./domain/git.ts";
+import { sessionToolRecords, WorkspaceArtifactCarrier, type SessionEventLike } from "./host/workspace-artifacts.ts";
 import { registerMemoryPropose } from "./host/workspace-memory-propose.ts";
-import { attachWorkspaceSummaryEmitter } from "./host/workspace-summary.ts";
+import { attachWorkspaceSummaryEmitter, workspaceSummaryWithMemory, type SummaryAgent } from "./host/workspace-summary.ts";
 import { attachWorkspaceMemoryAutoWriter } from "./host/workspace-memory-auto-write.ts";
-import { registerWorkspaceResourceRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
+import { registerWorkspaceResourceRoute, registerWorkspaceVendorRoute, type WebRouteRegistrar } from "./host/workspace-resource.ts";
 
 export {
   MEMORY_MAX_CONTENT_BYTES,
@@ -48,6 +48,7 @@ export {
   type MemoryContentHash,
 } from "./domain/memory-store.ts";
 export { WorkspaceMemoryDomain, workspaceMemoryContextFor, type MemoryHostAgent, type MemoryScopeRequest, type MemoryWorkspaceContext } from "./domain/memory.ts";
+export { memoryLogicalLocation } from "./domain/memory-store.ts";
 export {
   assertMemoryRevision,
   conflictGroupFor,
@@ -61,7 +62,7 @@ export {
 } from "./domain/memory-governance.ts";
 
 export { MEMORY_TYPES } from "./types.ts";
-export { GitError, gitDiff, gitStatus, isGitRepository, parsePorcelain, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitDiffResult, type GitErrorCode } from "./domain/git.ts";
+export { GitError, gitCommit, gitDiff, gitHistory, gitRepoInfo, gitStatus, isGitRepository, parsePorcelain, GIT_COMMIT_MAX_DIFF_BYTES, GIT_HISTORY_MAX_COMMITS, GIT_MAX_DIFF_BYTES, type GitChange, type GitChangeStatus, type GitCommit, type GitCommitFile, type GitCommitResult, type GitDiffResult, type GitErrorCode, type GitHistoryOptions, type GitHistoryScope, type GitRepoInfo } from "./domain/git.ts";
 export {
   PreviewPanelError,
   PreviewService,
@@ -91,10 +92,13 @@ export {
 } from "./domain/deliverable.ts";
 export {
   installWorkspaceResourceRoute,
+  installWorkspaceVendorRoute,
   registerWorkspaceResourceRoute,
+  registerWorkspaceVendorRoute,
   type WebRouteRegistrar,
   type WorkspaceEffectRegistrar,
   type WorkspaceResourceRouteOptions,
+  type WorkspaceVendorRouteOptions,
 } from "./host/workspace-resource.ts";
 export {
   WorkspaceArtifactCarrier,
@@ -114,6 +118,7 @@ export {
 export {
   attachWorkspaceSummaryEmitter,
   workspaceSummaryFor,
+  workspaceSummaryWithMemory,
   type SummaryAgent,
   type WorkspaceSummaryData,
 } from "./host/workspace-summary.ts";
@@ -163,6 +168,26 @@ export class WorkspaceService extends TypertRemoteService {
     return { ready: true, agent };
   }
 
+  /**
+   * Derive the current session summary from allow-listed durable tool records
+   * (tool/call + tool/result). Never writes a custom event to the session log:
+   * persisting `workspace/summary` made the whole log unloadable after a
+   * restart (cold-read rejects unknown non-ignorable event types).
+   */
+  @Remote("workspaceSummary")
+  async workspaceSummary(agentId: AgentId): Promise<WorkspaceSummaryData | undefined> {
+    const agent = this.ctx.agents.get(agentId) as (Agent & { readonly session?: { readonly header?: { readonly cwd?: string }; readonly events?: readonly { readonly seq: number; readonly type: string; readonly data?: Record<string, unknown> }[] } }) | undefined;
+    if (!agent?.session) return undefined;
+    const summaryAgent: SummaryAgent = {
+      id: agentId,
+      session: {
+        header: { cwd: agent.session.header?.cwd },
+        events: agent.session.events as readonly SessionEventLike[] | undefined,
+      },
+    };
+    return workspaceSummaryWithMemory(summaryAgent, this.memoryDomain);
+  }
+
   @Remote("focus")
   focus(agentId: AgentId): { readonly focused: boolean } {
     return { focused: true };
@@ -170,12 +195,20 @@ export class WorkspaceService extends TypertRemoteService {
 
   @Remote("artifactMetadata")
   async artifactMetadata(agentId: AgentId): Promise<readonly WorkspaceDeliverable[]> {
-    return (await this.carrier(this.agent(agentId)))?.metadata() ?? [];
+    // A missing/unregistered agent must degrade to the empty state (the web
+    // surface shows "No session artifacts yet"), not throw PROJECT_UNAVAILABLE
+    // which the surface renders as the misleading "artifacts are unavailable"
+    // notice (wayfinder #120). Only a resolvable agent reaches the carrier.
+    const agent = this.ctx.agents.get(agentId);
+    if (!agent) return [];
+    return (await this.carrier(agent))?.metadata() ?? [];
   }
 
   @Remote("previewArtifact")
   async previewArtifact(agentId: AgentId, id: string): Promise<WorkspaceArtifactPreview> {
-    const carrier = await this.carrier(this.agent(agentId));
+    const agent = this.ctx.agents.get(agentId);
+    if (!agent) return { type: "error", code: "PROVIDER_UNAVAILABLE", message: "Workspace artifact carrier is unavailable" };
+    const carrier = await this.carrier(agent);
     return carrier ? carrier.previewArtifact(id) : { type: "error", code: "PROVIDER_UNAVAILABLE", message: "Workspace artifact carrier is unavailable" };
   }
 
@@ -229,6 +262,16 @@ export class WorkspaceService extends TypertRemoteService {
     return this.memoryDomain.import(this.memoryContext(this.agent(agentId), request), request, serialized);
   }
 
+  @Remote("memoryExportMarkdown")
+  async memoryExportMarkdown(agentId: AgentId, request: MemoryScopeRequest): Promise<string> {
+    return this.memoryDomain.exportMarkdown(this.memoryContext(this.agent(agentId), request), request);
+  }
+
+  @Remote("memoryImportMarkdown")
+  async memoryImportMarkdown(agentId: AgentId, request: MemoryScopeRequest, markdown: string): Promise<readonly MemoryRecord[]> {
+    return this.memoryDomain.importMarkdown(this.memoryContext(this.agent(agentId), request), request, markdown);
+  }
+
   @Remote("memoryClose")
   async memoryClose(agentId: AgentId, request: MemoryScopeRequest): Promise<void> {
     return this.memoryDomain.close(this.memoryContext(this.agent(agentId), request), request);
@@ -242,6 +285,21 @@ export class WorkspaceService extends TypertRemoteService {
   @Remote("gitDiff")
   async gitDiff(agentId: AgentId, path?: string): Promise<GitDiffResult> {
     return gitDiffForRoot(this.rootFor(this.agent(agentId)), path);
+  }
+
+  @Remote("gitHistory")
+  async gitHistory(agentId: AgentId, options?: GitHistoryOptions): Promise<readonly GitCommit[]> {
+    return gitHistoryForRoot(this.rootFor(this.agent(agentId)), options);
+  }
+
+  @Remote("gitCommit")
+  async gitCommit(agentId: AgentId, sha: string): Promise<GitCommitResult> {
+    return gitCommitForRoot(this.rootFor(this.agent(agentId)), sha);
+  }
+
+  @Remote("gitRepoInfo")
+  async gitRepoInfo(agentId: AgentId): Promise<GitRepoInfo> {
+    return gitRepoInfoForRoot(this.rootFor(this.agent(agentId)));
   }
 
   private rootFor(agent: Agent): string {
@@ -305,15 +363,19 @@ export class WorkspaceService extends TypertRemoteService {
           readonly time?: number;
           readonly type: string;
           readonly data?: Record<string, unknown>;
-        }[]),
+        }[], root),
       });
       this.artifactAgentId = carrierKey;
       const webServer = this.ctx.get("webServer") as WebRouteRegistrar | undefined;
       if (webServer?.register) {
         const carrier = this.artifactCarrier;
         this.artifactRouteDispose = this.ctx.effect(
-          () => registerWorkspaceResourceRoute(webServer, { preview: carrier.preview }),
-          "workspace opaque artifact route",
+          () => {
+            const disposeResource = registerWorkspaceResourceRoute(webServer, { preview: carrier.preview });
+            const disposeVendor = registerWorkspaceVendorRoute(webServer);
+            return () => { disposeVendor(); disposeResource(); };
+          },
+          "workspace opaque artifact + vendor routes",
         );
       }
       return this.artifactCarrier;

@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import type { MemoryDraft, MemoryListOptions, MemoryReadState, MemoryRecord, MemorySearchOptions, MemoryScopeRequest, MemoryType } from "../types.ts";
+import type { MemoryDraft, MemoryListOptions, MemoryReadState, MemoryRecord, MemoryScopeRequest, MemorySearchOptions, MemoryType } from "../types.ts";
 import type { MemoryGovernanceAction } from "../domain/memory-governance.ts";
 export interface WorkspaceMemoryRemote {
     readonly memoryOpen: (request: MemoryScopeRequest) => Promise<RemoteResult<MemoryReadState>>;
@@ -12,6 +12,9 @@ export interface WorkspaceMemoryRemote {
     readonly memoryGovern: (request: MemoryScopeRequest, id: string, action: MemoryGovernanceAction, expectedRevision: number, expectedHash: string) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryExport: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
     readonly memoryImport: (request: MemoryScopeRequest, serialized: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
+    /** Human-readable Markdown export/import (v0.7). Absent on older hosts. */
+    readonly memoryExportMarkdown?: (request: MemoryScopeRequest) => Promise<RemoteResult<string>>;
+    readonly memoryImportMarkdown?: (request: MemoryScopeRequest, markdown: string) => Promise<RemoteResult<readonly MemoryRecord[]>>;
     readonly memoryMarkUsed?: (request: MemoryScopeRequest, id: string) => Promise<RemoteResult<MemoryRecord>>;
     readonly memoryClose?: (request: MemoryScopeRequest) => Promise<RemoteResult<void>>;
 }

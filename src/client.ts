@@ -7,10 +7,10 @@ import {
   workspaceConversationDefinition,
   workspaceConversationView,
 } from "./web/workspace-conversation.ts";
-import { createElement } from "react";
+import { createElement, useEffect, useState } from "react";
 import { CodeBlock, JsonTree, MarkdownText } from "@deepseek-ai/dsh-client-ui-primitives";
 import { TYPERT_REMOTE } from "./typert.remote-client.js";
-import type { TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
+import type { RemoteResult, TypertClientRemote, TypertRemoteContribution, TypertDisposer } from "@deepseek-ai/dsh-typert-protocol";
 import { createWorkspacePreviewRenderer, type WorkspacePreviewRenderOptions } from "./web/workspace-preview-adapters.ts";
 import type { PreviewDescriptor } from "./domain/preview.ts";
 import {
@@ -21,10 +21,11 @@ import {
   createWorkspaceMemorySurfaceComponent,
   type WorkspaceMemoryRemote,
 } from "./web/workspace-memory-surface.ts";
+import type { WorkspaceChangesRemote } from "./web/workspace-changes-surface.ts";
 import {
-  createWorkspaceChangesSurfaceComponent,
-  type WorkspaceChangesRemote,
-} from "./web/workspace-changes-surface.ts";
+  createWorkspaceGitSurfaceComponent,
+  type WorkspaceGitRemote,
+} from "./web/workspace-git-surface.ts";
 import type { MemoryScopeRequest } from "./domain/memory.ts";
 import { installWorkspaceStyles } from "./web/workspace-styles.ts";
 import {
@@ -33,6 +34,10 @@ import {
   WORKSPACE_VIEW_SLOT,
   type WorkspaceViewSlotRegistry,
 } from "./web/workspace-view.ts";
+import { workspaceSummaryBlockComponent, type WorkspaceSummaryRemote } from "./web/workspace-summary-block.ts";
+import { unwrapRemote } from "./web/workspace-remote.ts";
+import type { WorkspaceSummaryData } from "./host/workspace-summary.ts";
+import { startWorkspaceLocaleSync } from "./web/workspace-i18n.ts";
 
 interface ClientContributionContext {
   readonly conversationEvents: WorkspaceConversationEventRegistry;
@@ -61,63 +66,48 @@ export function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: 
   return createWorkspacePreviewRenderer({ MarkdownText, CodeBlock, JsonTree }, descriptor, options);
 }
 
-/** Compact human-readable session activity span derived from host timestamps. */
-function formatActiveSpan(firstObservedAt: number, lastObservedAt: number): string {
-  if (!firstObservedAt || !lastObservedAt || lastObservedAt <= firstObservedAt) return "just now";
-  const seconds = Math.round((lastObservedAt - firstObservedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}m` : `${hours}h`;
-}
-
-export const inject = ["conversationEvents", "slots", "remote", "sessions"] as const;
+export const inject = ["slots", "remote"] as const;
 
 export async function apply(ctx: ClientContributionContext): Promise<() => Promise<void>> {
-  if (!ctx?.conversationEvents || !ctx.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount || typeof ctx.emit !== "function") {
-    throw new Error("DSH Workspace requires the public conversation and Typert Remote seams");
+  // rc.7 client protocol (dsh 0.1.0-rc.7): the shell provides `slots`
+  // (slot registry with inject/register), `remote` (Typert mount seat) and
+  // `effect` (fiber-lifetime). The rc.6-era `conversationEvents`/`sessions`
+  // service injection is gone; conversation.view registration rides the
+  // session-scoped `conversation.session` parent slot instead (trajectory
+  // pattern), and `register.inject(sessionId)` hands the view its session.
+  if (!ctx?.slots || typeof ctx.effect !== "function" || !ctx.remote?.$mount) {
+    throw new Error("DSH Workspace requires the public slot registry and Typert Remote seams");
   }
   const remoteDispose: TypertDisposer = await ctx.remote.$mount(TYPERT_REMOTE as TypertRemoteContribution);
   let disposeConversation: (() => void) | undefined;
   try {
     ctx.effect(() => {
-      const disposeEvent = ctx.conversationEvents.register(workspaceConversationDefinition);
-      const disposeSlot = ctx.slots.inject("conversation.chat.node", () => ctx.slots.register(
-        { name: "conversation.chat.node", key: "dsh-workspace-summary" },
-        createWorkspaceChatNodeComponent(
-          (model) => {
-            const summary = model.summary;
-            return createElement(
-              "section",
-              { "data-dsh-workspace": "summary" },
-              createElement("strong", null, summary.workspaceName),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.filesTouched} files`),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.filesCreated} new · ${summary.filesModified} edited · ${summary.filesDeleted} deleted`),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.artifacts} artifacts`),
-              summary.memoryCount > 0 && createElement("span", { "data-dsh-workspace": "summary-metric" }, `${summary.memoryCount} memory · ${summary.decisionCount} decisions`),
-              createElement("span", { "data-dsh-workspace": "summary-metric" }, `active ${formatActiveSpan(summary.firstObservedAt, summary.lastObservedAt)}`),
-            );
-          },
-        ),
-      ));
+      // v0.6: the summary is derived on demand and rendered as a block in the
+      // Workspace conversation tab (workspaceSummaryBlockComponent). The old
+      // conversation.chat.node registration is gone: persisting a
+      // workspace/summary custom event made the whole session log unloadable
+      // after a restart (cold-read rejects unknown non-ignorable types), so
+      // no chat-node event can be emitted anymore (wayfinder #112).
       let disposed = false;
       let disposeSurfaces = () => {};
       const viewSlots = ctx.slots as unknown as WorkspaceViewSlotRegistry;
       const registerWorkspaceSurfaces = (scope: ClientContributionContext): (() => void) => {
         const workspace = (scope.remote as unknown as { readonly workspace?: Record<string, (...args: readonly unknown[]) => Promise<unknown>> }).workspace;
-        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote>();
-        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote | undefined => {
+        const remotes = new Map<string, WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceGitRemote & WorkspaceSummaryRemote>();
+        const resolveRemote = (sessionId: string | undefined): WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceGitRemote & WorkspaceSummaryRemote | undefined => {
           if (!sessionId || !workspace) return undefined;
           const cached = remotes.get(sessionId);
           if (cached) return cached;
           const call = <T>(method: string, ...args: readonly unknown[]): Promise<T> => workspace[method]!(sessionId, ...args) as Promise<T>;
-          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceChangesRemote = {
+          const adapted: WorkspaceArtifactRemote & WorkspaceMemoryRemote & WorkspaceGitRemote & WorkspaceSummaryRemote = {
             artifactMetadata: () => call("artifactMetadata"),
             previewArtifact: (id: Parameters<WorkspaceArtifactRemote["previewArtifact"]>[0]) => call("previewArtifact", id),
             gitStatus: () => call("gitStatus"),
             gitDiff: (path: Parameters<WorkspaceChangesRemote["gitDiff"]>[0]) => call("gitDiff", path),
+            gitHistory: (options: Parameters<WorkspaceGitRemote["gitHistory"]>[0]) => call("gitHistory", options),
+            gitCommit: (sha: Parameters<WorkspaceGitRemote["gitCommit"]>[0]) => call("gitCommit", sha),
+            gitRepoInfo: () => call("gitRepoInfo"),
+            workspaceSummary: async () => unwrapRemote(await call<RemoteResult<WorkspaceSummaryData | undefined>>("workspaceSummary")),
             memoryOpen: (request: Parameters<WorkspaceMemoryRemote["memoryOpen"]>[0]) => call("memoryOpen", request),
             memoryList: (request: Parameters<WorkspaceMemoryRemote["memoryList"]>[0], options: Parameters<WorkspaceMemoryRemote["memoryList"]>[1]) => call("memoryList", request, options),
             memorySearch: (request: Parameters<WorkspaceMemoryRemote["memorySearch"]>[0], query: Parameters<WorkspaceMemoryRemote["memorySearch"]>[1], options: Parameters<WorkspaceMemoryRemote["memorySearch"]>[2]) => call("memorySearch", request, query, options),
@@ -127,6 +117,8 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
             memoryGovern: (request: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[0], id: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[1], action: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[2], revision: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[3], hash: Parameters<WorkspaceMemoryRemote["memoryGovern"]>[4]) => call("memoryGovern", request, id, action, revision, hash),
             memoryExport: (request: Parameters<WorkspaceMemoryRemote["memoryExport"]>[0]) => call("memoryExport", request),
             memoryImport: (request: Parameters<WorkspaceMemoryRemote["memoryImport"]>[0], serialized: Parameters<WorkspaceMemoryRemote["memoryImport"]>[1]) => call("memoryImport", request, serialized),
+            memoryExportMarkdown: (request: Parameters<NonNullable<WorkspaceMemoryRemote["memoryExportMarkdown"]>>[0]) => call("memoryExportMarkdown", request),
+            memoryImportMarkdown: (request: Parameters<NonNullable<WorkspaceMemoryRemote["memoryImportMarkdown"]>>[0], markdown: Parameters<NonNullable<WorkspaceMemoryRemote["memoryImportMarkdown"]>>[1]) => call("memoryImportMarkdown", request, markdown),
             memoryMarkUsed: (request: MemoryScopeRequest, id: string) => call("memoryMarkUsed", request, id),
             memoryClose: (request: MemoryScopeRequest) => call("memoryClose", request),
           };
@@ -141,13 +133,18 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         const memory = createWorkspaceMemorySurfaceComponent({
           resolveRemote,
         });
-        const changes = createWorkspaceChangesSurfaceComponent(undefined, {
+        const git = createWorkspaceGitSurfaceComponent(undefined, {}, {
           resolveRemote,
         });
         if (typeof viewSlots.inject === "function" && typeof viewSlots.register === "function") {
           disposers.push(viewSlots.inject(WORKSPACE_VIEW_SLOT, () => viewSlots.register(
             workspaceConversationViewRegistration(),
-            createWorkspaceConversationViewComponent({ artifacts, memory, changes }),
+            createWorkspaceConversationViewComponent({
+              artifacts,
+              memory,
+              git,
+              summary: workspaceSummaryBlockComponent({ resolveRemote }),
+            }),
           )));
         }
         return () => {
@@ -168,11 +165,13 @@ export async function apply(ctx: ClientContributionContext): Promise<() => Promi
         if (disposed) return;
         disposed = true;
         disposeSurfaces();
-        disposeSlot();
-        disposeEvent();
       };
       return disposeConversation;
     }, "dsh Workspace client contribution");
+    // Follow the host application locale (wayfinder #118/#126). The host has
+    // no public locale event/hook, so we observe <html lang> + languagechange
+    // and update the shared Workspace locale, which re-renders every surface.
+    ctx.effect(() => startWorkspaceLocaleSync(), "dsh Workspace locale sync");
   } catch (error) {
     await remoteDispose();
     throw error;
@@ -193,7 +192,7 @@ export {
 };
 
 export type { WorkspaceConversationContributionOptions };
-export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
+export { createWorkspaceMarkdownContent, createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
 export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";
 export {
   buildWorkspaceResourceUrl,
@@ -232,6 +231,14 @@ export {
   createWorkspaceChangesSurfaceComponent,
 } from "./web/workspace-changes-surface.ts";
 export type { WorkspaceChangesRemote, WorkspaceChangesSurfaceOptions } from "./web/workspace-changes-surface.ts";
+export {
+  createWorkspaceGitSurfaceComponent,
+} from "./web/workspace-git-surface.ts";
+export type { WorkspaceGitPrimitives, WorkspaceGitRemote, WorkspaceGitSurfaceOptions } from "./web/workspace-git-surface.ts";
+export {
+  createWorkspaceHistorySurfaceComponent,
+} from "./web/workspace-history-surface.ts";
+export type { WorkspaceHistoryRemote, WorkspaceHistorySurfaceOptions } from "./web/workspace-history-surface.ts";
 export { installWorkspaceStyles } from "./web/workspace-styles.ts";
 export type { WorkspaceSurfaceComponent } from "./web/workspace-styles.ts";
 export {

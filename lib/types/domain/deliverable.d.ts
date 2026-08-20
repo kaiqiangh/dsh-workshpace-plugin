@@ -1,5 +1,5 @@
 import type { PreviewDescriptor } from "./preview.ts";
-export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "stale";
+export type WorkspaceDeliverablePreview = "available" | "unsupported" | "oversized" | "parse-error" | "stale" | "deleted" | "unavailable";
 export interface WorkspaceDeliverableSource {
     readonly sessionId: string;
     readonly workspaceId: string;
@@ -8,6 +8,8 @@ export interface WorkspaceDeliverableSource {
 export interface WorkspaceDeliverable {
     readonly id: string;
     readonly name: string;
+    /** Normalized Workspace Path; never an absolute host path. */
+    readonly logicalPath?: string;
     readonly mediaType: string;
     readonly sizeBytes: number;
     readonly version?: string;
@@ -16,11 +18,16 @@ export interface WorkspaceDeliverable {
     readonly resourceId?: string;
     readonly downloadName: string;
     readonly altText?: string;
+    /** Filesystem last-modified time in epoch ms (surfaces show a relative time). */
+    readonly mtimeMs?: number;
 }
 export interface WorkspaceDeliverableOptions {
     readonly name?: string;
     readonly mediaType?: string;
     readonly version?: string;
+    readonly mtimeMs?: number;
+    /** Safe relative Workspace Path for states without a descriptor path. */
+    readonly logicalPath?: string;
 }
 export declare class WorkspaceDeliverableError extends Error {
     constructor(message: string);

@@ -1,6 +1,6 @@
 {
   "name": "dsh-workspace-plugin",
-  "version": "0.3.0",
+  "version": "0.7.0",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -17,6 +17,7 @@
     "lib/typert.remote-client.d.ts",
     "lib/types",
     "lib/style.css",
+    "lib/assets",
     "cordis.patch.yml",
     "package.json"
   ],
@@ -86,6 +87,7 @@
     "@tsdown/css": "0.22.14",
     "@types/node": "26.2.0",
     "@types/react": "18.3.12",
+    "mermaid": "^11.16.1",
     "react": "18.3.1",
     "react-test-renderer": "^18.3.1",
     "tsdown": "0.22.14",

@@ -2,7 +2,130 @@
 
 All notable changes to this plugin are recorded here, newest first.
 
-## v0.3.0 (2026-08-16) — Surface UX & hygiene
+## v0.7.0 (2026-08-19) — app-locale i18n, artifacts as a working surface, memory redesign, Git tab with history (ADR 0015)
+
+**Localization now follows the DeepSeek app language**
+
+- Reactive locale layer in `workspace-i18n.ts`: `subscribeWorkspaceLocale`,
+  `useWorkspaceLocale` (useSyncExternalStore), `setWorkspaceLocale` notify, and
+  `startWorkspaceLocaleSync` which observes `<html lang>` + `languagechange`
+  (the host exposes no public locale event — research #118). Every surface
+  re-renders on a language switch; browser language is only the fallback.
+- The Workspace tab label is now `label: () => t("view.workspace")`, so the
+  host's locale-aware `dsh-workspace` namespace translates it (research #118,
+  wayfinder #126).
+
+**Zero-`undefined` summary (research #119)**
+
+- `validSummaryShape` guard in the summary block: partial/garbled payloads
+  downgrade to "Workspace summary is unavailable." instead of painting
+  `undefined files · undefined added · …` (root cause: the v0.6 chat-card→block
+  migration dropped the validator).
+
+**Artifacts reachability + UX (research #120, impl #127)**
+
+- `artifactMetadata` returns the empty list (and `previewArtifact` an error
+  descriptor) for an unregistered agent instead of throwing
+  `PROJECT_UNAVAILABLE` — a normal session's artifacts now show.
+- Per-row `size · relative modified time · preview status` (new optional
+  `mtimeMs` on `WorkspaceDeliverable`), copy-path button (clipboard →
+  execCommand → select-to-copy fallback), distinct friendly copy for
+  unsupported / oversized / stale vs error previews, empty-state gap
+  explainer.
+
+**Memory redesign (prototype #123, impl #128)**
+
+- Toolbar: scope segmented control (Project / Session / User / Shared Project)
+  with per-scope tooltips, debounced search, type + status filters, right-pinned
+  Export / Import.
+- Record cards (title, type + verification chips, scope, relative time,
+  one-line preview) + detail panel (scrollable content, governance table with
+  explainer tooltips, action row with tooltips, collapsible inline editor,
+  read-only shared scope). All remotes preserved.
+
+**Git tab with history (research #122, prototype #124, impl #129)**
+
+- New **Git** tab (IA #125: Artifacts → Memory → Git) with a repo-status header
+  (branch + short head, dirty/clean pill, staged / unstaged / untracked counts,
+  ahead/behind, refresh) and an internal **Changes / History** switch.
+- History: `gitHistory` / `gitCommit` / `gitRepoInfo` host primitives (shell to
+  `git`; budgets 200 commits / 256 KiB per commit / 10 s timeout), commit list
+  (hash, subject, decorations, author, relative time), per-commit detail with
+  files `+N -M` and unified diff; branch-graph placeholder bar reserved for
+  v0.8 (`parents` carried in the data shape).
+- Non-Git workspaces show "This workspace is not a Git repository." — no
+  spinner, no error.
+
+**Tests / hygiene**
+
+- New suites: `workspace-summary-block`, `workspace-i18n-subscriber`,
+  `workspace-artifacts-e2e` (carrier → bridge → surface), `workspace-git-history`,
+  `workspace-history-surface`, `workspace-git-surface`; memory + artifacts +
+  view surface suites extended. Full suite **218 pass / 0 fail**, `npm run
+  check` + `npm run build` green. Pre-existing `workspace-memory-auto-write`
+  prune-timing flake hardened.
+
+## v0.6.0 (2026-08-17) — history-resume fix, dsh-web-ui preview port, full i18n
+
+**History-resume bug fix (the headline)**
+
+- **Fixed: reopened historical sessions were unloadable.** The host used to
+  persist a custom `workspace/summary` event via `session.append`; DSH's cold
+  persistence path rejects unknown non-ignorable event types, so any restarted
+  session whose log contained it refused to load (`openState=error` — missing
+  chat card and empty tab data). v0.6 **stops persisting the event entirely**
+  (wayfinder #110/#112): the summary is derived on demand from allow-listed
+  durable tool records (`tool/call` + `tool/result`) through the existing pure
+  `workspaceSummaryFor` and a new `workspaceSummary` remote. Historical
+  sessions created before v0.6 whose logs already contain the event remain
+  unloadable by the DSH persistence layer (no safe in-place log rewrite);
+  new sessions are clean. See README troubleshooting.
+- The chat summary card (event-driven `conversation.chat.node`) is replaced by
+  a **summary block at the top of the Workspace tab**, polling the
+  `workspaceSummary` remote — identical for live and resumed sessions.
+
+**dsh-web-ui preview port (read-only, ADR 0014)**
+
+- **Markdown previews render through a self-contained Workspace renderer**
+  (GFM subset: headings, paragraphs, code, bold/italic/strike, links, images,
+  lists, blockquotes, hr, tables) instead of `MarkdownText`. Relative images
+  resolve to same-origin opaque resource URLs (`PreviewService.markdownImageUrl`),
+  so images beside the file display in the preview; remote images stay dropped.
+- **Mermaid fences render as diagrams** via a same-origin vendor bundle
+  (`/workspace/vendor/mermaid.js`, shipped in `lib/assets/` at build time —
+  zero runtime npm dependency) that follows the shell light/dark theme.
+- **PDF previews stream with Range/ETag**: `/workspace/resource` answers
+  206/416 byte ranges and 304 revalidation (no-cache), so large PDFs can seek.
+
+**Artifacts**
+
+- **Read-only multi-tab preview** (dsh-web-ui PreviewTabs pattern, minus
+  editing): open several artifacts as tabs, switch/close, per-tab cached
+  descriptors. No editor/split/save (read-only stance preserved).
+- Full English/Chinese copy.
+
+**Changes**
+
+- **Grouped SCM display**: staged / unstaged / untracked section headers
+  (dsh-web-ui ScmPanel grouping) alongside the existing filter chips; the
+  untracked "stage it to see a diff" notice is kept. Still read-only.
+- Full English/Chinese copy.
+
+**Memory**
+
+- Full English/Chinese copy.
+
+**i18n**
+
+- A zero-dependency dictionary (`workspace-i18n.ts`) covers every surface and
+  remote error message; the locale follows the browser language.
+
+**Documentation**
+
+- ADR 0014 records the v0.6 decisions.
+- README updated (summary block replaces the chat card; history-resume
+  troubleshooting note; mermaid/PDF/multi-tab/grouped-changes features).
+
 
 **Workspace tab chrome**
 

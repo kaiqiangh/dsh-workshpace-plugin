@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import { t, type WorkspaceMessageKey } from "./workspace-i18n.ts";
 
 /** Unwrap a RemoteResult, throwing a normalized `CODE: message` error on failure. */
 export function unwrapRemote<T>(result: RemoteResult<T>): T {
@@ -13,34 +14,27 @@ export function remoteCode(error: unknown): string | undefined {
   return code && code.length > 0 && code.length <= 64 ? code : undefined;
 }
 
+const remoteMessages: Record<string, WorkspaceMessageKey> = {
+  GIT_UNAVAILABLE: "error.gitUnavailable",
+  NOT_A_GIT_REPOSITORY: "error.notGitRepository",
+  GIT_TIMEOUT: "error.gitTimeout",
+  GIT_OUTPUT_TOO_LARGE: "error.gitOutputTooLarge",
+  PATH_OUTSIDE_WORKSPACE: "error.pathOutsideWorkspace",
+  PROVIDER_UNAVAILABLE: "error.providerUnavailable",
+  PROJECT_UNAVAILABLE: "error.projectUnavailable",
+  RESOURCE_STALE: "error.resourceStale",
+  RESOURCE_EXPIRED: "error.resourceExpired",
+  FILE_TOO_LARGE: "error.fileTooLarge",
+  SYMLINK_ESCAPE: "error.symlinkEscape",
+};
+
 /** Map a remote error code to a friendly, non-technical message. */
 export function friendlyRemoteMessage(code: string | undefined, fallback: string): string {
-  switch (code) {
-    case "GIT_UNAVAILABLE":
-      return "Git is not available for this workspace.";
-    case "NOT_A_GIT_REPOSITORY":
-      return "This workspace is not a git repository.";
-    case "GIT_TIMEOUT":
-      return "Git did not respond in time; try again.";
-    case "GIT_OUTPUT_TOO_LARGE":
-      return "The change is too large to show fully.";
-    case "PATH_OUTSIDE_WORKSPACE":
-      return "This change sits outside the Workspace and is blocked.";
-    case "PROVIDER_UNAVAILABLE":
-      return "The Workspace provider is unavailable right now.";
-    case "PROJECT_UNAVAILABLE":
-      return "This session is not bound to a Workspace.";
-    case "RESOURCE_STALE":
-      return "This item changed or expired; refresh to see the latest.";
-    case "RESOURCE_EXPIRED":
-      return "This item expired; refresh to reload it.";
-    case "FILE_TOO_LARGE":
-      return "This item is too large to preview.";
-    case "SYMLINK_ESCAPE":
-      return "This item points outside the Workspace and is blocked.";
-    default:
-      return fallback;
+  if (code) {
+    const key = remoteMessages[code];
+    if (key) return t(key);
   }
+  return fallback;
 }
 
 /** Friendly user-facing message for a thrown remote error. */

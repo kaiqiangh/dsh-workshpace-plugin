@@ -29,11 +29,11 @@ export interface WorkspaceClientSurface {
 }
 export declare const workspaceClient: WorkspaceClientSurface;
 export declare function renderWorkspacePreview(descriptor: PreviewDescriptor, options?: WorkspacePreviewRenderOptions): unknown;
-export declare const inject: readonly ["conversationEvents", "slots", "remote", "sessions"];
+export declare const inject: readonly ["slots", "remote"];
 export declare function apply(ctx: ClientContributionContext): Promise<() => Promise<void>>;
 export { applyWorkspaceConversationContribution, createWorkspaceChatNodeComponent, workspaceConversationDefinition, workspaceConversationView, };
 export type { WorkspaceConversationContributionOptions };
-export { createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
+export { createWorkspaceMarkdownContent, createWorkspacePreviewRenderer, sanitizeWorkspaceMarkdown } from "./web/workspace-preview-adapters.ts";
 export type { WorkspacePreviewRenderOptions, WorkspacePrimitiveSet } from "./web/workspace-preview-adapters.ts";
 export { buildWorkspaceResourceUrl, createWorkspaceArtifactDetail, createWorkspaceArtifactView, createWorkspaceDownloadController, normalizeWorkspaceArtifacts, } from "./web/workspace-deliverables.ts";
 export { createWorkspaceArtifactSurfaceComponent, workspaceArtifactPreviewDescriptor, workspaceArtifactResourceUrl, WORKSPACE_ARTIFACT_SLOT_NAME, } from "./web/workspace-artifact-surface.ts";
@@ -43,6 +43,10 @@ export { createWorkspaceMemorySurfaceComponent, workspaceMemoryRecordSummary, wo
 export type { WorkspaceMemoryRemote, WorkspaceMemorySurfaceOptions } from "./web/workspace-memory-surface.ts";
 export { createWorkspaceChangesSurfaceComponent, } from "./web/workspace-changes-surface.ts";
 export type { WorkspaceChangesRemote, WorkspaceChangesSurfaceOptions } from "./web/workspace-changes-surface.ts";
+export { createWorkspaceGitSurfaceComponent, } from "./web/workspace-git-surface.ts";
+export type { WorkspaceGitPrimitives, WorkspaceGitRemote, WorkspaceGitSurfaceOptions } from "./web/workspace-git-surface.ts";
+export { createWorkspaceHistorySurfaceComponent, } from "./web/workspace-history-surface.ts";
+export type { WorkspaceHistoryRemote, WorkspaceHistorySurfaceOptions } from "./web/workspace-history-surface.ts";
 export { installWorkspaceStyles } from "./web/workspace-styles.ts";
 export type { WorkspaceSurfaceComponent } from "./web/workspace-styles.ts";
 export { createWorkspaceConversationViewComponent, workspaceConversationViewRegistration, WORKSPACE_VIEW_ENTRY_KEY, WORKSPACE_VIEW_LABEL, WORKSPACE_VIEW_ORDER, WORKSPACE_VIEW_SLOT, } from "./web/workspace-view.ts";

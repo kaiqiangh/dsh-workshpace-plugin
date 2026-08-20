@@ -72,3 +72,19 @@ export function workspaceSegment(label: string, children: ReactNode, key?: strin
 export function workspaceToolbarRow(children: ReactNode, key?: string): ReactNode {
   return createElement("div", { key, "data-dsw-row": "true" }, children);
 }
+
+/**
+ * Shared two-column list | detail layout. Wraps the v0.7 `columns` CSS so the
+ * three Workspace surfaces (Artifacts / Memory / Changes) share one structure
+ * without per-surface UI atoms. Left column holds the persistent list; right
+ * column holds the detail/preview that stays visible while the list is browsed.
+ * Collapses to a single column below 760px via the shared stylesheet.
+ */
+export function workspaceListDetail(list: ReactNode, detail: ReactNode, key?: string): ReactNode {
+  return createElement(
+    "div",
+    { key, "data-dsh-workspace": "columns" },
+    createElement("div", { "data-dsh-workspace": "column-list" }, list),
+    createElement("div", { "data-dsh-workspace": "column-detail" }, detail),
+  );
+}

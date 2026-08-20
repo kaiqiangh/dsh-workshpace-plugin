@@ -91,6 +91,13 @@ export interface MarkdownPreviewDescriptor {
     readonly allowRemoteImages: false;
     readonly allowedLinkSchemes: readonly ["http", "https", "mailto"];
   };
+  /**
+   * Same-origin opaque resource URLs for relative images, keyed by the raw
+   * markdown src (v0.6 dsh-web-ui port). The renderer rewrites `![alt](src)`
+   * to these URLs so images beside the markdown file display in the preview.
+   * A plain object so it crosses the Typert remote boundary (no Map/symbol keys).
+   */
+  readonly imageUrls?: Readonly<Record<string, string>>;
 }
 
 export interface JsonPreviewDescriptor {
@@ -421,6 +428,68 @@ export class PreviewService {
       version: read.version,
       loadedAt: this.now(),
     };
+  }
+
+  /**
+   * Resolve one markdown-relative image to an opaque resource URL. The image
+   * path is resolved against the markdown file's workspace-relative path and
+   * must stay inside the root (no `..` escape, no symlink escape). Returns the
+   * opaque resource URL (same-origin `/workspace/resource?id=...&type=...`)
+   * or undefined when the image cannot be served safely. Images share one
+   * capability per (path, mediaType, version) via the binary() dedupe path.
+   */
+  async markdownImageUrl(markdownPath: WorkspacePath, imageSrc: string): Promise<string | undefined> {
+    if (this.disposed || typeof imageSrc !== "string" || !imageSrc.trim()) return undefined;
+    try {
+      // Resolve the relative image against the markdown file's directory.
+      const dir = markdownPath.includes("/") ? markdownPath.slice(0, markdownPath.lastIndexOf("/")) : "";
+      const trimmed = imageSrc.trim();
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) || trimmed.startsWith("#") || trimmed.startsWith("data:")) return undefined;
+      const cut = Math.min(
+        ...["?", "#"].map((marker) => { const at = trimmed.indexOf(marker); return at === -1 ? trimmed.length : at; }),
+      );
+      const rawPath = trimmed.slice(0, cut);
+      const joined = rawPath.startsWith("/") ? rawPath.slice(1) : dir ? `${dir}/${rawPath}` : rawPath;
+      const segments: string[] = [];
+      for (const part of joined.split("/")) {
+        if (part === "" || part === ".") continue;
+        if (part === "..") {
+          if (segments.length === 0) return undefined;
+          segments.pop();
+          continue;
+        }
+        segments.push(part);
+      }
+      if (segments.length === 0) return undefined;
+      const imagePath = normalizeWorkspacePath(segments.join("/"));
+      if (!imagePath) return undefined;
+      const resolved = await this.resolve(imagePath);
+      const mediaType = mediaTypeFor(resolved.path);
+      if (!mediaType || !mediaType.startsWith("image/")) return undefined;
+      const info = await stat(resolved.canonicalPath);
+      if (!info.isFile() || info.size > this.limits.maxImageBytes) return undefined;
+      const version = versionFor(info);
+      for (const [resourceId, resource] of this.resources) {
+        if (this.now() >= resource.expiresAt) {
+          this.resources.delete(resourceId);
+          continue;
+        }
+        if (sameIdentity(resource.identity, this.identity) && resource.path === resolved.path && resource.mediaType === mediaType && resource.version === version) {
+          return this.resourceUrl(resourceId, mediaType);
+        }
+      }
+      const resourceId = randomBytes(18).toString("base64url");
+      const expiresAt = this.now() + this.resourceTtlMs;
+      this.resources.set(resourceId, { identity: this.identity, path: resolved.path, mediaType, version, expiresAt, downloadName: resourceName(resolved.path, mediaType) });
+      return this.resourceUrl(resourceId, mediaType);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The same-origin opaque resource URL for one resource id + media type. */
+  private resourceUrl(resourceId: string, mediaType: string): string {
+    return `/workspace/resource?id=${encodeURIComponent(resourceId)}&type=${encodeURIComponent(mediaType)}`;
   }
 
   async openResource(resourceId: string, request: ResourceRequest): Promise<OpenedResource> {

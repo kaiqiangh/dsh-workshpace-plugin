@@ -12,6 +12,10 @@ _Avoid_: file explorer, IDE, memory browser
 The compact Harness Web UI surface that presents Workspace Artifacts, Memory, and Changes in one responsive, user-opened panel; the Workspace conversation tab renders the same surfaces beside Trajectory. It is a presentation surface; it does not widen the Workspace Root or inject Memory into Agent context.
 _Avoid_: global overlay, second app shell, file explorer
 
+**Workspace Conversation Tab**:
+The `conversation.view` entry that renders Workspace Artifacts, Memory, and Changes beside Trajectory as three switchable segments; it reuses the same surfaces as the Workspace Panel. The two surfaces share components but differ in carrier width and collapse state.
+_Avoid_: workspace tab, workspace tap, workspace pill
+
 **Workspace Root**:
 The canonical filesystem directory that bounds a Workspace. The configured root is resolved from the Harness process working directory and is never widened by a browser or event path; client and durable identity use an opaque root identifier rather than the host path.
 _Avoid_: project root, host path
@@ -39,6 +43,10 @@ _Avoid_: currently open file, changed file
 **Workspace Change**:
 The current Git or filesystem change state of a Workspace Path relative to the repository/workspace state being inspected. It is independent of whether the agent caused the change.
 _Avoid_: Session Activity, agent change
+
+**Intra-line Diff**:
+A read-only diff rendering that highlights changed words or tokens inside added and removed lines, on top of line-level add/remove coloring. It is zero-dependency and falls back to line-level coloring under an Operational Budget guard.
+_Avoid_: word diff, character diff, syntax highlighting
 
 **Artifact**:
 A previewable file created during the current Harness Session. Artifact listings are derived from Session Files and reflect current existence; activity history can still record deletion.
